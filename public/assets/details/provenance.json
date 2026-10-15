@@ -1,0 +1,27 @@
+{
+  "built": "2026-10-13",
+  "tool": "Blender 5.2.1 LTS",
+  "buildScript": "scripts/build-model-details.py",
+  "files": [
+    {
+      "path": "assets-source/reference-rifles/smallarms.zip",
+      "bytes": 401491,
+      "sha256": "fac981bb2df3dac9574e3567ef40df0fa5b77f0d6be0a36b83bdd95fcc86a492"
+    },
+    {
+      "path": "assets-source/reference-rifles/lee-enfield.zip",
+      "bytes": 14276217,
+      "sha256": "bda94cf59c35d0a46a2157107acbf873f987726979028c91fd768fb5b6455847"
+    },
+    {
+      "path": "public/assets/details/model-details.glb",
+      "bytes": 2134220,
+      "sha256": "3f6b6c8bb38bced438ad8ccb694aa2d3f6d355e5938b2c9eed6d0578e50b300a"
+    },
+    {
+      "path": "assets-source/details/model-details.blend",
+      "bytes": 1388667,
+      "sha256": "45630b57ca27dbc0cb687b2db49f5e1d74a46799e6bb264e39dbb0d12522530c"
+    }
+  ]
+}

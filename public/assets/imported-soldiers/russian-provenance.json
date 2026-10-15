@@ -1,0 +1,117 @@
+{
+  "faction": "russian",
+  "sourceUid": "f85a4ed8c33a43eca1a7caa45f7acf99",
+  "author": "tnnv",
+  "sourceUrl": "https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99",
+  "license": "CC BY 4.0",
+  "sourceSha256": "44843c2a937fe0abd27f4c0b8ed8d54b05adef612b797bdcb56e151cff3db48c",
+  "outputSha256": "434bd4ebd13c0e3b1b69c50833f0bb123adc97d8b7d94ae4858a1aaeb7936c8c",
+  "sourceBytes": 13186248,
+  "outputBytes": 4796204,
+  "triangles": 25887,
+  "removedObjects": [
+    "Icosphere",
+    "covered Body torso faces"
+  ],
+  "modifications": [
+    "Evaluated original posed mesh baked before coordinate normalization",
+    "Uniform scale to1.80m; source original smooth joint weights collapsed to15 runtime bones (maximum four influences)",
+    "Arms and legs normalized to shared adult-proportioned neutral bind; original continuous garment topology retained",
+    "Original body/face, UVs, PBR materials, boots and Soviet pilotka cap retained",
+    "Hidden torso skin and non-render Icosphere removed; no imported animations retained",
+    "Sole weights stabilized to the foot bind to preserve floor contact",
+    "Opaque color textures JPEG92 and alpha color lossless PNG at source resolution up to1K; normal and ORM maps lossless PNG up to512px; actual embedded image bytes verified."
+  ],
+  "embeddedTextures": [
+    {
+      "name": "Image_2",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 279900
+    },
+    {
+      "name": "Image_0",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 197652
+    },
+    {
+      "name": "Image_1",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 201097
+    },
+    {
+      "name": "Image_3",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 1336569
+    },
+    {
+      "name": "Image_9",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 430506
+    },
+    {
+      "name": "Image_7",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 257474
+    },
+    {
+      "name": "Image_8",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 163742
+    },
+    {
+      "name": "Image_6",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 400566
+    },
+    {
+      "name": "Image_4",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 216968
+    },
+    {
+      "name": "Image_5",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 159348
+    }
+  ]
+}

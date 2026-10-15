@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "title": "Stielhandgranate - German Grenade",
+  "author": "Janovich",
+  "authorUrl": "https://sketchfab.com/janovich3D",
+  "source": "https://sketchfab.com/3d-models/stielhandgranate-german-grenade-c49ce26939d64641afac1175a8d62338",
+  "sourceUid": "c49ce26939d64641afac1175a8d62338",
+  "license": "CC-BY-4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "sourceBytes": 28559648,
+  "sourceSha256": "eff2195fa645177ec86f532f8371eed375e30aaa4af4025ad4882580ca1741ce",
+  "output": "imported-stielhandgranate.glb",
+  "outputBytes": 3024212,
+  "outputSha256": "3625068cf735117cc712327933533ddbfe08c9b594328aceaff09089b94846bf",
+  "generator": "scripts/build-grenade-model.py",
+  "blender": "5.2.1 LTS",
+  "triangles": 3688,
+  "meshes": 4,
+  "materials": 1,
+  "animations": 0,
+  "axis": "+Y from handle to canister",
+  "grip": [
+    0,
+    0,
+    0
+  ],
+  "muzzle": null,
+  "bounds": {
+    "min": [
+      -0.04474813,
+      -0.126,
+      -0.04474814
+    ],
+    "max": [
+      0.05912703,
+      0.25400001,
+      0.04474812
+    ]
+  },
+  "canisterBounds": {
+    "min": [
+      -0.04474813,
+      0.11259663,
+      -0.04474814
+    ],
+    "max": [
+      0.05912703,
+      0.25400001,
+      0.04474812
+    ]
+  },
+  "canisterCenter": [
+    0,
+    0.18329832,
+    0
+  ],
+  "uniformScaleFromSourceMesh": 0.4481440396489102,
+  "gripHeightInSourceMesh": 0.27632892299688566,
+  "textures": [
+    {
+      "role": "basecolor",
+      "sourceSize": [
+        4096,
+        4096
+      ],
+      "size": [
+        2048,
+        2048
+      ],
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "embeddedBytes": 866503,
+      "embeddedSha256": "bb106a4718c8f6f40dd7b278b5ec3653bf48b5e486696fa4c1aea226bc78e651"
+    },
+    {
+      "role": "metallic-roughness",
+      "sourceSize": [
+        4096,
+        4096
+      ],
+      "size": [
+        1024,
+        1024
+      ],
+      "format": "PNG",
+      "colorSpace": "Non-Color",
+      "embeddedBytes": 1168714,
+      "embeddedSha256": "a4102829506781b499778ccc4e5fbdf1a0046f892aa15dfa34a5f77c059a5308"
+    },
+    {
+      "role": "normal",
+      "sourceSize": [
+        4096,
+        4096
+      ],
+      "size": [
+        1024,
+        1024
+      ],
+      "format": "PNG",
+      "colorSpace": "Non-Color",
+      "embeddedBytes": 759698,
+      "embeddedSha256": "836e6f3fcf6128eb3334fa72b71ed27ef1037708ac1f0597d245e87d73645efa"
+    }
+  ],
+  "sourceImportedUvHashes": {
+    "handle_Stiehlhandgranate_mat_0": "f77cbf3f465b4d94a1917ab609fce550d7974ed4a61022cad463a7d02d45ec5f",
+    "bottom_Stiehlhandgranate_mat_0": "c72f4ecc02a83171c17b9081b27aa50328da4dae5bcf4a9db94f5c8868a72408",
+    "Lid_Stiehlhandgranate_mat_0": "639806861a5c445c00c338d4e0e48772a6b151d506b48e08e3a4ed18ca86ec56",
+    "Explosive_Stiehlhandgranate_mat_0": "48ee7f0232c053bb8b3d507072fe769b6a71d95286a9d5f21f06d2f54a099255"
+  },
+  "changes": [
+    "Removed source presentation rotation and normalized the shared mesh frame.",
+    "Uniformly scaled to 0.38 m overall, with grip at the origin and bottom at -0.126 m.",
+    "Resampled original base color to 2K and original normal/metallic-roughness maps to 1K.",
+    "Preserved all 3,688 source triangles, UV layout, component assembly and PBR map roles.",
+    "Renamed hierarchy for runtime furniture attachment; retained creator/license metadata."
+  ],
+  "gameplay": "Static carried movement-only item; no throwing or explosive behavior is introduced."
+}

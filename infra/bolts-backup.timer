@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly Bolts database backup
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=120
+Persistent=true
+Unit=bolts-backup.service
+
+[Install]
+WantedBy=timers.target

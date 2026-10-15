@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Bolts — Development model inspector</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font:14px system-ui,sans-serif;color:#e4e8df;background:#292e2b}
+    canvas{display:block}header{position:absolute;top:0;left:0;right:0;z-index:2;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;background:#131816e8;border-bottom:1px solid #5c6357}header strong{margin-right:8px;font-size:15px}nav{display:flex;gap:6px;flex-wrap:wrap}
+    button{cursor:pointer;color:#d7ded0;background:#333c34;border:1px solid #77836b;border-radius:3px;padding:8px 12px;font:inherit}button[aria-pressed=true]{color:#161d14;background:#cbd7b9}button:hover{border-color:#e5f0d7}label{display:flex;gap:6px;align-items:center;white-space:nowrap}input{accent-color:#b4c78f}header small{color:#b6bcae}
+    #caption{position:absolute;bottom:18px;left:20px;z-index:2;line-height:1.6;background:#171d18de;padding:12px 16px;border-left:2px solid #a9b899;max-width:calc(100vw - 40px)}#caption strong{font-size:16px}#stats{color:#acb7a6}#labels{pointer-events:none;position:absolute;inset:0;overflow:hidden}.model-label{position:absolute;transform:translate(-50%,0);text-align:center;white-space:nowrap;color:#e0e5d9;text-shadow:0 1px 4px #111;font-weight:600;font-size:15px}.model-label small{display:block;font-size:11px;font-weight:400;color:#bcc7b4;margin-top:4px}
+    #axis{display:none;position:absolute;left:50%;top:50%;width:5px;height:5px;transform:translate(-50%,-50%);border:1px solid #ff53c9;border-radius:50%;pointer-events:none;z-index:2}select{font:inherit;background:#333c34;color:#e4e8df;padding:7px;border:1px solid #77836b;border-radius:3px}#timeline{width:160px}#phase{min-width:165px;font-size:12px;color:#cad5bc}
+    #show-controls{display:none;position:absolute;top:12px;left:12px;z-index:3}.clean-view header,.clean-view #caption{visibility:hidden}.clean-view #labels{display:none!important}.clean-view #show-controls{display:block}
+  </style>
+</head>
+<body>
+  <header>
+    <strong>BOLTS · MODEL INSPECTOR</strong>
+    <nav aria-label="Model selection">
+      <button type="button" data-mode="soldiers" aria-pressed="true">Soldiers</button>
+      <button type="button" data-mode="british" aria-pressed="false">Lee–Enfield</button>
+      <button type="button" data-mode="russian" aria-pressed="false">Mosin–Nagant</button>
+      <button type="button" data-mode="german" aria-pressed="false">Kar98k</button>
+    </nav>
+    <label><input id="sights" type="checkbox">Iron sights</label>
+    <label><input id="first-person" type="checkbox">First person</label>
+    <label><input id="show-axis" type="checkbox">Aim axis</label>
+    <label>Animation <select id="animation"><option value="idle">Ready</option><option value="cycle">Bolt cycle</option><option value="reload">Reload</option><option value="melee">Melee</option><option value="switch-to-grenade">Rifle → grenade</option><option value="switch-to-rifle">Grenade → rifle</option><option value="grenade-ready">Grenade ready</option><option value="grenade-melee">Grenade bash</option></select></label>
+    <button type="button" id="play-animation">Play</button>
+    <label>Phase <input id="timeline" aria-label="Animation phase" type="range" min="0" max="1000" value="0"></label>
+    <span id="phase">Ready · 0%</span>
+    <button type="button" id="reset">Reset view</button>
+    <button type="button" id="hide-controls">Hide panels (H)</button>
+    <div id="soldier-controls" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+      <label>Framing <select id="soldier-framing"><option value="gallery">Gallery</option><option value="british">British head</option><option value="russian">Soviet head</option><option value="german">German head</option><option value="death-front">Death front</option><option value="death-side">Death side</option></select></label>
+      <label>Soldier action <select id="soldier-animation"><option value="idle">Idle</option><option value="walk">Walk</option><option value="run">Run</option><option value="crouch-walk">Crouch walk</option><option value="jump">Jump / land</option><option value="aim">Aim tracking</option><option value="crouch">Crouch transition</option><option value="prone">Prone transition</option><option value="reload">Reload</option><option value="melee">Rifle butt strike</option><option value="fire">Fire / bolt</option><option value="hit">Hit reaction</option><option value="death">Directional deaths / respawn</option><option value="grenade">Hold grenade</option><option value="grenade-bash">Grenade bash</option><option value="switch">Switch to grenade</option></select></label>
+      <button type="button" id="soldier-play">Play soldier action</button>
+      <label>Time <input id="soldier-timeline" aria-label="Soldier animation phase" type="range" min="0" max="1000" value="0"></label>
+      <label>Pitch <input id="soldier-pitch" aria-label="Soldier aim pitch" type="range" min="-60" max="60" value="0"></label>
+      <label>Lean <input id="soldier-lean" aria-label="Soldier lean" type="range" min="-100" max="100" value="0"></label>
+      <label><input id="hit-volumes" type="checkbox">Hit volumes</label>
+      <span id="soldier-phase">Idle · 0.00 s</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+      <label>Effect <select id="effect"><option value="none">None</option><option value="muzzle">Muzzle flash</option><option value="blood">Blood hit</option></select></label>
+      <label>Age <input id="effect-age" aria-label="Effect age" type="range" min="0" max="820" step="1" value="18"></label>
+      <span id="effect-phase">18 ms</span>
+    </div>
+    <small>Development only · drag to orbit · scroll to zoom</small>
+  </header>
+  <button type="button" id="show-controls">Show panels (H)</button>
+  <div id="labels" aria-hidden="true"></div>
+  <div id="axis" aria-hidden="true"></div>
+  <div id="caption"><strong id="title"></strong><div id="description"></div><div id="stats"></div></div>
+  <script type="module" src="/src/inspector.ts"></script>
+</body>
+</html>

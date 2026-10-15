@@ -1,0 +1,59 @@
+{
+  "model": "Mosin\u2013Nagant M1891/30",
+  "sourceTitle": "Mosin Nagant M91",
+  "author": "MaX3Dd",
+  "sourceUrl": "https://sketchfab.com/3d-models/mosin-nagant-m91-92ede39f23bd40c7982c727dfd7c4be0",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "officialDownload": "mosin_nagant_m91.glb",
+  "sourceSha256": "8183dc76e41d2544ae414a183ac7dc00c7e7da94dfd5dbcb08b5b95fb40e84a0",
+  "outputSha256": "42538534c8c2df654fc2998dad2551c489dae8d4e938b756d4263fa778c45f61",
+  "sourceBytes": 59203856,
+  "outputBytes": 7211112,
+  "uniformScale": 1.17661766260527,
+  "nominalLengthMetres": 1.232,
+  "removedDisplayExtras": [
+    "scope_M91_Scope_0",
+    "bayonet_M91_0",
+    "Downward sniper bolt stem"
+  ],
+  "triangles": 13026,
+  "modifications": [
+    "Uniform physical scale and rigid coordinate normalization",
+    "Source wood, receiver, barrel, sights and bolt retain authored UVs, corner normals and PBR atlas",
+    "Scope and bayonet removed for infantry M1891/30 configuration",
+    "Source bolt sleeve and knob retained; downward sniper stem replaced with a straight infantry shank",
+    "Source stock and handguard separated by material for accurate grip contact checks",
+    "Moving bolt grouped independently; measured muzzle, sights, charger and bolt-knob anchors",
+    "Authored basecolor JPEG92, normal/ORM lossless PNG, all resampled from4K to2K; original metallic/roughness values preserved; actual embedded bytes verified"
+  ],
+  "embeddedTextures": [
+    {
+      "name": "Image_2",
+      "dimensions": [
+        2048,
+        2048
+      ],
+      "mimeType": "image/png",
+      "bytes": 1973433
+    },
+    {
+      "name": "Image_1",
+      "dimensions": [
+        2048,
+        2048
+      ],
+      "mimeType": "image/png",
+      "bytes": 3644176
+    },
+    {
+      "name": "Image_0",
+      "dimensions": [
+        2048,
+        2048
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 778560
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+# Soldier material refinement
+
+This pass changes material and texture construction only. The authored meshes, UV buffers, procedural shapes, joints, pose logic, held weapons and photographic head are unchanged. The geometry code after material construction in `src/soldier.ts` is unchanged. Before/after construction checks against the previous source produced identical hashes for every soldier geometry attribute and index buffer, excluding the separately maintained held rifle and grenade. Vertex totals were 154,070 British, 130,064 Russian and 139,610 German, including the existing procedural head fallback used by Node tests.
+
+## Surfaces and references
+
+- **Wool:** existing [ambientCG Fabric030](https://ambientcg.com/view?id=Fabric030), original 1K color, OpenGL normal and roughness. Its neutral dark source albedo is normalized by measured mean linear luminance (0.1115) before applying faction colors. A 0.20 m tile is an artistic thread-scale estimate, not a measurement of that source. British cloth is brown khaki, Soviet cloth warmer olive and German cloth cooler field gray. Roughness stays between 0.88 and 1.
+- **Webbing:** existing [Poly Haven Hessian 380](https://polyhaven.com/a/hessian_380), colormass photography / Rico Cilliers processing. A finer 0.18 m artistic tile approximates tightly woven equipment straps. It is a visual approximation to cotton webbing, not an authentic Pattern 1937 fabric sample. The source's warm color is mostly desaturated before faction tinting; roughness stays between 0.86 and 0.99. [National Army Museum's 1937 waistbelt](https://collection.nam.ac.uk/detail.php?acc=1998-02-259--1) informed the British equipment color distinction.
+- **Leather:** newly acquired [Poly Haven Brown Leather](https://polyhaven.com/a/brown_leather), Rob Tuytel. Three original 1K JPEGs retain the source's documented 0.40 m tile size. A low-strength normal and 0.45–0.76 roughness preserve leather grain and broad sheen. Tints distinguish brown equipment from dark German leather. [Source provenance](../public/assets/soldier/provenance.json) records original file URLs and verified MD5/SHA-256 hashes.
+- **Helmet paint:** original 256 × 256 deterministic color, OpenGL normal and roughness data textures. Fine stipple at a 0.12 m tile, subtle local wear, faction-specific olive/gray paint and 0.66–0.88 roughness avoid a smooth plastic finish. Paint is principally dielectric, with only a restrained metallic contribution. This is an artistic finish, not a measured historical paint scan.
+
+[Poly Haven](https://polyhaven.com/license) and [ambientCG](https://docs.ambientcg.com/license/) release these asset files under CC0. No museum photograph, extracted game texture or new third-party model is distributed. Existing facial textures remain untouched.
+
+## Rendering and cost
+
+`preloadSoldierMaterials()` retains its existing export from `soldier.ts` and loads local images once per surface family. Source images are shared across soldiers; each material has independent disposable texture views. Basecolor is sRGB, while normal and roughness maps use non-color data. New downloads total 2.05 MB, approximately 16 MiB of RGBA8 GPU texture storage including mipmaps for the three leather maps. The original paint maps add approximately 1 MiB. Reused canvas maps have separate soldier texture sources; actor count does not multiply those shared sources.
+
+The shader samples in local mesh metres using the dominant surface plane. This avoids unrelated UV stretching on torso, limbs, helmets and pouches without changing any geometry. Each map uses the same projected coordinates, including derivative tangent construction for normals. It uses one sample per map rather than full three-way triplanar blending. Procedural low-frequency wear is mild; actual folds, seams, pockets, shadows and the existing environment continue to supply form. The dynamic joint bridges deform their existing local coordinates with the joint, so this method is an approximation on those small moving patches.
+
+The shader retains Three's standard physical lighting, shadows, tone mapping and output conversion. It remaps source roughness into each surface's range instead of relying on a scalar that could make cloth glossy. Metallic fittings retain a separate material. Uniform textures and shader changes add no geometry or material batches.
+
+## Verification
+
+`tests/soldier-materials.test.ts` verifies source hashes and payload, local cached loading, independent texture-view disposal, color-space assignments, shared projected sampling across normal/color/roughness, and preservation of standard lighting/tone-mapping hooks. Existing model and soldier-animation tests cover the unchanged rig and geometry. Browser visual QA should compare the three faction uniforms, boots/pouches, and helmets under the same scene lighting; shader strings alone do not prove GPU compilation.

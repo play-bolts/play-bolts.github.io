@@ -1,0 +1,164 @@
+{
+  "model": "Lee\u2013Enfield Mk III",
+  "author": "Moony_State",
+  "sourceUrl": "https://sketchfab.com/3d-models/lee-enfield-mkiii-f6a2160daf134071a84e3cae5f831875",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "officialDownload": "lee-enfield-mkiii.glb",
+  "sourceSha256": "0cc91c059b91541cb522d59bbe586f58eadb6bc287cf99e60f323e7889d41670",
+  "outputSha256": "4b05614591de084d43971708e38bfe57595888ea45b5ab84591ed576ea231844",
+  "sourceBytes": 17857804,
+  "outputBytes": 9973608,
+  "uniformScale": 0.07529737414971574,
+  "nominalLengthMetres": 1.132,
+  "removedDisplayExtras": [
+    "Object_2",
+    "Object_3"
+  ],
+  "triangles": 16594,
+  "modifications": [
+    "Uniform physical scale and rigid coordinate normalization",
+    "Source sights retained; independent moving bolt grouped for animation",
+    "Static meshes consolidated by source material; UVs and source corner normals retained",
+    "Loose display ammunition and bayonet removed",
+    "Original downloaded PBR images and material factors retained",
+    "Opaque basecolor JPEG92 at original resolution up to2K; normal/ORM resampled to1K lossless PNG; actual embedded bytes verified"
+  ],
+  "embeddedTextures": [
+    {
+      "name": "Image_11",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 1307722
+    },
+    {
+      "name": "Image_10",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 845808
+    },
+    {
+      "name": "Image_9",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 235320
+    },
+    {
+      "name": "Image_8",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 348891
+    },
+    {
+      "name": "Image_7",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 692157
+    },
+    {
+      "name": "Image_6",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 199670
+    },
+    {
+      "name": "Image_20",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 1341968
+    },
+    {
+      "name": "Image_19",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 398592
+    },
+    {
+      "name": "Image_18",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 249858
+    },
+    {
+      "name": "Image_14",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 1253379
+    },
+    {
+      "name": "Image_13",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 1106154
+    },
+    {
+      "name": "Image_12",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 256680
+    },
+    {
+      "name": "Image_17",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 1000251
+    },
+    {
+      "name": "Image_16",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 111073
+    },
+    {
+      "name": "Image_15",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 156274
+    }
+  ]
+}

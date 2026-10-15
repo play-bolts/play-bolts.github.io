@@ -1,0 +1,34 @@
+{
+  "asset": "brown_leather",
+  "author": "Rob Tuytel",
+  "source": "https://polyhaven.com/a/brown_leather",
+  "license": "CC0-1.0",
+  "license_url": "https://polyhaven.com/license",
+  "tile_metres": 0.4,
+  "maps": [
+    {
+      "path": "leather-color.jpg",
+      "role": "color",
+      "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_leather/brown_leather_albedo_1k.jpg",
+      "bytes": 503348,
+      "sha256": "7e9e1d6566d1fd91d4ceb4966c4820361e85d53a7a828b6bab3b2a093a876cd1",
+      "source_md5": "080b3bf1372766ff2c7ff121ed07b5e8"
+    },
+    {
+      "path": "leather-normal.jpg",
+      "role": "normal",
+      "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_leather/brown_leather_nor_gl_1k.jpg",
+      "bytes": 863280,
+      "sha256": "506a0b7650c2dea285e247f26ed2d0d6ec38fc10dd584359f0d203e9c082236d",
+      "source_md5": "b63ae0121a415c23d74eed0b07fc6065"
+    },
+    {
+      "path": "leather-roughness.jpg",
+      "role": "roughness",
+      "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_leather/brown_leather_rough_1k.jpg",
+      "bytes": 686142,
+      "sha256": "f9739ef2da2e3d17b9ec253f5042f61b10dc10f3ae28f6cf6491650d3d1b0ca3",
+      "source_md5": "0f3a0148c8d2d25fbeca67e64e79bca0"
+    }
+  ]
+}

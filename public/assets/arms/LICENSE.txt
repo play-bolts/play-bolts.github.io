@@ -1,0 +1,11 @@
+FPS arms (rigged only), by para, March 18, 2015.
+Source: https://opengameart.org/content/fps-arms-rigged-only
+License: Creative Commons Zero (CC0 1.0), https://creativecommons.org/publicdomain/zero/1.0/
+Original mesh and skin texture: MakeHuman team. Original cleanup, UV rebake and rig: para.
+Bolts modifications: isolated wrist-local hands with a closed planar wrist;
+one Catmull-Clark subdivision with a fixed wrist seam; subtle authored knuckle
+and palm-pad shaping; skinned nail, knuckle and palm masks; glTF conversion
+with the original 20-bone finger rig and photographic UV skin texture.
+The original texture is unchanged. Runtime skin shading adds restrained tone,
+roughness and derivative-filtered pore detail. Each hand contains 13,304 triangles.
+Original source is retained in assets-source/arms. Rebuild with scripts/build-hands.py.

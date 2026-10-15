@@ -1,0 +1,35 @@
+[Unit]
+Description=Consistent encrypted Bolts database backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bolts
+Group=bolts
+EnvironmentFile=/etc/bolts.env
+ExecStart=/usr/local/libexec/bolts-backup
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=600
+MemoryMax=256M
+StateDirectory=bolts-backup
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# SQLite may recreate WAL/SHM sidecars even for a mode=ro source connection.
+ReadWritePaths=/var/lib/bolts /var/lib/bolts-backup

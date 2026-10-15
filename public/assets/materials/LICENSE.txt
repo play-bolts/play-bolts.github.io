@@ -1,0 +1,41 @@
+CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
+
+The JPEG texture assets in this directory are provided by Poly Haven and ambientCG under
+CC0 1.0. They may be used, modified, and redistributed, including commercially.
+Attribution is not required. Credit is retained here to document their origin.
+
+License: https://creativecommons.org/publicdomain/zero/1.0/
+Legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+Poly Haven asset license: https://polyhaven.com/license
+ambientCG asset license: https://docs.ambientcg.com/license/
+
+stone/*.jpg
+  Sandstone Blocks 04 — Rob Tuytel
+  https://polyhaven.com/a/sandstone_blocks_04
+
+dirt/*.jpg
+  Dirt — Charlotte Baglioni
+  https://polyhaven.com/a/dirt
+
+canvas/*.jpg
+  Hessian 380 — colormass (photography), Rico Cilliers (processing)
+  https://polyhaven.com/a/hessian_380
+
+walnut/*.jpg
+  Walnut Veneer 02 — Jenelle van Heerden
+  https://polyhaven.com/a/walnut_veneer_02
+
+steel/*.jpg
+  Metal 012 — ambientCG
+  https://ambientcg.com/view?id=Metal012
+  Original Color, NormalGL and Roughness members of Metal012_2K-JPG.zip
+
+Only asset texture maps are redistributed, not site photographs, screenshots,
+preview renders, logos, or webpage text. The original 1K and 2K JPEG files are
+unmodified. Material tint, UV scale, and normal strength are set by Bolts.
+Individual source URLs, archive members, authors, sizes and checksums are in
+provenance.json. Selected and downloaded 2026-10-13. Bolts loads these files
+locally; neither provider's API is called by the game.
+
+These are replacement assets for Bolts; they are not Call of Duty assets and
+do not imply endorsement by either provider or by the original game's creators.

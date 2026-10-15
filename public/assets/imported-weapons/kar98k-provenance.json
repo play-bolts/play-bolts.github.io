@@ -1,0 +1,82 @@
+{
+  "model": "Kar98k",
+  "author": "Ecler",
+  "sourceUrl": "https://sketchfab.com/3d-models/kar98k-96b7387fe49b4dd491cc8277f765527a",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "officialDownload": "kar98k.glb",
+  "sourceSha256": "9559ee15f95691fc9ff10424ad048362d77c3109e745e5bfe760691cb956c908",
+  "outputSha256": "bcf8b329426e90d3190616f7d74ae3124063f8f533284735dd8d195d23d4ab3f",
+  "sourceBytes": 21211904,
+  "outputBytes": 6617756,
+  "uniformScale": 1.0127634101827943,
+  "nominalLengthMetres": 1.11,
+  "removedDisplayExtras": [
+    "Object_2 display components [4, 5, 6, 7, 8, 20]"
+  ],
+  "triangles": 12685,
+  "modifications": [
+    "Uniform physical scale and rigid coordinate normalization",
+    "Source sights retained; independent moving bolt grouped for animation",
+    "Static meshes consolidated by source material; UVs and source corner normals retained",
+    "Loose display ammunition and bayonet removed",
+    "Original downloaded PBR images and material factors retained",
+    "Opaque basecolor JPEG92 at original resolution up to2K; normal/ORM resampled to1K lossless PNG; actual embedded bytes verified"
+  ],
+  "embeddedTextures": [
+    {
+      "name": "Image_2",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 728002
+    },
+    {
+      "name": "Image_0",
+      "dimensions": [
+        2048,
+        2048
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 880469
+    },
+    {
+      "name": "Image_1",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 1171977
+    },
+    {
+      "name": "Image_5",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 1374254
+    },
+    {
+      "name": "Image_3",
+      "dimensions": [
+        2048,
+        2048
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 1076609
+    },
+    {
+      "name": "Image_4",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 920644
+    }
+  ]
+}

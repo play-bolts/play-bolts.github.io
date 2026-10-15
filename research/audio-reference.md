@@ -1,0 +1,111 @@
+# Rifle audio: multi-shot spectrogram revision — 14 October 2026
+
+This revision supersedes the previous single-shot, whole-spectrum EQ comparison.
+That approach left all three rifles sharing nearly the same noise texture and
+decay. The current recipes change the spectrum **over time**, with separate
+resonant-noise bands, transient/body/tail balances and decay shapes for each rifle.
+Only original synthesized noise/resonances are shipped; reference recordings
+remain ignored local analysis material.
+
+## Sources and clean windows
+
+PC Gaming Videos' [CoD1/UO firing showcase](https://www.youtube.com/watch?v=sK4UBZtE6o0)
+provides three selected firing instances per rifle:
+
+| Rifle | Shot onsets, seconds | Shot/background RMS contrast |
+| --- | --- | --- |
+| Lee–Enfield | 327.316, 329.043, 332.385 | 18.1–25.4 dB |
+| Mosin–Nagant | 235.265, 237.066, 242.049 | 35.9–37.5 dB |
+| Kar98k | 252.441, 253.870, 258.229 | 31.0–43.3 dB |
+
+Each onset was checked against labeled rifle footage, muzzle flash and recoil.
+The second Mosin flash fell between the initial contact-sheet samples; a 60 fps
+extraction confirmed it at approximately 237.067–237.083 s. The showcase hides
+ammunition, so identity was not inferred from an ammo change. Root independently
+reviewed the three contact sheets. No browser was used for reference acquisition
+or review: local media extraction and frame inspection were sufficient.
+
+The supplied [multiplayer recording](https://www.youtube.com/watch?v=-0FQ5HX209g&t=137s)
+remains a Mosin sanity check: the 137.380 s firing onset gives about 967 Hz over the
+previous 160 ms FFT window. Its round-ending activity makes the late tail unsuitable
+for fitting. The [reload-only showcase](https://www.youtube.com/watch?v=OUmvpEm7FII)
+was excluded from shot analysis; its loud handling peaks must not be called shots.
+
+All comparisons use the first **350 ms** after onset, divided into attack
+0–25 ms, body 25–140 ms, and early tail 140–350 ms. This avoids the obvious later
+bolt/reload bursts; residual ambience or mechanical overlap cannot be ruled out.
+Shot/background contrast compares RMS in that 350 ms interval with −100 to −30 ms
+before onset. It is an observed level ratio, not a noise-free source measurement.
+
+## Method and findings
+
+Audio is decoded to mono 48 kHz PCM16. Spectrograms use a 1024-sample Hann STFT
+(21.3 ms window, 2.67 ms hop); each panel shows the median of three normalized
+instances. Phase measurements use Hann FFTs restricted to 60 Hz–12 kHz. Frequency
+shape error is mean absolute difference in 24 logarithmic band-energy levels
+across all three phases. Envelope error compares normalized 5 ms RMS curves.
+Old and new synthesis each use three deterministic random variants. Comparisons
+are relative to the mean of three reference shots, not an isolated game asset.
+
+| Rifle | Reference attack/body/tail centroid, Hz | New synthesis, Hz | Spectral error, old → new | Envelope error, old → new |
+| --- | --- | --- | --- | --- |
+| Enfield | 2233 / 945 / 819 | 2256 / 973 / 826 | 2.77 → 2.38 dB | 2.41 → 2.35 dB |
+| Mosin | 2210 / 857 / 617 | 2348 / 867 / 635 | 3.25 → 1.94 dB | 2.90 → 1.80 dB |
+| Kar98k | 3000 / 1667 / 1535 | 3073 / 1636 / 1718 | 2.78 → 2.22 dB | 6.44 → 1.18 dB |
+
+The new differences are structural, not just louder or differently equalized:
+
+- **Enfield:** a stronger opening crack, broad warm body around 300–550 Hz, then
+  a quicker fall into the low thump. Tail/body level is −6.48 dB, reference −6.54.
+- **Mosin:** a crisp opening followed by a darker, more resonant low tail, with
+  emphasis around 186–245 Hz. Tail/body is −2.77 dB, reference −2.96.
+- **Kar98k:** the brightest crack, more persistent 1–3 kHz rasp, and a body that
+  remains strong through roughly 330 ms. Tail/body is −0.48 dB, reference −0.72.
+
+Mosin remains between Enfield and Kar in the synthesized opening transient, but
+its body/tail is **darker than Enfield**, as consistently measured in the footage.
+The previous requirement that its entire-shot centroid always sit in the middle
+was an authored assumption, not a reference fact, and is superseded.
+
+Pairwise time-frequency separation also moved toward the observed distinctions:
+
+| Pair | Reference | Old synthesis | New synthesis |
+| --- | ---: | ---: | ---: |
+| Enfield / Mosin | 2.37 dB | 0.98 dB | 1.76 dB |
+| Enfield / Kar | 3.31 dB | 2.45 dB | 3.04 dB |
+| Mosin / Kar | 4.21 dB | 1.51 dB | 3.66 dB |
+
+These are acoustic-feature distances, **not perceptual listening scores**. The
+expected audible changes are a shorter Enfield thump, deeper Mosin decay and a
+longer raspy Kar report. Roughness is not perfectly matched: the relative 5 ms
+envelope-fluctuation descriptor is reference/new 0.141/0.189 for Enfield,
+0.180/0.213 for Mosin, and 0.127/0.131 for Kar. Codec, mix, gain, ambience and the
+small sample set limit precision. No claim of exact original-sample reproduction
+or subjective listening approval is made.
+
+## Reproduction and runtime validation
+
+Run `node --import tsx scripts/export-rifle-synthesis.ts`, then
+`python scripts/compare-rifle-spectrograms.py` with numpy/matplotlib. The script
+expects ignored reference WAVs and the previous synthesis under
+`artifacts/audio-reference/before-spectrogram/` (baseline source revision
+`f876f48671551f784a684af80c396a2069525511`). Outputs include
+`rifle-spectrograms.png` / `.svg`, `rifle-phase-comparison.png`, and
+`spectrogram-measurements.json`; plots were visually inspected. No recordings,
+reference waveforms or dense source spectra are embedded in runtime code.
+
+The [W3C Web Audio](https://www.w3.org/TR/webaudio/#PannerNode) spatial path is
+unchanged: every shot's bands share one HRTF source, with actor positions, camera
+orientation, distance/cover filtering and first-person bypass. Actor-specific
+reload cancellation, ended-node disposal, and the 96-voice cap remain covered.
+Nine focused tests now check all three variants, reference-derived phase spectra,
+distinct envelope ratios, finite 44.1/48 kHz PCM, and the existing spatial/lifecycle
+behavior. TypeScript validation passed.
+
+The development-only `audio-qa.html` includes Current / Before / Local reference
+buttons and actual browser `OfflineAudioContext` checks. Root's final candidate
+passed all six spatial checks: right +3.32 dB balance, left −3.36 dB, 180° turn
+−3.47 dB, near −14.61 versus far −25.61 dB, followed actor 0 dB balance, and covered
+−26.20 versus clear −19.64 dB. Those are rendered browser measurements, separate
+from mocked graph tests. The reference buttons depend on ignored local media;
+neither that page nor those recordings is included in the production build.

@@ -1,0 +1,286 @@
+{
+  "faction": "german",
+  "sourceUid": "99ae9a9deb2c46c5956342b3bf9de7a2",
+  "author": "britdawgmasterfunk",
+  "sourceUrl": "https://sketchfab.com/3d-models/ww2-panzergrenadier-fbx-tpose-cc0-99ae9a9deb2c46c5956342b3bf9de7a2",
+  "license": "CC BY 4.0",
+  "authorUrl": "https://sketchfab.com/britdawgmasterfunk",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "sourceAssetMetadata": {
+    "extras": {
+      "author": "britdawgmasterfunk (https://sketchfab.com/britdawgmasterfunk)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/ww2-panzergrenadier-fbx-tpose-cc0-99ae9a9deb2c46c5956342b3bf9de7a2",
+      "title": "WW2 Panzergrenadier_fbx_tpose_CC0"
+    },
+    "generator": "Sketchfab-15.50.0",
+    "version": "2.0"
+  },
+  "sourceSha256": "580adb9e5a1c43aca935bcc815ced0cf74434ccb25fbe21f253f4922a1f42f6a",
+  "outputSha256": "a1545b9693ecef16a93e6da9164303894b7ee23a74e814f2830fddb7b4b7b2f0",
+  "sourceBytes": 18372664,
+  "outputBytes": 6376128,
+  "triangles": 27004,
+  "meshes": 5,
+  "joints": 15,
+  "maximumSkinInfluences": 4,
+  "uniformScale": 0.12641574806503755,
+  "bounds": {
+    "min": [
+      -0.29071512818336487,
+      2.9802322387695312e-08,
+      -0.1598334163427353
+    ],
+    "max": [
+      0.29060012102127075,
+      1.7999998331069946,
+      0.20048461854457855
+    ]
+  },
+  "sourceUvHashes": {
+    "main_Material.003_0": "ba3700c69b5c0a06200e83feb20a864c970d19d1f30ba86ec5a5e9e739515272",
+    "main_ammopouchesgerman_low_0": "c4a50df61af40f75fe373b5227041a5fda39918e54b98dd11d73439fadfe4a58",
+    "main_helmetm42_low_0": "ffbd95cedfb20a35e1b1df7ae1f1ca77eede29f82f79c70aa55b65df96943e7e",
+    "main_scrimwire_low_0": "e835299b8985520664e31192354d1a19b4539b799ebf3cec771a5e71b9bb8c18",
+    "main_scrimleaves_low_0": "51e2f3b872e992f2a6d67ecf8b11cf3245627d5728c405b31a2300186648028b"
+  },
+  "surfaceChanges": [
+    {
+      "sourceMaterial": "Material.003",
+      "material": "german-wool",
+      "roughnessRange": [
+        0.78,
+        0.96
+      ],
+      "metalness": 0,
+      "baseColorAndNormals": "unaltered source maps"
+    },
+    {
+      "sourceMaterial": "Material.003",
+      "material": "german-boot-leather",
+      "roughnessRange": [
+        0.42,
+        0.67
+      ],
+      "metalness": 0,
+      "baseColorAndNormals": "unaltered source maps"
+    },
+    {
+      "sourceMaterial": "Material.003",
+      "material": "german-skin",
+      "roughnessRange": [
+        0.63,
+        0.82
+      ],
+      "metalness": 0,
+      "baseColorAndNormals": "unaltered source maps"
+    },
+    {
+      "sourceMaterial": "ammopouchesgerman_low",
+      "material": "german-equipment-leather",
+      "roughnessRange": [
+        0.48,
+        0.76
+      ],
+      "metalness": 0,
+      "baseColorAndNormals": "unaltered source maps"
+    },
+    {
+      "sourceMaterial": "helmetm42_low",
+      "material": "german-painted-helmet",
+      "roughnessRange": [
+        0.68,
+        0.9
+      ],
+      "metalness": 0.15,
+      "baseColorAndNormals": "unaltered source maps"
+    },
+    {
+      "sourceMaterial": "scrimwire_low",
+      "material": "german-helmet-wire",
+      "roughnessRange": [
+        0.55,
+        0.8
+      ],
+      "metalness": 0.45,
+      "baseColorAndNormals": "unaltered source maps"
+    },
+    {
+      "sourceMaterial": "scrimleaves_low",
+      "material": "german-foliage",
+      "roughnessRange": [
+        0.78,
+        0.96
+      ],
+      "metalness": 0,
+      "baseColorAndNormals": "unaltered source maps"
+    }
+  ],
+  "generator": "scripts/build-imported-soldier-german.py",
+  "blender": "5.2.1 LTS",
+  "modifications": [
+    "Uniformly scaled to1.80m with floor at0; converted to+Y up/+Z forward.",
+    "Source T-pose arms fitted into neutral down-arm bind; legs fitted to runtime ankle/hip spacing.",
+    "Authored continuous shoulder, elbow, wrist, hip, knee and ankle skin weights, maximum four influences.",
+    "Retained all27,004source triangles, UV coordinates and original1K/512basecolor/normal textures.",
+    "Material-specific roughness remapping and metalness correct glossy source wool/skin/leather; color and normal maps unchanged.",
+    "Head, helmet and foliage retain source geometry and proportions; rigid head attachment with blended neck.",
+    "Opaque color textures JPEG92 and alpha color lossless PNG at source resolution up to1K; normal and ORM maps lossless PNG up to512px; actual embedded image bytes verified."
+  ],
+  "licenseNote": "Source title contains CC0, but official downloadable asset metadata specifies CC-BY-4.0; retain attribution under that explicit license.",
+  "embeddedTextures": [
+    {
+      "name": "Image_2",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 362974
+    },
+    {
+      "name": "wool",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 248141
+    },
+    {
+      "name": "Image_0",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 312026
+    },
+    {
+      "name": "boot-leather",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 260732
+    },
+    {
+      "name": "skin",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 249912
+    },
+    {
+      "name": "Image_8",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 350049
+    },
+    {
+      "name": "painted-helmet",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 235712
+    },
+    {
+      "name": "Image_6",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 394983
+    },
+    {
+      "name": "Image_14",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 625750
+    },
+    {
+      "name": "foliage",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 298040
+    },
+    {
+      "name": "Image_12",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 191344
+    },
+    {
+      "name": "Image_11",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 215866
+    },
+    {
+      "name": "helmet-wire",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 274468
+    },
+    {
+      "name": "Image_9",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 89292
+    },
+    {
+      "name": "Image_5",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 330880
+    },
+    {
+      "name": "equipment-leather",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 234852
+    },
+    {
+      "name": "Image_3",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 272196
+    }
+  ]
+}

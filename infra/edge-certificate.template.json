@@ -1,0 +1,40 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Bolts CloudFront viewer certificate; deploy this stack in us-east-1 before the Oregon backend alias update.",
+  "Parameters": {
+    "DomainName": {
+      "Type": "String",
+      "Default": "bolts-api.christopherkrapu.com",
+      "AllowedValues": ["bolts-api.christopherkrapu.com"]
+    },
+    "HostedZoneId": {
+      "Type": "String",
+      "Default": "Z00983602PMUH0CDXDTFC",
+      "AllowedValues": ["Z00983602PMUH0CDXDTFC"]
+    }
+  },
+  "Resources": {
+    "ViewerCertificate": {
+      "Type": "AWS::CertificateManager::Certificate",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "DomainName": {"Ref": "DomainName"},
+        "ValidationMethod": "DNS",
+        "DomainValidationOptions": [
+          {"DomainName": {"Ref": "DomainName"}, "HostedZoneId": {"Ref": "HostedZoneId"}}
+        ],
+        "Tags": [
+          {"Key": "Project", "Value": "Bolts"},
+          {"Key": "Component", "Value": "MultiplayerBackend"},
+          {"Key": "ManagedBy", "Value": "CloudFormation"}
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "CertificateArn": {"Value": {"Ref": "ViewerCertificate"}},
+    "DomainName": {"Value": {"Ref": "DomainName"}},
+    "HostedZoneId": {"Value": {"Ref": "HostedZoneId"}}
+  }
+}

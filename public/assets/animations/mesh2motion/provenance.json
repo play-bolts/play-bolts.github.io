@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "project": "Mesh2Motion",
+  "reviewed": "2026-10-13",
+  "repository": "https://github.com/Mesh2Motion/mesh2motion-app",
+  "revision": "653a9698f5f315523072f1c3ff3496100401317b",
+  "sourceArtRepository": "https://github.com/Mesh2Motion/mesh2motion-assets",
+  "sourceArtRevision": "c5b0b6c821dbf2fa1dfe49590a6f431fd9f707ce",
+  "license": "CC0-1.0",
+  "credit": "Mesh2Motion / Scott Petrovic; humanoid base animation source includes Quaternius.",
+  "licenseNotices": [
+    {
+      "filename": "LICENSE-CC0",
+      "source": "https://raw.githubusercontent.com/Mesh2Motion/mesh2motion-app/653a9698f5f315523072f1c3ff3496100401317b/LICENSE-CC0.MD",
+      "bytes": 294,
+      "sha256": "52fec1c484df708c16b4c27b2bf0d7f0d3994105c57adc4b9e6f95bcfd9de65f"
+    },
+    {
+      "filename": "LICENSE-Quaternius.txt",
+      "source": "https://raw.githubusercontent.com/Mesh2Motion/mesh2motion-assets/c5b0b6c821dbf2fa1dfe49590a6f431fd9f707ce/CC0-packs/Quaternius/License.txt",
+      "bytes": 523,
+      "sha256": "30235762e8870ff794928567d5ecca4ac4694fe3ad758bf8a1c037c61670672e"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "human-addon-animations.glb",
+      "url": "https://raw.githubusercontent.com/Mesh2Motion/mesh2motion-app/653a9698f5f315523072f1c3ff3496100401317b/static/animations/human-addon-animations.glb",
+      "bytes": 5292804,
+      "sha256": "a0d64d555e0d492026b72d58bf8e16c5e86779295f9093e376dcc001915c2c95",
+      "originalClipCount": 75,
+      "selectedClips": [
+        {
+          "name": "Crawl",
+          "duration": 1.7083333333333333,
+          "channels": 198,
+          "bakedFrames": 53
+        },
+        {
+          "name": "Idle_Subtle",
+          "duration": 2.5833333333333335,
+          "channels": 198,
+          "bakedFrames": 79
+        },
+        {
+          "name": "Strafe_left",
+          "duration": 1,
+          "channels": 198,
+          "bakedFrames": 31
+        },
+        {
+          "name": "Strafe_right",
+          "duration": 1,
+          "channels": 198,
+          "bakedFrames": 31
+        },
+        {
+          "name": "Walk_Backwards",
+          "duration": 1,
+          "channels": 198,
+          "bakedFrames": 31
+        }
+      ]
+    },
+    {
+      "filename": "human-base-animations.glb",
+      "url": "https://raw.githubusercontent.com/Mesh2Motion/mesh2motion-app/653a9698f5f315523072f1c3ff3496100401317b/static/animations/human-base-animations.glb",
+      "bytes": 5656648,
+      "sha256": "406eb0a8dc4ab366e623b79b6e3005a4951392e1bda78ae39c1099d31147733c",
+      "originalClipCount": 87,
+      "selectedClips": [
+        {
+          "name": "Crouch_Idle",
+          "duration": 3.6666666666666665,
+          "channels": 198,
+          "bakedFrames": 112
+        },
+        {
+          "name": "Crouch_Walk",
+          "duration": 2.5,
+          "channels": 198,
+          "bakedFrames": 76
+        },
+        {
+          "name": "Idle_A",
+          "duration": 3.125,
+          "channels": 198,
+          "bakedFrames": 95
+        },
+        {
+          "name": "Jog",
+          "duration": 1.1666666666666667,
+          "channels": 198,
+          "bakedFrames": 36
+        },
+        {
+          "name": "Jump_air",
+          "duration": 3.125,
+          "channels": 198,
+          "bakedFrames": 95
+        },
+        {
+          "name": "Jump_Land",
+          "duration": 1.5833333333333333,
+          "channels": 198,
+          "bakedFrames": 49
+        },
+        {
+          "name": "Jump_Start",
+          "duration": 1.6666666666666667,
+          "channels": 198,
+          "bakedFrames": 51
+        },
+        {
+          "name": "Pistol_Reload",
+          "duration": 2.0833333333333335,
+          "channels": 198,
+          "bakedFrames": 64
+        },
+        {
+          "name": "Sprint",
+          "duration": 0.8333333333333334,
+          "channels": 198,
+          "bakedFrames": 26
+        },
+        {
+          "name": "Walk",
+          "duration": 1.6666666666666667,
+          "channels": 198,
+          "bakedFrames": 51
+        }
+      ]
+    }
+  ],
+  "packaging": "Runtime bundles only selected sampled motion data through Vite. Original source banks are offline research/build inputs and are not copied to public assets.",
+  "reloadApplicability": "Pistol_Reload is a full-body pistol reload. Only its left-elbow/shoulder fetch timing is adapted into small right-elbow/support-arm balance and rifle counter-motion. Rifle charger fetch/return paths are separately authored curves; bolt, charger and thumb contacts remain authoritative. No source magazine mechanics or direct hand-bone retargeting.",
+  "research": "research/mesh2motion-reference.md",
+  "derivatives": [
+    {
+      "path": "src/generated/mesh2motionData.ts",
+      "generator": "scripts/build-motion.ts",
+      "bytes": 380899,
+      "gzipBytes": 121107,
+      "sha256": "13934dbb38b565379f15e9fa30163074cd5dd5367fd288670043e1f24778f256",
+      "clipCount": 15,
+      "frameCount": 880,
+      "jointCount": 17,
+      "sampling": "Full source hierarchy evaluated at approximately 30 Hz including both endpoints; root world translation removed; X reflected to Bolts named-limb convention; world landmark metres rounded to 5 decimal places.",
+      "contains": "Selected skeletal landmark position curves, per-clip averages and source bind landmark positions. No source display mesh, textures or app implementation code."
+    }
+  ]
+}

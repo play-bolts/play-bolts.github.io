@@ -1,0 +1,308 @@
+{
+  "faction": "british",
+  "sourceUid": "9af571fa416546f08dfc2ba95e604083",
+  "author": "patromes",
+  "sourceUrl": "https://sketchfab.com/3d-models/wwii-british-soldier-9af571fa416546f08dfc2ba95e604083",
+  "license": "CC BY 4.0",
+  "sourceSha256": "07d86d29cf7855e749316c208e632accde219653612d833c509236231896b104",
+  "outputSha256": "6c0cb1c22e392527b759631b3ce2932b93e9a0a6341840778c71fa2a8846246b",
+  "sourceBytes": 30013020,
+  "outputBytes": 8037000,
+  "triangles": 97005,
+  "removedObjects": [
+    "Object_2",
+    "Object_3",
+    "Object_7",
+    "Object_12",
+    "Object_13",
+    "Object_14",
+    "Object_21",
+    "Object_22",
+    "Object_23"
+  ],
+  "modifications": [
+    "Uniform scale to1.80m and neutral bind-pose normalization",
+    "Hidden skin/interior mouth/corneal shells and source-carried firearm removed",
+    "Coincident source vertices welded with per-corner UVs and source faces retained",
+    "Continuous garment meshes retain source UV/PBR; new four-influence animation weights authored",
+    "Helmet roughness/metalness adapted from chrome-like source response to painted steel",
+    "Opaque color textures JPEG92 and alpha color lossless PNG at source resolution up to1K; normal and ORM maps lossless PNG up to512px; actual embedded image bytes verified.",
+    "Original iris/pupil JPEGs restored unchanged from removed corneal shells onto retained eyeballs with identical UV coordinates; no geometry added."
+  ],
+  "embeddedTextures": [
+    {
+      "name": "Image_25",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 254537
+    },
+    {
+      "name": "Image_24",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 111195
+    },
+    {
+      "name": "Image_27",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 244295
+    },
+    {
+      "name": "Image_26",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 285652
+    },
+    {
+      "name": "Image_29",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 299681
+    },
+    {
+      "name": "Image_28",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 123590
+    },
+    {
+      "name": "Image_3",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 38587
+    },
+    {
+      "name": "Image_5",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 169097
+    },
+    {
+      "name": "Image_4",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 142414
+    },
+    {
+      "name": "Image_2",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/png",
+      "bytes": 284861
+    },
+    {
+      "name": "Image_7",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 210989
+    },
+    {
+      "name": "Image_6",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 154454
+    },
+    {
+      "name": "Image_9",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 175254
+    },
+    {
+      "name": "Image_8",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 138849
+    },
+    {
+      "name": "Image_32",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 85007
+    },
+    {
+      "name": "Image_30",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 100923
+    },
+    {
+      "name": "Image_33",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 77947
+    },
+    {
+      "name": "Image_35",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 296220
+    },
+    {
+      "name": "Image_34",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 194054
+    },
+    {
+      "name": "Image_11",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 15756
+    },
+    {
+      "name": "Image_10",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 10385
+    },
+    {
+      "name": "Image_13",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 94556
+    },
+    {
+      "name": "Image_12",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 60431
+    },
+    {
+      "name": "Image_14",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 26293
+    },
+    {
+      "name": "Image_15",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 32635
+    },
+    {
+      "name": "Image_17",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mimeType": "image/png",
+      "bytes": 354624
+    },
+    {
+      "name": "Image_16",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 222676
+    },
+    {
+      "name": "original-british-iris-L",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 247354
+    },
+    {
+      "name": "original-british-iris-R",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mimeType": "image/jpeg",
+      "bytes": 246222
+    }
+  ],
+  "eyeTextureRepairGenerator": "scripts/restore-british-eye-maps.py",
+  "eyeTextureSources": [
+    {
+      "material": "Std_Eye_L.001",
+      "sourceMaterial": "Std_Cornea_L.001",
+      "sha256": "8bd32bccc9b6698ec13c6c6c0fef91e8e6dc5b3470187f780c716c4a5aff9784"
+    },
+    {
+      "material": "Std_Eye_R.001",
+      "sourceMaterial": "Std_Cornea_R.001",
+      "sha256": "b46bc772eb26dec6aa5682459892fbc1bf3692900a4190135ab617db18b64e7c"
+    }
+  ]
+}

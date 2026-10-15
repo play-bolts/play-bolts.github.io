@@ -1,0 +1,357 @@
+{
+  "license": "CC0-1.0",
+  "license_urls": [
+    "https://polyhaven.com/license",
+    "https://docs.ambientcg.com/license/"
+  ],
+  "retrieved": "2026-10-13",
+  "resolution": "Original mixed 1024x1024 and 2048x2048 JPEGs; see individual maps",
+  "notes": "Original licensed source files, no resizing/recompression/image modification. Color and fine weapon detail upgraded selectively; environment data maps remain 1K. Local files only at runtime.",
+  "assets": [
+    {
+      "kind": "stone",
+      "asset": "sandstone_blocks_04",
+      "title": "Sandstone Blocks 04",
+      "source": "https://polyhaven.com/a/sandstone_blocks_04",
+      "authors": {
+        "Rob Tuytel": "All"
+      },
+      "source_dimensions_mm": [
+        3000,
+        3000
+      ],
+      "provider": "Poly Haven",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "metadata_url": "https://api.polyhaven.com/files/sandstone_blocks_04",
+      "maps": [
+        {
+          "path": "stone/basecolor.jpg",
+          "role": "basecolor",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/sandstone_blocks_04/sandstone_blocks_04_diff_2k.jpg",
+          "source_md5": "39ac3bfa91d59f767113b6856301a72a",
+          "sha256": "4571ff357e041bacb75ab06ad1958e74a0b396e0f3d8b9dc9d4717f704996304",
+          "bytes": 2066659,
+          "dimensions": [
+            2048,
+            2048
+          ],
+          "color_space": "sRGB"
+        },
+        {
+          "path": "stone/normal.jpg",
+          "role": "normal",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sandstone_blocks_04/sandstone_blocks_04_nor_gl_1k.jpg",
+          "source_md5": "47c6220c2508aeefd76431e0ffcd67bf",
+          "sha256": "4acdd23064d6fc7e31a5512d96adb21880f58899d100a01fd9fd62af61efe6d0",
+          "bytes": 602750,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "linear data",
+          "normal_convention": "OpenGL"
+        },
+        {
+          "path": "stone/roughness.jpg",
+          "role": "roughness",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sandstone_blocks_04/sandstone_blocks_04_rough_1k.jpg",
+          "source_md5": "002fe6e9bd7fa382688c9566d2d4aa64",
+          "sha256": "cc6f9dcf548074bb96680188f2714f66f43b94963c1d16292b2d477a92427eb2",
+          "bytes": 379392,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "linear data"
+        },
+        {
+          "path": "stone/ao.jpg",
+          "role": "ao",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sandstone_blocks_04/sandstone_blocks_04_ao_1k.jpg",
+          "source_md5": "498b2be6d1f9ec8647c39658758fb1b8",
+          "sha256": "6e01ab9c8e2f0538daeb75328bef8170a93539ecff7d00d431b47945c337c5ef",
+          "bytes": 377590,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "linear data"
+        }
+      ]
+    },
+    {
+      "kind": "dirt",
+      "asset": "dirt",
+      "title": "Dirt",
+      "source": "https://polyhaven.com/a/dirt",
+      "authors": {
+        "Charlotte Baglioni": "All"
+      },
+      "source_dimensions_mm": [
+        2000,
+        2000
+      ],
+      "provider": "Poly Haven",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "metadata_url": "https://api.polyhaven.com/files/dirt",
+      "maps": [
+        {
+          "path": "dirt/basecolor.jpg",
+          "role": "basecolor",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dirt/dirt_diff_2k.jpg",
+          "source_md5": "8e6fb7316bca5840c386cb72a3f16c62",
+          "sha256": "126d3e4886cc94b494ba609ddc323a77ff0362a1b156c3750d5d2a0a0ead02b8",
+          "bytes": 3053062,
+          "dimensions": [
+            2048,
+            2048
+          ],
+          "color_space": "sRGB"
+        },
+        {
+          "path": "dirt/normal.jpg",
+          "role": "normal",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/dirt/dirt_nor_gl_1k.jpg",
+          "source_md5": "362610edf09fd31735958eecec823a84",
+          "sha256": "5a5f97d920fdcdf352b350b95558bf48bb306be1fe61a47418aadc60b7deb0ce",
+          "bytes": 1202783,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "linear data",
+          "normal_convention": "OpenGL"
+        },
+        {
+          "path": "dirt/roughness.jpg",
+          "role": "roughness",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/dirt/dirt_rough_1k.jpg",
+          "source_md5": "d936d6760ce0f899b131d30626d52ce9",
+          "sha256": "eff62d5ae7bf0c46b84173bc46f07528dd164aa39f5d550c93a805b36f54b704",
+          "bytes": 253549,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "linear data"
+        },
+        {
+          "path": "dirt/ao.jpg",
+          "role": "ao",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/dirt/dirt_ao_1k.jpg",
+          "source_md5": "c985fe7fc3a4fb456d6266eb75f57a67",
+          "sha256": "cccf4bc476a784733d0d008ab6fbb4feda5b0574f3d5fcd96dcc40912f577a69",
+          "bytes": 713360,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "linear data"
+        }
+      ]
+    },
+    {
+      "kind": "canvas",
+      "asset": "hessian_380",
+      "title": "Hessian 380",
+      "source": "https://polyhaven.com/a/hessian_380",
+      "authors": {
+        "colormass": "Photography",
+        "Rico Cilliers": "Processing"
+      },
+      "source_dimensions_mm": [
+        273.86577004511844,
+        273.79998564720154
+      ],
+      "provider": "Poly Haven",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "metadata_url": "https://api.polyhaven.com/files/hessian_380",
+      "maps": [
+        {
+          "path": "canvas/basecolor.jpg",
+          "role": "basecolor",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/hessian_380/hessian_380_diff_1k.jpg",
+          "source_md5": "46f362631d102c66cac0979ecc3bb2a7",
+          "sha256": "5727302df3a9c845e6320ff186ac13fc7d0f1ffcd6fda71667e808e09379fe6f",
+          "bytes": 944914,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "sRGB"
+        },
+        {
+          "path": "canvas/normal.jpg",
+          "role": "normal",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/hessian_380/hessian_380_nor_gl_1k.jpg",
+          "source_md5": "b37d7a02e8c58ee005eb95f5af81d7e7",
+          "sha256": "3994fd74148cb413892edd08155976497b3e7e15a403a182f07325a6b1e7be1a",
+          "bytes": 1076074,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "linear data",
+          "normal_convention": "OpenGL"
+        },
+        {
+          "path": "canvas/roughness.jpg",
+          "role": "roughness",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/hessian_380/hessian_380_rough_1k.jpg",
+          "source_md5": "463d8d9b48fe04a8004b30451948ecc3",
+          "sha256": "a828755c5ddc9af0697eeed46427c5145df1dea5f1e2839f643156a285282fed",
+          "bytes": 956823,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "linear data"
+        },
+        {
+          "path": "canvas/ao.jpg",
+          "role": "ao",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/hessian_380/hessian_380_ao_1k.jpg",
+          "source_md5": "1efd5d3e13ef375036f9706387a47a09",
+          "sha256": "3e665f5cbe8f0c0760e54b49c15ee6a6236c59d103c2ea5834548c1748ed0dc9",
+          "bytes": 537495,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "linear data"
+        }
+      ]
+    },
+    {
+      "kind": "walnut",
+      "asset": "walnut_veneer_02",
+      "title": "Walnut Veneer 02",
+      "source": "https://polyhaven.com/a/walnut_veneer_02",
+      "authors": {
+        "Jenelle van Heerden": "All"
+      },
+      "source_dimensions_mm": [
+        1000,
+        1000
+      ],
+      "provider": "Poly Haven",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "metadata_url": "https://api.polyhaven.com/files/walnut_veneer_02",
+      "maps": [
+        {
+          "path": "walnut/basecolor.jpg",
+          "role": "basecolor",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/walnut_veneer_02/walnut_veneer_02_diff_2k.jpg",
+          "source_md5": "893d9703ec5b152a9a67fe45e11749c7",
+          "sha256": "e0fe7e76c288dae50a95a27ff7d3ab6040d3f0439f3eb6d61a3f53af84e132d7",
+          "bytes": 2429894,
+          "dimensions": [
+            2048,
+            2048
+          ],
+          "color_space": "sRGB"
+        },
+        {
+          "path": "walnut/normal.jpg",
+          "role": "normal",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/walnut_veneer_02/walnut_veneer_02_nor_gl_2k.jpg",
+          "source_md5": "8e8cc0500f7b1a9ae03942b87eb52438",
+          "sha256": "8bbcede06e2ca359d39f5d10c5b92778423abcd52ca87531bb1dfab131c5bc4e",
+          "bytes": 1759588,
+          "dimensions": [
+            2048,
+            2048
+          ],
+          "color_space": "linear data",
+          "normal_convention": "OpenGL"
+        },
+        {
+          "path": "walnut/roughness.jpg",
+          "role": "roughness",
+          "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/walnut_veneer_02/walnut_veneer_02_rough_1k.jpg",
+          "source_md5": "52d8f00e50a49eb45dbca23f252d9ba6",
+          "sha256": "a105351706d9d9e74a315309004bb38447eccf0ef13223be18f16530d2777d44",
+          "bytes": 743210,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "color_space": "linear data"
+        }
+      ]
+    },
+    {
+      "kind": "steel",
+      "asset": "Metal012",
+      "title": "Metal 012",
+      "provider": "ambientCG",
+      "source": "https://ambientcg.com/view?id=Metal012",
+      "authors": {
+        "ambientCG": "Material author/publisher"
+      },
+      "license": "CC0-1.0",
+      "license_url": "https://docs.ambientcg.com/license/",
+      "metadata_url": "https://ambientcg.com/api/v2/full_json?id=Metal012&include=downloadData,dimensionsData,mapData",
+      "creation_method": "PBRProcedural",
+      "source_dimensions_mm": null,
+      "render_tile_meters": 1,
+      "notes": "Neutral scratched silver steel with restrained normal relief. No blue paint or plate seam. Blued finish is a runtime tint and roughness estimate, not a scanned historical finish. Source has no physical dimensions; 1 m is an artistic UV convention. Constant white metalness image is represented with a scalar, not shipped.",
+      "source_archive": {
+        "source_url": "https://ambientcg.com/get?file=Metal012_2K-JPG.zip",
+        "resolved_url": "https://acg-download.struffelproductions.com/file/ambientCG-Web/download/Metal012_Bwzi0dmn/Metal012_2K-JPG.zip",
+        "sha256": "68eba86af3ab65a1394cacc84bb35b92cd1006e9459ec5a6a4c9467d51a73d59",
+        "bytes": 12867425
+      },
+      "maps": [
+        {
+          "path": "steel/basecolor.jpg",
+          "role": "basecolor",
+          "source_url": "https://ambientcg.com/get?file=Metal012_2K-JPG.zip",
+          "archive_member": "Metal012_2K-JPG_Color.jpg",
+          "sha256": "9d429c973ff686ea31d64ac6ca804d1d3130a0e06d364a1438934f1d584b9d92",
+          "bytes": 1599399,
+          "dimensions": [
+            2048,
+            2048
+          ],
+          "color_space": "sRGB"
+        },
+        {
+          "path": "steel/normal.jpg",
+          "role": "normal",
+          "source_url": "https://ambientcg.com/get?file=Metal012_2K-JPG.zip",
+          "archive_member": "Metal012_2K-JPG_NormalGL.jpg",
+          "sha256": "326b329f83f7466f0a3c29a055e38b6dd00e68994891adb76ede59db8501f8d7",
+          "bytes": 2954818,
+          "dimensions": [
+            2048,
+            2048
+          ],
+          "color_space": "linear data",
+          "normal_convention": "OpenGL"
+        },
+        {
+          "path": "steel/roughness.jpg",
+          "role": "roughness",
+          "source_url": "https://ambientcg.com/get?file=Metal012_2K-JPG.zip",
+          "archive_member": "Metal012_2K-JPG_Roughness.jpg",
+          "sha256": "4baa2e0d195f056abd3f3aa2c78ee0266e62a3e4856096450a93875d17c5a746",
+          "bytes": 1753801,
+          "dimensions": [
+            2048,
+            2048
+          ],
+          "color_space": "linear data"
+        }
+      ]
+    }
+  ],
+  "total_bytes": 23405161,
+  "map_count": 18,
+  "estimated_rgba8_gpu_bytes_with_mipmaps": 218103808,
+  "estimated_rgba8_decoded_bytes": 163577856
+}

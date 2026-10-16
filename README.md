@@ -71,6 +71,8 @@ Options saves your player name and previews classic `^0`–`^9` name colors, for
 
 Each difficulty changes recognition time, delayed visual observations, tracking speed, aim error, trigger hesitation, and tactical behavior. Bots take time to recognize a reappearing opponent, aim with persistent error and drift, and lose tracking accuracy when targets move. Rifle reports and incoming damage provide approximate threat locations. They share the player's collision, bullet obstruction, damage, reload, and bolt-cycle systems; misses come from the actual shot direction. Bots use visibility and a view cone, remember observed locations, choose cover with peek opportunities, flank according to their role, and navigate with A* without cutting crate corners. The round is free-for-all; faction selects equipment and appearance, not teams.
 
+Regular and Veteran also hold protected cover while reloading, use short peeks and withdrawals, prefer less exposed routes, and reconsider a position when a flank becomes threatened. They remember up to three approximate threat locations and scan their flanks during recovery or search. Veteran checks and replans more frequently. These survival tactics apply to the single-player difficulty presets; Recruit and the multiplayer server's separate bot preset are unchanged. See [survival behavior and validation](research/ai-survival.md).
+
 The fairness design, primary references, difficulty settings, and qualified seeded measurements are documented in [research/ai-fairness.md](research/ai-fairness.md). In a controlled 14 m shooting test, stationary hit rates fell from 100% to approximately 20% / 32% / 51% for Recruit / Regular / Veteran. These are isolated shooting measurements, not expected accuracy in a full round.
 
 Death triggers a buffered simulation replay from the killer's perspective. The final scoreboard identifies the winner. Takeoff and landing transitions receive exact replay snapshots. Single-player rules run locally; multiplayer movement, damage, scoring, respawns and round timing are authoritative on the Rust server.
@@ -108,6 +110,7 @@ This is a playable recreation, **not a verified identical port**. The short refe
 - `server/src/bots.rs`: authoritative multiplayer bot perception, navigation and input.
 - `tests/engine.test.ts`: occlusion, navigation, collision, weapons, replays, round lifecycle and AI simulations.
 - `tests/ai.test.ts`: seeded accuracy, delayed perception, reacquisition, threat information, field of view, and firing readiness.
+- `tests/ai-survival.test.ts` and `tests/ai-cover.test.ts`: protected reloads, peeking, flank attention, crossfire, sensory memory, cover geometry, route risk and Recruit isolation.
 - `tests/assets.test.ts`: GLB geometry, embedded textures, skin weights, closed wrists and actual skeletal hand deformation.
 
 During `npm run dev`, open `/inspector.html` to inspect the actual soldier and rifle geometry, orbit the models, check each iron sight, and scrub two-hand animations. Open `/?qa=1` for deterministic HUD, killcam and lean checks through real game events. Both development tools are excluded from the production build.

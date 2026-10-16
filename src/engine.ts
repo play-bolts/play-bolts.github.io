@@ -1,5 +1,6 @@
 import {BOXES,DIFFICULTIES,FACTIONS,GRENADE,HEIGHTS,MELEE_SECONDS,RULES,SPAWN_AMMO,SPAWNS,WEAPONS,WEAPON_SWITCH_SECONDS,clamp,damageFor,dist,lerp,playerShotSpread,rayBox,visible,worldHit,type DamagePart,type Difficulty,type Faction,type Stance,type Vec,type WeaponSlot} from './config';
 import {coverPoints,findPath,selectCover} from './navigation';
+import {createSurvivalState,rememberThreat,updateSurvival,type SurvivalState} from './aiSurvival';
 import {DEFAULT_PLAYER_NAME,sanitizePlayerName} from './names';
 import {advanceStanceHeight,stanceSpeedFactor} from './stance';
 import {advanceHipSpread} from './accuracy';
@@ -9,11 +10,12 @@ import {advanceLean,leanEye} from './lean';
 import {sampleHitVolumes,rayHitVolumes} from './hitboxes';
 import {initialMotion,advanceSoldierMotion,type SoldierMotionState} from './soldierMotionState';
 export interface AIBrain {
+ survival:SurvivalState;
  target:number|null;known:Vec|null;seen:number;reaction:number;decision:number;path:{x:number;z:number}[];mode:string;role:number;stuck:number;heard:number;strafe:number;engage:number;
  sight:boolean;observed:Vec|null;observations:{ready:number;point:Vec}[];observationClock:number;settled:number;shotWait:number;
  biasX:number;biasY:number;driftX:number;driftY:number;driftGoalX:number;driftGoalY:number;driftClock:number;
 }
-function createBrain(id:number):AIBrain{return{target:null,known:null,seen:-100,reaction:0,decision:0,path:[],mode:'patrol',role:(id%3)-1,stuck:0,heard:-100,strafe:id%2?1:-1,engage:0,sight:false,observed:null,observations:[],observationClock:0,settled:0,shotWait:0,biasX:0,biasY:0,driftX:0,driftY:0,driftGoalX:0,driftGoalY:0,driftClock:0};}
+function createBrain(id:number):AIBrain{return{survival:createSurvivalState(),target:null,known:null,seen:-100,reaction:0,decision:0,path:[],mode:'patrol',role:(id%3)-1,stuck:0,heard:-100,strafe:id%2?1:-1,engage:0,sight:false,observed:null,observations:[],observationClock:0,settled:0,shotWait:0,biasX:0,biasY:0,driftX:0,driftY:0,driftGoalX:0,driftGoalY:0,driftClock:0};}
 export interface Actor extends Vec {
  /** Stable renderer key across network roster reindexing; never used for gameplay. */
  renderIdentity?:string;
@@ -63,7 +65,7 @@ export class Game {
  spectate(){
   const player=this.player;if(!player||this.state==='menu'||this.state==='ended'||player.spectator)return false;
   this.spectator.enter(player);Object.assign(player,{spectator:true,alive:false,hp:0,moving:0,ads:false,lean:0,reload:0,reloadTotal:0,cooldown:0,recoil:0,vy:0,deadAt:-Infinity});
-  for(const actor of this.actors)if(actor.ai.target===player.id){actor.ai.target=null;actor.ai.sight=false;actor.ai.known=null;actor.ai.path=[];}
+  for(const actor of this.actors){actor.ai.survival.threats=actor.ai.survival.threats.filter(threat=>threat.id!==player.id);if(actor.ai.target===player.id){actor.ai.target=null;actor.ai.sight=false;actor.ai.known=null;actor.ai.path=[];}}
   this.events=this.events.filter(event=>event.actor!==player.id);this.history=[];this.replay=[];this.replayShots=[];this.shots=[];this.stepClock=0;
   if(this.state==='killcam')this.state='playing';return true;
  }
@@ -114,7 +116,18 @@ export class Game {
   if(!melee)a.recoil+=WEAPONS[a.faction].recoil;
   for(const bot of this.actors)if(bot.id&&bot!==a&&bot.alive&&!bot.spectator&&dist(bot,a)<32){
    bot.ai.heard=this.time;
-   if(bot.ai.target===null||this.time-bot.ai.seen>1){bot.ai.known={x:a.x+(this.random()-.5)*3,y:1.4,z:a.z+(this.random()-.5)*3};bot.ai.mode='investigate';bot.ai.decision=0;}
+   let cue:Vec|undefined;
+   if(bot.ai.target===null||this.time-bot.ai.seen>1){cue={x:a.x+(this.random()-.5)*3,y:1.4,z:a.z+(this.random()-.5)*3};bot.ai.known=cue;bot.ai.mode='investigate';bot.ai.decision=0;}
+   if(this.difficulty!=='recruit'){
+    cue??={x:a.x+(this.random()-.5)*3,y:a.y+1.4,z:a.z+(this.random()-.5)*3};
+    rememberThreat(bot.ai.survival,a.id,cue,this.time,.55);
+    // A nearby physical bullet path is a suppression cue; a shot stopped by
+    // intervening cover cannot extend beyond its recorded impact point.
+    if(!melee){const vx=shot.end.x-origin.x,vy=shot.end.y-origin.y,vz=shot.end.z-origin.z,bx=bot.x-origin.x,by=bot.y+1-origin.y,bz=bot.z-origin.z;
+     const t=clamp((bx*vx+by*vy+bz*vz)/Math.max(.001,vx*vx+vy*vy+vz*vz),0,1);
+     if(Math.hypot(bx-vx*t,by-vy*t,bz-vz*t)<1.35){bot.ai.survival.suppressedUntil=this.time+.75;bot.ai.decision=0;}
+    }
+   }
   }
   if(victim){if(!melee)a.hits++;this.damage(victim,a,melee?(a.selectedWeapon==='grenade'?75:150):damageFor(part,length),!melee&&part==='head',melee?'melee':'rifle');}
  }
@@ -124,7 +137,12 @@ export class Game {
   victim.hp=Math.max(0,victim.hp-amount);victim.recoil+=.026;victim.lastHurtTime=this.time;
   // Being hit reveals a rough threat direction, not an exact target or instant aim.
   if(victim.id){const brain=victim.ai;brain.heard=this.time;brain.decision=0;brain.settled=0;brain.reaction=Math.max(brain.reaction,.3);
-   if(!brain.sight){brain.known={x:killer.x+(this.random()-.5)*5,y:1.2,z:killer.z+(this.random()-.5)*5};brain.mode='investigate';}}
+   let cue:Vec|undefined;
+   if(!brain.sight){cue={x:killer.x+(this.random()-.5)*5,y:1.2,z:killer.z+(this.random()-.5)*5};brain.known=cue;brain.mode='investigate';}
+   if(this.difficulty!=='recruit'){
+    cue??={x:killer.x+(this.random()-.5)*5,y:killer.y+1.4,z:killer.z+(this.random()-.5)*5};
+    rememberThreat(brain.survival,killer.id,cue,this.time,.85);brain.survival.suppressedUntil=this.time+1;
+   }}
   this.events.push({type:'hurt',actor:victim.id,value:amount});
   if(victim.hp>0)return;
   victim.alive=false;victim.deaths++;victim.deadAt=this.time;victim.moving=0;victim.ads=false;victim.deathYaw=Math.atan2(victim.x-source.x,victim.z-source.z);victim.deathHeadshot=headshot;if(victim===killer)killer.kills--;else killer.kills++;this.events.push({type:'kill',actor:killer.id,victim:victim.id,headshot,weapon});
@@ -176,7 +194,8 @@ export class Game {
    const old=a.cooldown;a.cooldown=Math.max(0,a.cooldown-dt);a.spawnSafe=Math.max(0,a.spawnSafe-dt);a.recoil*=Math.exp(-dt*4.2);
    if(a.selectedWeapon==='rifle'&&old>.65&&a.cooldown<=.65)this.events.push({type:'bolt',actor:a.id});
    if(a.reload>0){a.reload=Math.max(0,a.reload-dt);if(!a.reload){const n=Math.min(WEAPONS[a.faction].capacity-a.ammo,a.reserve);a.ammo+=n;a.reserve-=n;}}
-   if(a.ammo===0&&a.cooldown===0&&!a.reload)this.reload(a);
+   // Skilled bots choose shelter before reloading, with a bounded fallback.
+   if(a.ammo===0&&a.cooldown===0&&!a.reload&&(a.id===0||this.difficulty==='recruit'))this.reload(a);
   }
   const p=this.player;
   if(p.alive&&!p.spectator){const l=Math.hypot(input.forward,input.right)||1;const f=input.forward/l,r=input.right/l,walk=input.walk?.55:1;
@@ -191,7 +210,7 @@ export class Game {
   this.shots=this.shots.filter(s=>this.time-s.time<6);
  }
  updateAI(a:Actor,dt:number){
-  const settings=DIFFICULTIES[this.difficulty],brain=a.ai,eye=this.eye(a);brain.decision-=dt;
+  const settings=DIFFICULTIES[this.difficulty],brain=a.ai,eye=this.eye(a),skilled=this.difficulty!=='recruit';brain.decision-=dt;const deciding=brain.decision<=0;
   let target=brain.target!==null?this.actors[brain.target]:undefined;
   const canSee=(other:Actor)=>{const bearing=Math.atan2(other.x-a.x,other.z-a.z),angle=Math.atan2(Math.sin(bearing-a.yaw),Math.cos(bearing-a.yaw));
    return other.alive&&!other.spectator&&other.spawnSafe<=0&&dist(a,other)<settings.awareness&&Math.abs(angle)<1.25&&visible(eye,this.eye(other));};
@@ -205,11 +224,18 @@ export class Game {
    }
    if(best){if(brain.target!==best.id){brain.target=best.id;brain.sight=false;brain.seen=-100;brain.observed=null;brain.observations=[];}target=best;hasSight=true;}
    else if(this.time-brain.seen>settings.memory){brain.target=null;target=undefined;hasSight=false;brain.observed=null;brain.observations=[];if(this.time-brain.heard>settings.memory)brain.known=null;}
-   const retreat=a.reload>0||a.hp<60;
-   if(brain.known&&(retreat||(!hasSight&&brain.path.length===0)||brain.engage>2.5+settings.aggression*2)){
-    const goal=selectCover(a,brain.known,brain.role,retreat);brain.path=findPath(a,goal);brain.mode=retreat?'cover':brain.role?'flank':'advance';brain.engage=0;
-   }else if(!hasSight&&!brain.known&&brain.path.length===0){const goal=coverPoints[Math.floor(this.random()*coverPoints.length)];brain.path=findPath(a,goal);brain.mode='patrol';}
-   if(a.ammo<2&&a.reload===0&&!hasSight)this.reload(a);
+   if(!skilled){
+    const retreat=a.reload>0||a.hp<60;
+    if(brain.known&&(retreat||(!hasSight&&brain.path.length===0)||brain.engage>2.5+settings.aggression*2)){
+     const goal=selectCover(a,brain.known,brain.role,retreat);brain.path=findPath(a,goal);brain.mode=retreat?'cover':brain.role?'flank':'advance';brain.engage=0;
+    }else if(!hasSight&&!brain.known&&brain.path.length===0){const goal=coverPoints[Math.floor(this.random()*coverPoints.length)];brain.path=findPath(a,goal);brain.mode='patrol';}
+    if(a.ammo<2&&a.reload===0&&!hasSight)this.reload(a);
+   }
+  }
+  const survival=skilled?updateSurvival(a,this.time,dt,this.difficulty as 'regular'|'veteran',hasSight,deciding):null;
+  if(survival?.reload)this.reload(a);
+  if(skilled&&deciding&&!brain.survival.cover&&!hasSight&&brain.path.length===0){
+   const goal=brain.known??coverPoints[Math.floor(this.random()*coverPoints.length)];brain.path=findPath(a,goal);brain.mode=brain.known?'investigate':'patrol';
   }
   if(hasSight&&target){
    // Re-peeking the same opponent requires recognition again. Hidden targets never
@@ -221,15 +247,15 @@ export class Game {
    }
    brain.sight=true;brain.seen=this.time;brain.engage+=dt;brain.reaction=Math.max(0,brain.reaction-dt);brain.observationClock-=dt;
    if(brain.observationClock<=0){brain.observationClock=settings.observation*(.85+this.random()*.3);brain.observations.push({ready:this.time+settings.latency,point:{x:target.x,y:target.y+target.eyeHeight*.65,z:target.z}});}
-   while(brain.observations.length&&brain.observations[0].ready<=this.time){brain.observed=brain.observations.shift()!.point;brain.known={...brain.observed};}
+   while(brain.observations.length&&brain.observations[0].ready<=this.time){brain.observed=brain.observations.shift()!.point;brain.known={...brain.observed};if(skilled)rememberThreat(brain.survival,target.id,{...brain.observed,y:brain.observed.y+.55},this.time,1);}
    brain.driftClock-=dt;
    if(brain.driftClock<=0){brain.driftClock=.35+this.random()*.35;brain.driftGoalX=this.random()*2-1;brain.driftGoalY=this.random()*2-1;}
    brain.driftX=lerp(brain.driftX,brain.driftGoalX,1-Math.exp(-dt*3));brain.driftY=lerp(brain.driftY,brain.driftGoalY,1-Math.exp(-dt*3));
    brain.settled+=dt*(a.moving>.5?.35:1);
    if(a.cooldown<=0)brain.shotWait=Math.max(0,brain.shotWait-dt);
-   a.ads=this.canADS(a)&&brain.reaction<settings.reaction*.7;
-   if(!a.reload&&brain.path.length===0){brain.mode='engage';a.stance=brain.observed&&dist(a,brain.observed)>16&&brain.role===0?'crouch':'stand';}
-   if(brain.observed){
+   a.ads=this.canADS(a)&&brain.reaction<settings.reaction*.7&&!survival?.fastMove&&!survival?.lookAt;
+   if(!a.reload&&brain.path.length===0&&(!skilled||!brain.survival.cover)){brain.mode='engage';a.stance=brain.observed&&dist(a,brain.observed)>16&&brain.role===0?'crouch':'stand';}
+   if(brain.observed&&!survival?.lookAt){
     // Persistent motor error is in world metres; it remains meaningful at close
     // range. The rendered rifle and the actual ray use this same imperfect aim.
     const observed=brain.observed,bearing=Math.atan2(observed.x-eye.x,observed.z-eye.z);
@@ -241,7 +267,7 @@ export class Game {
     a.yaw+=clamp(diff*motor,-dt*settings.turn,dt*settings.turn);a.pitch+=clamp((pitchGoal-a.pitch)*motor,-dt*settings.turn*.7,dt*settings.turn*.7);
     // Readiness is evaluated against the perceived aim point, never the exact
     // target hitbox; the bot must commit to shots that can physically miss.
-    if(brain.reaction===0&&brain.shotWait===0&&Math.abs(diff)<.12&&Math.abs(pitchGoal-a.pitch)<.12&&!a.reload&&a.cooldown<=0){
+    if((!survival||survival.canFire)&&brain.reaction===0&&brain.shotWait===0&&Math.abs(diff)<.12&&Math.abs(pitchGoal-a.pitch)<.12&&!a.reload&&a.cooldown<=0){
      const before=a.shots;this.fire(a,a.ammo===0&&a.reserve===0);if(a.shots>before)brain.shotWait=settings.hesitation*(.75+this.random()*.5);
     }
    }
@@ -249,11 +275,13 @@ export class Game {
   let dx=0,dz=0;
   if(target?.alive&&brain.known&&a.ammo===0&&a.reserve===0){if(brain.path.length===0)brain.path=findPath(a,brain.known);brain.mode='melee';a.ads=false;}
   if(brain.path.length){
-   const p=brain.path[0],len=dist(a,p);if(len<.45)brain.path.shift();else{dx=(p.x-a.x)/len;dz=(p.z-a.z)/len;if(!hasSight){const goal=Math.atan2(dx,dz);a.yaw+=Math.atan2(Math.sin(goal-a.yaw),Math.cos(goal-a.yaw))*Math.min(1,dt*6);}a.stance='stand';}
-  }else if(hasSight&&target&&dist(a,target)<8){dx=Math.cos(a.yaw)*brain.strafe*.6;dz=-Math.sin(a.yaw)*brain.strafe*.6;}
+   const p=brain.path[0],len=dist(a,p),arrival=skilled&&brain.survival.cover&&brain.path.length===1?.12:.45;
+   if(len<arrival)brain.path.shift();else{dx=(p.x-a.x)/len;dz=(p.z-a.z)/len;if(!hasSight&&!survival?.lookAt){const goal=Math.atan2(dx,dz);a.yaw+=Math.atan2(Math.sin(goal-a.yaw),Math.cos(goal-a.yaw))*Math.min(1,dt*6);}if(!skilled||!brain.survival.cover)a.stance='stand';}
+  }else if(hasSight&&target&&dist(a,target)<8&&(!skilled||!brain.survival.cover)){dx=Math.cos(a.yaw)*brain.strafe*.6;dz=-Math.sin(a.yaw)*brain.strafe*.6;}
+  if(survival?.lookAt){const goal=Math.atan2(survival.lookAt.x-a.x,survival.lookAt.z-a.z),diff=Math.atan2(Math.sin(goal-a.yaw),Math.cos(goal-a.yaw));a.yaw+=clamp(diff,-dt*settings.turn,dt*settings.turn);a.ads=false;}
   const before={x:a.x,z:a.z};this.move(a,dx*settings.speed,dz*settings.speed,dt);
   if(a.grounded&&a.moving>.2){const clock=(this.actorStepClocks.get(a.id)??0)+dt*(a.stance==='stand'?1:.65);if(clock>.37){this.actorStepClocks.set(a.id,0);this.events.push({type:'step',actor:a.id,value:a.moving});}else this.actorStepClocks.set(a.id,clock);}
-  if(Math.hypot(dx,dz)>.1&&dist(before,a)<.001){brain.stuck+=dt;if(brain.stuck>.5){brain.path=[];brain.decision=0;brain.strafe*=-1;brain.stuck=0;}}else brain.stuck=0;
+  if(Math.hypot(dx,dz)>.1&&dist(before,a)<.001){brain.stuck+=dt;if(brain.stuck>.5){brain.path=[];brain.decision=0;brain.strafe*=-1;brain.stuck=0;if(skilled&&brain.survival.cover){brain.survival.avoid={...brain.survival.cover.hide};brain.survival.cover=null;brain.survival.phase='none';}}}else brain.stuck=0;
  }
  record(){this.motionRecordPending=false;this.history.push({time:this.time,actors:this.actors.map(a=>({id:a.id,pose:a.pose?{...a.pose}:undefined,x:a.x,y:a.y,z:a.z,yaw:a.yaw,pitch:a.pitch,stance:a.stance,eyeHeight:a.eyeHeight,spectator:a.spectator,alive:a.alive,ads:a.ads,moving:a.moving,lean:a.lean,recoil:a.recoil,ammo:a.ammo,reserve:a.reserve,hp:a.hp,cooldown:a.cooldown,reload:a.reload,reloadTotal:a.reloadTotal,deadAt:a.deadAt,lastShotTime:a.lastShotTime,lastHurtTime:a.lastHurtTime,lastMeleeTime:a.lastMeleeTime,selectedWeapon:a.selectedWeapon,switchFrom:a.switchFrom,switchStarted:a.switchStarted,switchDuration:a.switchDuration,deathYaw:a.deathYaw,deathHeadshot:a.deathHeadshot,grounded:a.grounded,vy:a.vy,leftGroundAt:a.leftGroundAt,jumpStarted:a.jumpStarted,landedAt:a.landedAt,landingSpeed:a.landingSpeed}))});while(this.history.length&&this.time-this.history[0].time>4.5)this.history.shift();}
  replayFrame(){

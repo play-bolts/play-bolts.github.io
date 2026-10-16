@@ -11,10 +11,10 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; overflow: hidden; }
-button, input, select { font: inherit; color: inherit; }
+button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; text-shadow: 1px 2px 2px #000; }
-button, a, input, select { -webkit-tap-highlight-color: transparent; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 1px solid var(--gold); outline-offset: 4px; }
+button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 1px solid var(--gold); outline-offset: 4px; }
 button:disabled { opacity: .4; cursor: wait; }
 a { color: inherit; text-decoration: none; }
 button:hover, a:hover { color: #fff4be; }
@@ -295,3 +295,40 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 .score-spectator { margin-left: 12px; color: #aaa993; font-size: 14px; }
 
 #spectator-help { position: absolute; bottom: 7%; width: 100%; text-align: center; color: #c8c6ad; font-size: 13px; }
+
+#players-online { position: absolute; right: 26px; bottom: 21px; color: #c4c3ae; font-size: 16px; font-variant-numeric: tabular-nums; }
+.community-dialog { width: min(620px, 100%); max-height: calc(100dvh - 48px); border: 3px double #858680; background: #050606f2; color: #ecece6; padding: 22px 27px; }
+.community-dialog h2 { margin: 0 30px 18px 0; color: #efeee5; font-size: 28px; }
+.community-dialog p { color: #cdd0c5; margin: 0 0 21px; }
+#feedback-form { display: flex; flex-direction: column; gap: 8px; }
+#feedback-form label { font-size: 17px; color: #d4d6cb; }
+#feedback-form textarea, #feedback-form input { display: block; width: 100%; border: 1px solid #85868080; border-radius: 0; background: #101210; padding: 9px 11px; color: #e4e0cb; font-size: 18px; }
+#feedback-form textarea { resize: vertical; min-height: 100px; max-height: 35vh; margin-bottom: 8px; }
+#feedback-form input { max-width: 100%; }
+#feedback-form textarea:disabled, #feedback-form input:disabled { opacity: .7; }
+.community-actions { display: flex; justify-content: flex-end; align-items: center; gap: 20px; min-height: 52px; }
+.community-actions button { padding: 10px 0; color: #fff0b2; font-size: 20px; flex-shrink: 0; }
+#feedback-status { flex: 1; color: #d6d4bf; font-size: 16px; line-height: 1.35; }
+.leaderboard-dialog { width: min(800px, 100%); }
+.leaderboard-tabs { display: flex; gap: 2px; margin: 0 0 15px; background: #545550; border: 1px solid #545550; }
+.leaderboard-tabs button { flex: 1; padding: 9px 12px; background: #161817; color: #d8d9d3; font-size: 19px; }
+.leaderboard-tabs button[aria-selected=true] { color: #fff2b6; background: #393c38; }
+.leaderboard-list { height: min(46vh, 480px); overflow: auto; border: 1px solid #8586806e; background: #02030355; }
+.leaderboard-list table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.leaderboard-list th { position: sticky; top: 0; z-index: 1; background: #252825; border-bottom: 1px solid #8b8e8170; padding: 9px 12px; color: #d4d6cb; font-size: 17px; font-weight: normal; text-align: right; }
+.leaderboard-list th:first-child { width: 10%; text-align: center; }
+.leaderboard-list th:nth-child(2) { width: 50%; text-align: left; }
+.leaderboard-list td { padding: 8px 12px; font-size: 18px; color: #cdd0c5; text-align: right; font-variant-numeric: tabular-nums; border-bottom: 1px solid #ffffff0c; }
+.leaderboard-list td:first-child { text-align: center; color: #a4a899; }
+.leaderboard-list td:nth-child(2) { text-align: left; overflow-wrap: anywhere; }
+.leaderboard-list tbody tr:nth-child(odd) { background: #ffffff04; }
+#leaderboard-status { padding: 16px 13px; color: #c2c5b9; font-size: 18px; }
+#leaderboard-status:empty { display: none; }
+@media (max-width: 700px) {
+ #players-online { right: 18px; bottom: 15px; font-size: 14px; }
+ .community-dialog { padding: 20px 17px; }.community-dialog h2 { font-size: 25px; }
+ .leaderboard-list th, .leaderboard-list td { font-size: 16px; padding: 8px; }
+ .leaderboard-list th:first-child { width: 11%; }.leaderboard-list th:nth-child(2) { width: 47%; }
+ .leaderboard-tabs button { font-size: 17px; }
+}
+@media (max-height: 600px) { .intro-menu { top: 10%; }.intro-menu h1 { margin-bottom: 14px; }.intro-menu .classic-choice { min-height: 23px; font-size: 21px; } }

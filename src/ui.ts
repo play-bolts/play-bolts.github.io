@@ -3,6 +3,7 @@ import {CROSSHAIR_DISPLAY_SCALE,crosshairDisplayGapPixels} from './accuracy';
 import {weaponIcon} from './weaponIcons';
 import {damageFlashOpacity} from './damageFeedback';
 import type {Actor,Game} from './engine';
+import {FEEDBACK_MESSAGE_LIMIT,FEEDBACK_EMAIL_LIMIT,validateFeedback,type Leaderboard,type LeaderboardPeriod} from './community';
 import {DEFAULT_PLAYER_NAME,PLAYER_NAME_PREFERENCE_VERSION,MAX_NAME_RAW_LENGTH,playerNameHTML,sanitizePlayerName,restorePlayerNamePreference} from './names';
 const closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg>';
 const controls=[['W A S D','Move'],['Mouse','Look'],['LMB','Fire / grenade bash'],['RMB','Iron sights'],['1 / 2','Rifle / grenade'],['Wheel','Switch weapon'],['R','Reload'],['Space','Jump / stand'],['C','Crouch'],['Ctrl','Prone'],['Q / E','Lean'],['Shift','Melee'],['Alt','Walk'],['Tab','Scoreboard'],['T / Enter','Chat'],['M','Change team'],['Esc','Menu / leave follow'],['LMB / RMB','Spectator: next / previous'],['Space / Ctrl','Spectator: up / down'],['Shift','Spectator: faster']];
@@ -22,6 +23,8 @@ export class UI {
  multiplayer=()=>{};refreshLobbies=()=>{};joinLobby=(_id:string)=>{};lobbyBack=()=>this.closeLobbies();
  chatSend=(_text:string)=>{};chatOpened=()=>{};chatClosed=()=>{};
  private modalReturnFocus:HTMLElement|null=null;
+ private feedbackBusy=false;private leaderboardBusy=false;private leaderboardStatus='';private leaderboardData:Leaderboard|null=null;private leaderboardPeriod:LeaderboardPeriod='allTime';
+ feedbackSend=async(_message:string,_email:string)=>{};leaderboardLoad=()=>{};
  prefs:Preferences={faction:'british',difficulty:'regular',playerName:DEFAULT_PLAYER_NAME,playerNameVersion:PLAYER_NAME_PREFERENCE_VERSION,sensitivity:1,volume:.6,aim:'toggle',quality:'high',invert:false};
  selectLoadout=()=>{};selectSpectator=()=>{};selectTeam=()=>{};selectWeapon=()=>{};cancelSelection=()=>{};
  start=()=>{};resume=()=>{};pause=()=>{};leave=()=>{};settingsChanged=()=>{};skip=()=>{};
@@ -43,8 +46,8 @@ export class UI {
   <div id="world" aria-label="3D arena"></div><div class="film-grain"></div><div class="vignette"></div>
   <div id="menu" class="screen menu intro-active">    <section id="menu-main" class="intro-menu" aria-label="Main menu">
      <h1>BOLTS</h1>
-     <div class="main-choices"><button id="start" class="classic-choice">Single player</button><button id="multiplayer" class="classic-choice">Multiplayer</button><button class="classic-choice settings-button">Options</button><button class="classic-choice controls-button">Controls</button></div>
-    </section>
+     <div class="main-choices"><button id="start" class="classic-choice">Single player</button><button id="multiplayer" class="classic-choice">Multiplayer</button><button id="leaderboard-open" class="classic-choice">Leaderboard</button><button id="feedback-open" class="classic-choice">Feedback</button><button class="classic-choice settings-button">Options</button><button class="classic-choice controls-button">Controls</button></div>
+    </section><div id="players-online" role="status" aria-live="polite">— players online</div>
   <section id="lobby-window" class="classic-window lobby-window hidden" aria-labelledby="lobby-title">
    <header class="lobby-heading"><h2 id="lobby-title">Join game</h2></header>
    <div class="lobby-list"><table aria-label="Available games"><thead><tr><th scope="col">Name</th><th scope="col">Players</th><th scope="col">Ping</th></tr></thead><tbody id="lobby-rows"></tbody></table><div id="lobby-status" role="status" aria-live="polite"></div></div>
@@ -73,7 +76,20 @@ export class UI {
   </div>
   <div id="pause" class="overlay hidden"><div class="dialog pause-card"><h2 id="pause-title">Paused</h2><button id="resume" class="start-button">Resume</button><button id="open-team" class="secondary-button">Select team</button><button id="open-weapon" class="secondary-button">Select weapon</button><button id="pause-score" class="secondary-button">Scoreboard</button><button class="secondary-button settings-button">Options</button><button class="secondary-button controls-button">Controls</button><button id="leave" class="secondary-button">Main menu</button></div></div>
   <div id="scoreboard" class="overlay hidden"><div class="score-card"><button id="score-close" class="icon-button" aria-label="Close scoreboard">${closeIcon}</button><div class="score-heading"><span id="score-time">05:00</span></div><h2 id="score-title">Scoreboard</h2><p id="score-winner" class="hidden"></p><table><thead><tr><th>#</th><th>Player</th><th>Kills</th><th>Deaths</th><th id="score-ping" class="hidden" aria-label="Ping in milliseconds">Ping</th></tr></thead><tbody id="score-rows"></tbody></table><div id="end-actions" class="hidden"><button id="again" class="start-button">Play again</button><button id="end-leave" class="secondary-button">Main menu</button></div></div></div>
-  <div id="modal" class="overlay hidden"><div class="dialog manual"><button id="modal-close" class="icon-button" aria-label="Close dialog">${closeIcon}</button><div class="modal-tabs"><button data-tab="settings" class="active">Options</button><button data-tab="controls">Controls</button><button data-tab="credits">Credits</button></div>
+  <div id="modal" class="overlay hidden"><div id="modal-dialog" class="dialog manual" role="dialog" aria-modal="true" aria-label="Options"><button id="modal-close" class="icon-button" aria-label="Close dialog">${closeIcon}</button><div id="options-tabs" class="modal-tabs"><button data-tab="settings" class="active">Options</button><button data-tab="controls">Controls</button><button data-tab="credits">Credits</button></div>
+   <section id="tab-feedback" class="hidden" aria-labelledby="feedback-title">
+    <h2 id="feedback-title">Feedback</h2><p id="feedback-prompt">Share your opinions, requests, and any other info that can help us improve your experience!</p>
+    <form id="feedback-form" novalidate>
+     <label for="feedback-message">Feedback</label><textarea id="feedback-message" required rows="6" maxlength="${FEEDBACK_MESSAGE_LIMIT*2}" aria-describedby="feedback-prompt feedback-status"></textarea>
+     <label for="feedback-email">Email (optional)</label><input id="feedback-email" type="email" maxlength="${FEEDBACK_EMAIL_LIMIT}" autocomplete="email" aria-describedby="feedback-status">
+     <div class="community-actions"><span id="feedback-status" role="status" aria-live="polite"></span><button id="feedback-submit" type="submit">Submit</button></div>
+    </form>
+   </section>
+   <section id="tab-leaderboard" class="hidden" aria-labelledby="leaderboard-title">
+    <h2 id="leaderboard-title">Leaderboard</h2><div class="leaderboard-tabs" role="tablist" aria-label="Leaderboard period"><button id="leaderboard-alltime" role="tab" aria-selected="true" aria-controls="leaderboard-panel" data-period="allTime">All time</button><button id="leaderboard-recent" role="tab" aria-selected="false" aria-controls="leaderboard-panel" tabindex="-1" data-period="last24Hours">Last 24 hours</button></div>
+    <div id="leaderboard-panel" class="leaderboard-list" role="tabpanel" aria-labelledby="leaderboard-alltime" tabindex="0"><table aria-label="All-time kills and deaths"><thead><tr><th scope="col">#</th><th scope="col">Player</th><th scope="col">Kills</th><th scope="col">Deaths</th></tr></thead><tbody id="leaderboard-rows"></tbody></table><div id="leaderboard-status" role="status" aria-live="polite"></div></div>
+    <div class="community-actions"><button id="leaderboard-refresh" type="button">Refresh</button></div>
+   </section>
    <div id="tab-credits" class="hidden asset-credits">
     <p>Weapon models · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
     <ul><li><a href="https://sketchfab.com/3d-models/lee-enfield-mkiii-f6a2160daf134071a84e3cae5f831875" target="_blank" rel="noopener">Lee Enfield MKIII</a> — Moony_State</li><li><a href="https://sketchfab.com/3d-models/mosin-nagant-m91-92ede39f23bd40c7982c727dfd7c4be0" target="_blank" rel="noopener">Mosin Nagant M91</a> — MaX3Dd</li><li><a href="https://sketchfab.com/3d-models/kar98k-96b7387fe49b4dd491cc8277f765527a" target="_blank" rel="noopener">Kar98k</a> — Ecler</li><li><a href="https://sketchfab.com/3d-models/stielhandgranate-german-grenade-c49ce26939d64641afac1175a8d62338" target="_blank" rel="noopener">Stielhandgranate</a> — Janovich</li></ul>
@@ -98,6 +114,10 @@ export class UI {
   document.querySelectorAll<HTMLButtonElement>('[data-faction]').forEach(b=>b.onclick=()=>{this.spectatorSelection=false;this.prefs.faction=b.dataset.faction as Faction;this.refreshSelection();this.setMenuStage('weapon');});
   (this.el.difficulty as HTMLSelectElement).onchange=()=>{this.prefs.difficulty=(this.el.difficulty as HTMLSelectElement).value as Difficulty;this.save();};
   this.el.start.onclick=()=>this.start();this.el.resume.onclick=()=>this.resume();this.el.leave.onclick=()=>this.leave();this.el.again.onclick=()=>this.start();this.el['end-leave'].onclick=()=>this.leave();this.el['skip-killcam'].onclick=()=>this.skip();this.el['hud-menu'].onclick=()=>this.pause();
+  this.el['feedback-open'].onclick=()=>this.openModal('feedback');this.el['leaderboard-open'].onclick=()=>this.openModal('leaderboard');
+  this.el['feedback-form'].onsubmit=event=>{event.preventDefault();void this.submitFeedback();};
+  this.el['leaderboard-refresh'].onclick=()=>this.leaderboardLoad();
+  document.querySelectorAll<HTMLButtonElement>('[data-period]').forEach(button=>{button.onclick=()=>this.setLeaderboardPeriod(button.dataset.period as LeaderboardPeriod);button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.code))return;event.preventDefault();const period=event.code==='Home'?'allTime':event.code==='End'?'last24Hours':this.leaderboardPeriod==='allTime'?'last24Hours':'allTime';this.setLeaderboardPeriod(period);this.el[period==='allTime'?'leaderboard-alltime':'leaderboard-recent'].focus();};});
   this.el.multiplayer.onclick=()=>this.multiplayer();this.el['lobby-refresh'].onclick=()=>this.refreshLobbies();this.el['lobby-join'].onclick=()=>{if(this.selectedLobby&&!this.lobbyBusy)this.joinLobby(this.selectedLobby);};this.el['lobby-back'].onclick=()=>this.lobbyBack();
   this.el['chat-form'].onsubmit=event=>{event.preventDefault();this.submitChat();};
   (this.el['chat-input'] as HTMLInputElement).oninput=()=>{const input=this.el['chat-input'] as HTMLInputElement,points=Array.from(input.value);if(points.length>256)input.value=points.slice(0,256).join('');};
@@ -123,7 +143,7 @@ export class UI {
  showLobbies(rows:LobbyRow[],status=''){
   this.lobbyRows=rows.map(row=>({...row}));
   if(!rows.some(row=>row.id===this.selectedLobby))this.selectedLobby=rows.find(row=>row.players<row.capacity)?.id??rows[0]?.id??'';
-  const opening=!this.lobbyOpen;this.lobbyOpen=true;this.menuStage='main';this.el.menu.classList.remove('hidden','intro-active');this.el['menu-main'].classList.add('hidden');this.el['selection-window'].classList.add('hidden');this.el['lobby-window'].classList.remove('hidden');
+  const opening=!this.lobbyOpen;this.lobbyOpen=true;this.menuStage='main';this.el.menu.classList.remove('hidden','intro-active');this.el['menu-main'].classList.add('hidden');this.el['selection-window'].classList.add('hidden');this.el['lobby-window'].classList.remove('hidden');this.el['players-online'].classList.add('hidden');
   this.el['lobby-rows'].replaceChildren();
   for(const row of this.lobbyRows){
    const tr=document.createElement('tr'),name=document.createElement('td'),players=document.createElement('td'),ping=document.createElement('td'),button=document.createElement('button');
@@ -173,7 +193,7 @@ export class UI {
  }
  setLoadingProgress(value:number){const progress=this.el['loading-progress'] as HTMLProgressElement;progress.value=Math.max(progress.value,Math.min(100,Math.max(0,value*100)));}
  setReady(ready:boolean){this.ready=ready;(this.el.start as HTMLButtonElement).disabled=!ready;(this.el.multiplayer as HTMLButtonElement).disabled=!ready;(this.el['choose-weapon'] as HTMLButtonElement).disabled=!ready;this.el.menu.inert=!ready;this.el.menu.setAttribute('aria-busy',String(!ready));if(ready)this.setLoadingProgress(1);this.el.loading.classList.toggle('hidden',ready);}
- setMenuStage(stage:typeof this.menuStage,focus=true){this.lobbyOpen=false;this.el['lobby-window'].classList.add('hidden');this.menuStage=stage;this.el.menu.classList.toggle('intro-active',stage==='main');this.el['selection-window'].classList.toggle('hidden',stage==='main');
+ setMenuStage(stage:typeof this.menuStage,focus=true){this.lobbyOpen=false;this.el['lobby-window'].classList.add('hidden');this.menuStage=stage;this.el['players-online'].classList.toggle('hidden',stage!=='main');this.el.menu.classList.toggle('intro-active',stage==='main');this.el['selection-window'].classList.toggle('hidden',stage==='main');
   for(const name of ['main','team','weapon'])this.el['menu-'+name].classList.toggle('hidden',name!==stage);
   document.querySelectorAll<HTMLElement>('[data-menu-tab]').forEach(b=>{const active=b.dataset.menuTab===stage;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
   this.menuChanged();
@@ -198,10 +218,38 @@ export class UI {
  closeSelection(){this.selectionOpen=false;this.el.menu.classList.add('hidden');this.el.hud.classList.remove('hidden');this.setMenuStage('main',false);}
  selectionBack(){if(this.menuStage==='weapon')this.setMenuStage('team');else this.cancelSelection();}
  refreshSettings(){(this.el.difficulty as HTMLSelectElement).value=this.prefs.difficulty;(this.el['player-name'] as HTMLInputElement).value=this.prefs.playerName;this.el['player-name-preview'].innerHTML=playerNameHTML(this.prefs.playerName);(this.el.sensitivity as HTMLInputElement).value=String(this.prefs.sensitivity);(this.el.volume as HTMLInputElement).value=String(this.prefs.volume);this.el['sensitivity-value'].textContent=this.prefs.sensitivity.toFixed(1);this.el['volume-value'].textContent=Math.round(this.prefs.volume*100)+'%';(this.el['aim-mode'] as HTMLSelectElement).value=this.prefs.aim;(this.el.quality as HTMLSelectElement).value=this.prefs.quality;(this.el.invert as HTMLInputElement).checked=this.prefs.invert;}
- openModal(tab:string){this.el['difficulty-setting'].classList.toggle('hidden',!this.inGame||this.online);const selected=tab==='controls'||tab==='credits'?tab:'settings';if(!this.modalOpen)this.modalReturnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;this.modalOpen=true;this.closeChat();for(const id of ['menu','hud','pause','scoreboard'])this.el[id].inert=true;this.el.modal.classList.remove('hidden');document.querySelectorAll<HTMLElement>('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===selected));for(const t of ['controls','settings','credits'])this.el['tab-'+t].classList.toggle('hidden',t!==selected);this.el['modal-close'].focus();}
+ openModal(tab:string){
+  this.el['difficulty-setting'].classList.toggle('hidden',!this.inGame||this.online);const selected=['controls','credits','feedback','leaderboard'].includes(tab)?tab:'settings';
+  if(!this.modalOpen)this.modalReturnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
+  this.modalOpen=true;this.closeChat();for(const id of ['menu','hud','pause','scoreboard'])this.el[id].inert=true;
+  this.el.modal.classList.remove('hidden');const community=selected==='feedback'||selected==='leaderboard';this.el['modal-dialog'].classList.toggle('community-dialog',community);this.el['modal-dialog'].classList.toggle('leaderboard-dialog',selected==='leaderboard');this.el['modal-dialog'].setAttribute('aria-label',selected==='settings'?'Options':selected[0].toUpperCase()+selected.slice(1));this.el['options-tabs'].classList.toggle('hidden',community);
+  document.querySelectorAll<HTMLElement>('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===selected));for(const t of ['controls','settings','credits','feedback','leaderboard'])this.el['tab-'+t].classList.toggle('hidden',t!==selected);
+  if(selected==='feedback')(this.feedbackBusy?this.el['modal-close']:this.el['feedback-message']).focus();else this.el['modal-close'].focus();
+  if(selected==='leaderboard')this.leaderboardLoad();
+ }
+ setOnlineCount(count:number|null){this.el['players-online'].textContent=count===null?'— players online':`${count} ${count===1?'player':'players'} online`;this.el['players-online'].title=count===null?'Online count unavailable':'';}
+ async submitFeedback(){
+  if(this.feedbackBusy)return;const message=this.el['feedback-message'] as HTMLTextAreaElement,email=this.el['feedback-email'] as HTMLInputElement,status=this.el['feedback-status'],submit=this.el['feedback-submit'] as HTMLButtonElement;
+  try{validateFeedback(message.value,email.value);}catch(error){status.textContent=error instanceof Error?error.message:'Enter your feedback.';(status.textContent.includes('email')?email:message).focus();return;}
+  this.feedbackBusy=true;submit.disabled=true;message.disabled=true;email.disabled=true;status.textContent='Sending…';
+  try{await this.feedbackSend(message.value,email.value);message.value='';email.value='';status.textContent='Feedback sent. Thank you.';}
+  catch(error){status.textContent=error instanceof Error?error.message:'Unable to send feedback. Please try again.';}
+  finally{this.feedbackBusy=false;submit.disabled=false;message.disabled=false;email.disabled=false;}
+ }
+ setLeaderboardStatus(text:string,busy=false){this.leaderboardBusy=busy;this.leaderboardStatus=text;this.el['leaderboard-status'].textContent=text;(this.el['leaderboard-refresh'] as HTMLButtonElement).disabled=busy;this.el['leaderboard-panel'].setAttribute('aria-busy',String(busy));}
+ setLeaderboard(data:Leaderboard){this.leaderboardData=data;this.setLeaderboardStatus('');this.renderLeaderboard();}
+ private setLeaderboardPeriod(period:LeaderboardPeriod){this.leaderboardPeriod=period;this.renderLeaderboard();}
+ private renderLeaderboard(){
+  const recent=this.leaderboardPeriod==='last24Hours';document.querySelectorAll<HTMLButtonElement>('[data-period]').forEach(button=>{const selected=button.dataset.period===this.leaderboardPeriod;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;});
+  this.el['leaderboard-panel'].setAttribute('aria-labelledby',recent?'leaderboard-recent':'leaderboard-alltime');this.el['leaderboard-panel'].querySelector('table')?.setAttribute('aria-label',recent?'Kills and deaths in the last 24 hours':'All-time kills and deaths');
+  this.el['leaderboard-rows'].replaceChildren();if(!this.leaderboardData)return;
+  const rows=this.leaderboardData[this.leaderboardPeriod];rows.forEach((entry,index)=>{const row=document.createElement('tr');for(const value of [String(index+1),entry.name,String(entry.kills),String(entry.deaths)]){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}this.el['leaderboard-rows'].append(row);});
+  this.el['leaderboard-status'].textContent=this.leaderboardStatus||(!rows.length&&!this.leaderboardBusy?'No players yet.':'');
+ }
+
  closeModal(){this.modalOpen=false;this.el.modal.classList.add('hidden');for(const id of ['menu','hud','pause','scoreboard'])this.el[id].inert=false;this.modalReturnFocus?.focus();this.modalReturnFocus=null;}
  handleModalKey(event:KeyboardEvent){if(event.code!=='Tab')return;
-  const buttons=[...this.el.modal.querySelectorAll<HTMLElement>('button,input,select,a[href],[tabindex]')].filter(e=>!e.closest('.hidden')&&!e.hasAttribute('disabled')&&e.tabIndex>=0),first=buttons[0],last=buttons.at(-1);
+  const buttons=[...this.el.modal.querySelectorAll<HTMLElement>('button,input,textarea,select,a[href],[tabindex]')].filter(e=>!e.closest('.hidden')&&!e.hasAttribute('disabled')&&e.tabIndex>=0),first=buttons[0],last=buttons.at(-1);
   if(!first)return;
   if(event.shiftKey&&(document.activeElement===first||!this.el.modal.contains(document.activeElement))){event.preventDefault();last?.focus();}
   else if(!event.shiftKey&&(document.activeElement===last||!this.el.modal.contains(document.activeElement))){event.preventDefault();first.focus();}

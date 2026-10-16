@@ -2,6 +2,8 @@
 
 Verified on 2026-10-15. Endpoint: **https://bolts-api.christopherkrapu.com**
 
+Application release `826b677833a77551e50ab522af8a5d28ff9f7c7d57ac4065e5bfc7b6c3bfc9e2` adds server-controlled lobby AI, online counts, private feedback storage, and name-indexed leaderboards. It was deployed to the existing instance without CloudFormation changes after verifying empty human seats; the installer rechecks occupancy after compilation before replacing the running service. Both database backups completed successfully. Read-only production verification confirmed schema migrations 1 and 2, SQLite integrity `ok`, zero foreign-key violations, and healthy application/backup services. The community endpoints accept the GitHub Pages origin and reject lookalike origins. Backend verification evidence is saved locally in `artifacts/community-backend-verification.json` (ignored by Git).
+
 Frontend hosting: **https://play-bolts.github.io/**. The live production origin allowlist contains this exact origin plus `http://127.0.0.1:5173` and `http://localhost:5173`. The origin-only update completed on 2026-10-15 with empty lobbies, preserving the existing binary, database, and AWS infrastructure. All 21 public HTTP, CORS preflight, and WebSocket origin checks passed: GitHub Pages and local development origins are accepted; the retired hosting origin and lookalike origins are rejected. No players joined during verification. Future origin-only updates follow [server/README.md](../server/README.md).
 
 The generated endpoint remains available at https://d34rt6eezr7e5v.cloudfront.net.

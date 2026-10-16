@@ -39,6 +39,12 @@ pub fn router(state: Shared) -> Router {
         .route("/api/health", get(health))
         .route("/api/session", post(session))
         .route("/api/lobbies", get(lobbies))
+        .route("/api/status", get(status))
+        .route("/api/leaderboard", get(leaderboard))
+        .route(
+            "/api/feedback",
+            post(feedback).layer(DefaultBodyLimit::max(12_288)),
+        )
         .route("/api/ws", get(upgrade))
         .layer(DefaultBodyLimit::max(4096))
         .layer(
@@ -148,6 +154,145 @@ async fn lobbies(
         }
     }
 }
+fn community_access(
+    h: &mut Hub,
+    address: SocketAddr,
+    headers: &HeaderMap,
+    route: &str,
+    limit: usize,
+) -> Option<Response> {
+    if h.failed {
+        return Some(unavailable());
+    }
+    if !h.allowed_origin(origin(headers)) {
+        return Some(StatusCode::FORBIDDEN.into_response());
+    }
+    let key = format!("{route}:{}", peer(h, address, headers));
+    if !h.allow(key, limit, 60) {
+        return Some(
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(error("rate_limited", "Try again shortly.")),
+            )
+                .into_response(),
+        );
+    }
+    None
+}
+async fn status(
+    State(state): State<Shared>,
+    ConnectInfo(address): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Response {
+    let mut h = state.lock().await;
+    if let Some(response) = community_access(&mut h, address, &headers, "status", 120) {
+        return response;
+    }
+    Json(json!({"online":h.online_count()})).into_response()
+}
+async fn leaderboard(
+    State(state): State<Shared>,
+    ConnectInfo(address): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Response {
+    let mut h = state.lock().await;
+    if let Some(response) = community_access(&mut h, address, &headers, "leaderboard", 30) {
+        return response;
+    }
+    match h.db.leaderboard(crate::db::now_ms()) {
+        Ok(board) => Json(board).into_response(),
+        Err(e) => {
+            tracing::error!(error=%e,"leaderboard persistence failed");
+            h.fail();
+            unavailable()
+        }
+    }
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FeedbackRequest {
+    message: String,
+    email: Option<String>,
+}
+fn feedback_fields(body: FeedbackRequest) -> Result<(String, Option<String>), &'static str> {
+    let message = body.message.trim().to_owned();
+    if message.is_empty()
+        || message.chars().count() > 2000
+        || message
+            .chars()
+            .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+    {
+        return Err("Enter feedback between 1 and 2000 characters.");
+    }
+    let email = body
+        .email
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty());
+    if let Some(email) = &email {
+        let valid = email.len() <= 254
+            && email.is_ascii()
+            && !email.chars().any(|c| c.is_whitespace() || c.is_control())
+            && email.split_once('@').is_some_and(|(local, domain)| {
+                !local.is_empty()
+                    && local.len() <= 64
+                    && !local.starts_with('.')
+                    && !local.ends_with('.')
+                    && !local.contains("..")
+                    && local
+                        .bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || b".!#$%&'*+-/=?^_`{|}~".contains(&c))
+                    && domain.contains('.')
+                    && domain.split('.').all(|label| {
+                        !label.is_empty()
+                            && label.len() <= 63
+                            && !label.starts_with('-')
+                            && !label.ends_with('-')
+                            && label
+                                .bytes()
+                                .all(|c| c.is_ascii_alphanumeric() || c == b'-')
+                    })
+            });
+        if !valid {
+            return Err("Enter a valid email address or leave it blank.");
+        }
+    }
+    Ok((message, email))
+}
+async fn feedback(
+    State(state): State<Shared>,
+    ConnectInfo(address): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<FeedbackRequest>,
+) -> Response {
+    let mut h = state.lock().await;
+    if let Some(response) = community_access(&mut h, address, &headers, "feedback", 3) {
+        return response;
+    }
+    let (message, email) = match feedback_fields(body) {
+        Ok(fields) => fields,
+        Err(message) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(error("invalid_message", message)),
+            )
+                .into_response();
+        }
+    };
+    let ip_hash = h.fingerprint(&format!("feedback:{}", peer(&h, address, &headers)));
+    match h.db.feedback(&message, email.as_deref(), &ip_hash) {
+        Ok(Some(id)) => (StatusCode::CREATED, Json(json!({"id":id}))).into_response(),
+        Ok(None) => (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(error("rate_limited", "Try again later.")),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!(error=%e,"feedback persistence failed");
+            h.fail();
+            unavailable()
+        }
+    }
+}
 async fn upgrade(
     State(state): State<Shared>,
     ConnectInfo(address): ConnectInfo<SocketAddr>,
@@ -183,6 +328,10 @@ async fn upgrade(
             serve_socket(socket, state, ip, ua).await;
         })
 }
+
+#[cfg(test)]
+#[path = "community_api_tests.rs"]
+mod community_tests;
 async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: String) {
     let initial = tokio::time::timeout(Duration::from_secs(5), socket.recv()).await;
     let hello = match initial {
@@ -240,9 +389,8 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
          _=&mut idle=>break,
          _=ping.tick()=>{
           let nonce=state.lock().await.ping(&player,&cid,Instant::now());
-          if let Some(nonce)=nonce {
-           if !matches!(tokio::time::timeout(Duration::from_secs(3),socket.send(Message::Ping(nonce.into()))).await,Ok(Ok(()))){break;}
-          }
+          if let Some(nonce)=nonce
+           && !matches!(tokio::time::timeout(Duration::from_secs(3),socket.send(Message::Ping(nonce.into()))).await,Ok(Ok(()))){break;}
          },
          outgoing=rx.recv()=>{let Some(text)=outgoing else{break;};if !matches!(tokio::time::timeout(Duration::from_secs(3),socket.send(Message::Text(text.into()))).await,Ok(Ok(()))){break;}},
          incoming=socket.recv()=>{

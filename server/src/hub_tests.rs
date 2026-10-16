@@ -95,6 +95,134 @@ fn count(hub: &Hub, sql: &str) -> i64 {
     hub.db.conn.query_row(sql, [], |row| row.get(0)).unwrap()
 }
 
+fn bot_count(joined: &Value) -> usize {
+    joined["snapshot"]["actors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|a| a["bot"] == true)
+        .count()
+}
+
+#[test]
+fn bots_follow_connected_human_threshold_and_persist_without_socket_identities() {
+    let mut fixture = Fixture::new(1);
+    let hub = &mut fixture.hub;
+    let mut first = Peer::fresh(hub);
+    assert_eq!(
+        hub.online_count(),
+        0,
+        "unjoined menu sockets are not playing"
+    );
+    let joined = first.join(hub, None);
+    let lobby = joined["lobbyId"].as_str().unwrap().to_owned();
+    assert_eq!(bot_count(&joined), 2);
+    assert_eq!(hub.online_count(), 1);
+    assert!(
+        joined["snapshot"]["actors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| a["bot"] == true)
+            .all(|a| a["ping"].is_null())
+    );
+    let mut second = Peer::fresh(hub);
+    assert_eq!(bot_count(&second.join_as(hub, Some(&lobby), true)), 2);
+    assert_eq!(
+        hub.online_count(),
+        2,
+        "spectators count as connected humans"
+    );
+    let mut third = Peer::fresh(hub);
+    assert_eq!(bot_count(&third.join(hub, Some(&lobby))), 0);
+    assert_eq!(hub.online_count(), 3);
+    hub.leave(&third.player, "left", false).unwrap();
+    assert_eq!(bot_count(&first.join(hub, Some(&lobby))), 2);
+    hub.leave(&second.player, "left", false).unwrap();
+    assert_eq!(bot_count(&first.join(hub, Some(&lobby))), 2);
+    hub.disconnected(&first.player, &first.connection).unwrap();
+    assert_eq!(hub.online_count(), 0);
+    assert_eq!(hub.lobbies().unwrap()["lobbies"][0]["bots"], 0);
+    assert_eq!(
+        count(
+            hub,
+            "SELECT count(*) FROM memberships m JOIN players p ON p.id=m.player_id WHERE p.is_bot=1 AND m.left_at IS NULL"
+        ),
+        0
+    );
+    assert_eq!(
+        count(
+            hub,
+            "SELECT count(*) FROM connections c JOIN players p ON p.id=c.player_id WHERE p.is_bot=1"
+        ),
+        0
+    );
+    assert_eq!(
+        count(hub, "SELECT count(*) FROM players WHERE is_bot=1"),
+        2,
+        "repeated bot admission reuses per-lobby identities"
+    );
+    assert_eq!(
+        count(
+            hub,
+            "SELECT count(*) FROM events e JOIN players p ON p.id=e.actor_player_id WHERE p.is_bot=1 AND e.event_type='player_enter'"
+        ),
+        4
+    );
+    assert_eq!(
+        count(
+            hub,
+            "SELECT count(*) FROM events e JOIN players p ON p.id=e.actor_player_id WHERE p.is_bot=1 AND e.event_type='player_leave'"
+        ),
+        4
+    );
+    assert_eq!(
+        count(hub, "SELECT count(*) FROM pragma_foreign_key_check"),
+        0
+    );
+}
+
+#[test]
+fn disconnected_human_reservations_and_reconnect_take_priority_over_bots() {
+    let mut fixture = Fixture::new(1);
+    let hub = &mut fixture.hub;
+    let mut peers = Vec::new();
+    let mut lobby = None;
+    for _ in 0..6 {
+        let mut peer = Peer::fresh(hub);
+        let joined = peer.join(hub, lobby.as_deref());
+        lobby = Some(joined["lobbyId"].as_str().unwrap().to_owned());
+        assert!(joined["snapshot"]["actors"].as_array().unwrap().len() <= 6);
+        peers.push(peer);
+    }
+    for peer in peers.iter().skip(2) {
+        hub.disconnected(&peer.player, &peer.connection).unwrap();
+    }
+    assert_eq!(hub.online_count(), 2);
+    assert_eq!(
+        bot_count(&peers[0].join(hub, lobby.as_deref())),
+        0,
+        "retained human seats cannot be stolen by AI"
+    );
+    hub.leave(&peers[5].player, "timeout", false).unwrap();
+    assert_eq!(bot_count(&peers[0].join(hub, lobby.as_deref())), 1);
+    hub.leave(&peers[4].player, "timeout", false).unwrap();
+    let snapshot = peers[0].join(hub, lobby.as_deref());
+    assert_eq!(bot_count(&snapshot), 2);
+    assert_eq!(snapshot["snapshot"]["actors"].as_array().unwrap().len(), 6);
+    let mut reconnected = Peer::connect(hub, peers[2].player.clone());
+    assert_eq!(bot_count(&reconnected.join(hub, lobby.as_deref())), 0);
+    assert_eq!(hub.online_count(), 3);
+    hub.shutdown().unwrap();
+    assert_eq!(
+        count(
+            hub,
+            "SELECT count(*) FROM memberships WHERE left_at IS NULL"
+        ),
+        0
+    );
+}
+
 #[test]
 fn per_player_latency_is_shared_authority_and_clears_on_disconnect_or_replacement() {
     let mut fixture = Fixture::new(1);
@@ -123,6 +251,7 @@ fn per_player_latency_is_shared_authority_and_clears_on_disconnect_or_replacemen
             .as_array()
             .unwrap()
             .iter()
+            .filter(|actor| actor["bot"] != true)
             .map(|actor| (actor["id"].clone(), actor["ping"].clone()))
             .collect::<Vec<_>>()
     };
@@ -198,7 +327,13 @@ fn spectator_transitions_persist_mode_without_combat_and_reconnect_preserves_it(
     assert_eq!(resumed["actorId"], actor);
     assert_eq!(resumed["snapshot"]["actors"][0]["spectator"], true);
     assert_eq!(resumed["snapshot"]["actors"][0]["deaths"], 0);
-    assert_eq!(count(hub, "SELECT count(*) FROM memberships"), 1);
+    assert_eq!(
+        count(
+            hub,
+            "SELECT count(*) FROM memberships WHERE player_id IN (SELECT id FROM players WHERE is_bot=0)"
+        ),
+        1
+    );
     assert_eq!(count(hub, "SELECT count(*) FROM combat_events"), 0);
     assert_eq!(
         count(
@@ -277,22 +412,28 @@ fn replacing_a_connection_keeps_the_actor_and_does_not_duplicate_membership() {
     let resumed = replacement.join(hub, None);
     assert_eq!(resumed["actorId"], actor);
     assert_eq!(resumed["lobbyId"], lobby);
-    assert_eq!(resumed["snapshot"]["actors"].as_array().unwrap().len(), 1);
+    assert_eq!(resumed["snapshot"]["actors"].as_array().unwrap().len(), 3);
     assert_eq!(resumed["snapshot"]["actors"][0]["deaths"], 0);
     hub.tick().unwrap();
     assert!(replacement.cancelled.borrow().is_none());
-    assert_eq!(count(hub, "SELECT count(*) FROM memberships"), 1);
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_enter'"
+            "SELECT count(*) FROM memberships WHERE player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         1
     );
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_leave'"
+            "SELECT count(*) FROM events WHERE event_type='player_enter' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
+        ),
+        1
+    );
+    assert_eq!(
+        count(
+            hub,
+            "SELECT count(*) FROM events WHERE event_type='player_leave' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         0
     );
@@ -353,7 +494,7 @@ fn changing_loadout_then_immediately_leaving_persists_linked_kill_death_and_stat
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_leave'"
+            "SELECT count(*) FROM events WHERE event_type='player_leave' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         1
     );
@@ -386,7 +527,7 @@ fn changing_loadout_then_immediately_leaving_persists_linked_kill_death_and_stat
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM memberships WHERE left_at IS NULL"
+            "SELECT count(*) FROM memberships WHERE left_at IS NULL AND player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         0
     );
@@ -426,19 +567,25 @@ fn leaving_and_rejoining_preserves_cumulative_match_statistics() {
         (-2, 2),
         "new actor counters must add to persisted match totals"
     );
-    assert_eq!(count(hub, "SELECT count(*) FROM match_players"), 1);
+    assert_eq!(
+        count(
+            hub,
+            "SELECT count(*) FROM match_players WHERE player_id IN (SELECT id FROM players WHERE is_bot=0)"
+        ),
+        1
+    );
     assert_eq!(count(hub, "SELECT count(*) FROM combat_events"), 2);
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_enter'"
+            "SELECT count(*) FROM events WHERE event_type='player_enter' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         2
     );
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_leave'"
+            "SELECT count(*) FROM events WHERE event_type='player_leave' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         2
     );
@@ -521,21 +668,21 @@ fn six_player_room_cap_and_global_room_cap_never_evict_an_existing_seat() {
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM memberships WHERE left_at IS NULL"
+            "SELECT count(*) FROM memberships WHERE left_at IS NULL AND player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         12
     );
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_enter'"
+            "SELECT count(*) FROM events WHERE event_type='player_enter' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         12
     );
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_leave'"
+            "SELECT count(*) FROM events WHERE event_type='player_leave' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         0
     );
@@ -558,7 +705,7 @@ fn reconnect_before_grace_keeps_actor_but_timeout_releases_the_seat_once() {
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_enter'"
+            "SELECT count(*) FROM events WHERE event_type='player_enter' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         1
     );
@@ -571,7 +718,7 @@ fn reconnect_before_grace_keeps_actor_but_timeout_releases_the_seat_once() {
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_leave'"
+            "SELECT count(*) FROM events WHERE event_type='player_leave' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         1
     );
@@ -588,18 +735,18 @@ fn reconnect_before_grace_keeps_actor_but_timeout_releases_the_seat_once() {
     let mut fresh = Peer::connect(hub, original.player.clone());
     let rejoined = fresh.join(hub, Some(&lobby));
     assert_ne!(rejoined["actorId"], actor);
-    assert_eq!(rejoined["snapshot"]["actors"].as_array().unwrap().len(), 1);
+    assert_eq!(rejoined["snapshot"]["actors"].as_array().unwrap().len(), 3);
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_enter'"
+            "SELECT count(*) FROM events WHERE event_type='player_enter' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         2
     );
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM memberships WHERE left_at IS NULL"
+            "SELECT count(*) FROM memberships WHERE left_at IS NULL AND player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         1
     );
@@ -664,7 +811,7 @@ fn shutdown_finishes_connected_and_reconnect_grace_members_exactly_once() {
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM memberships WHERE left_at IS NULL"
+            "SELECT count(*) FROM memberships WHERE left_at IS NULL AND player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         0
     );
@@ -678,14 +825,14 @@ fn shutdown_finishes_connected_and_reconnect_grace_members_exactly_once() {
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM events WHERE event_type='player_leave'"
+            "SELECT count(*) FROM events WHERE event_type='player_leave' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         2
     );
     assert_eq!(
         count(
             hub,
-            "SELECT count(*) FROM memberships WHERE leave_reason='server_stop'"
+            "SELECT count(*) FROM memberships WHERE leave_reason='server_stop' AND player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
         2
     );

@@ -1,4 +1,5 @@
-/** Two actual frontend adapters fight each other through a Rust server.
+/** Three actual frontend adapters validate lobby fill, observe reciprocal combat,
+ * and exercise community APIs through a Rust server.
  * Build the debug backend, then: node --import tsx scripts/test-multiplayer-clients.ts
  * Explicitly authorized production QA: append --remote-qa. This only targets
  * the Bolts backend below, requires an empty room, and disconnects if a real
@@ -17,6 +18,7 @@ import {Game,type Input} from '../src/engine.ts';
 import {NetworkClient,type WireActor,type WireSnapshot} from '../src/network.ts';
 import {ARENA,blocked,visible,type Vec,type Faction} from '../src/config.ts';
 import {sampleHitVolumes,rayHitVolumes} from '../src/hitboxes.ts';
+import {CommunityClient} from '../src/community.ts';
 
 if(process.env.BOLTS_TEST_URL)throw new Error('Unset BOLTS_TEST_URL; use --remote-qa only for the explicitly authorized Bolts endpoint.');
 const remote=process.argv.slice(2).includes('--remote-qa');
@@ -24,13 +26,13 @@ if(process.argv.slice(2).some(arg=>arg!=='--remote-qa'))throw new Error('Only --
 const remoteOrigin='https://bolts-api.christopherkrapu.com';
 const root=resolve(fileURLToPath(new URL('..',import.meta.url))),started=Date.now(),idle:Input={forward:0,right:0,jump:false,walk:false,lean:0};
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
-const checks:string[]=[],combat:any[]=[],latencyEvidence:{observer:string;alphaMs:number;betaMs:number}[]=[],users:ReturnType<typeof user>[]=[];
+const checks:string[]=[],combat:any[]=[],latencyEvidence:{observer:string;alphaMs:number;betaMs:number;observerMs:number}[]=[],users:ReturnType<typeof user>[]=[];
 let base=remote?remoteOrigin:'',temporary='',dbPath='',diagnostics='',isolationError='',qaLobbyId='',backend:ReturnType<typeof spawn>|undefined,timer:ReturnType<typeof setInterval>|undefined,relay:Server|undefined;
 let inventoryBefore:unknown,inventoryAfter:unknown;
 const relaySockets=new Set<Socket>(),relayTimers=new Set<ReturnType<typeof setTimeout>>();
 async function until(predicate:()=>boolean|Promise<boolean>,label:string,timeout=6000){const end=Date.now()+timeout;while(Date.now()<end){if(isolationError)throw new Error(isolationError);if(await predicate())return;await delay(20);}throw new Error(`Timed out: ${label}`);}
-async function lobbyInventory(){const response=await fetch(base+'/api/lobbies',{signal:AbortSignal.timeout(8000)});assert.equal(response.ok,true,'lobby inventory is available');return (await response.json()).lobbies as {id:string;name:string;players:number;capacity:number;phase:string}[];}
-function protectRoom(snapshot:WireSnapshot){if(remote&&snapshot.actors.some(actor=>!users.some(u=>u.name===actor.name&&(u.actorId<0||u.actorId===actor.id)))){isolationError='A non-QA participant appeared; all QA clients disconnected before continuing.';for(const u of users)u.network.disconnect();}}
+async function lobbyInventory(){const response=await fetch(base+'/api/lobbies',{signal:AbortSignal.timeout(8000)});assert.equal(response.ok,true,'lobby inventory is available');return (await response.json()).lobbies as {id:string;name:string;players:number;bots:number;capacity:number;phase:string}[];}
+function protectRoom(snapshot:WireSnapshot){if(remote&&snapshot.actors.some(actor=>actor.bot!==true&&!users.some(u=>u.name===actor.name&&(u.actorId<0||u.actorId===actor.id)))){isolationError='A non-QA participant appeared; all QA clients disconnected before continuing.';for(const u of users)u.network.disconnect();}}
 function check(label:string,assertions:()=>void){assertions();checks.push(label);console.log(`PASS ${label}`);}
 async function unusedPort(){const server=createServer();await new Promise<void>((done,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',done);});const port=(server.address() as {port:number}).port;await new Promise<void>(done=>server.close(()=>done()));return port;}
 async function delayRelay(serverPort:number){
@@ -61,7 +63,7 @@ function route(shooter:WireActor,target:WireActor,actors:WireActor[]){
  const step=.5,minX=-ARENA.width/2+.5,minZ=-ARENA.depth/2+.5,nx=Math.floor((ARENA.width-1)/step)+1,nz=Math.floor((ARENA.depth-1)/step)+1;
  const point=(index:number)=>({x:minX+(index%nx)*step,z:minZ+Math.floor(index/nx)*step});
  const index=(x:number,z:number)=>Math.round((z-minZ)/step)*nx+Math.round((x-minX)/step);
- const occupied=(x:number,z:number)=>blocked(x,z,0,.42)||actors.some(actor=>actor.id!==shooter.id&&actor.alive&&Math.hypot(x-actor.x,z-actor.z)<.82);
+ const occupied=(x:number,z:number)=>blocked(x,z,0,.42)||actors.some(actor=>actor.id!==shooter.id&&!actor.spectator&&actor.alive&&Math.hypot(x-actor.x,z-actor.z)<.82);
  const goal=(p:{x:number;z:number})=>{const distance=Math.hypot(p.x-target.x,p.z-target.z);return distance>=3.5&&distance<=6&&visible({x:p.x,y:1.65,z:p.z},{x:target.x,y:target.y+target.eyeHeight,z:target.z})&&visible({x:p.x,y:1.65,z:p.z},{x:target.x,y:target.y+.25,z:target.z});};
  if(goal(shooter))return [];
  const start=index(shooter.x,shooter.z),queue=[start],previous=new Map<number,number|null>([[start,null]]);let found:number|undefined;
@@ -94,31 +96,32 @@ function aimPoint(shooter:User,target:User,part:'head'|'leg'){
  shooter.network.present();const shown=actorOn(shooter,target.name),volumes=sampleHitVolumes(shown,shooter.network.remoteTime),origin=shooter.game.eye(shooter.game.player);
  for(const volume of volumes.filter(v=>part==='head'?v.part==='head':['lowerLimb','limb'].includes(v.part)&&/calf|thigh/i.test(v.name))){
   const point=volume.center,v={x:point.x-origin.x,y:point.y-origin.y,z:point.z-origin.z},length=Math.hypot(v.x,v.y,v.z),direction={x:v.x/length,y:v.y/length,z:v.z/length},hit=rayHitVolumes(origin,direction,volumes);
-  if(hit&&(part==='head'?hit.part==='head':['limb','lowerLimb','extremity'].includes(hit.part)))return point;
+  if(hit&&visible(origin,point)&&(part==='head'?hit.part==='head':['limb','lowerLimb','extremity'].includes(hit.part)))return point;
  }
  throw new Error(`No clear ${part} ray to ${target.name}`);
 }
 function aim(shooter:User,point:Vec){const p=shooter.game.player,eye=shooter.game.eye(p);p.yaw=Math.atan2(point.x-eye.x,point.z-eye.z);p.pitch=Math.atan2(point.y-eye.y,Math.hypot(point.x-eye.x,point.z-eye.z))-p.recoil;shooter.network.setADS(true);}
 async function shoot(shooter:User,target:User,part:'head'|'leg'){
  await until(()=>shooter.authority.cooldown===0&&target.authority.spawnSafe===0,'weapon recovery and spawn protection');
- aim(shooter,aimPoint(shooter,target,part));await delay(250);aim(shooter,aimPoint(shooter,target,part));
+ aim(shooter,aimPoint(shooter,target,part));await until(()=>shooter.authority.ads&&shooter.authority.moving<.01&&target.authority.moving<.01,'stationary authoritative ADS');await delay(500);const intended=aimPoint(shooter,target,part);aim(shooter,intended);
  const marks=users.map(u=>u.messages.length),ammo=shooter.authority.ammo;shooter.network.fire();
- await until(()=>users.every((u,i)=>events(u,marks[i]).some(e=>e.type==='shot'&&e.actor===shooter.actorId)),`${shooter.name} shot delivered to both adapters`);
+ await until(()=>users.every((u,i)=>events(u,marks[i]).some(e=>e.type==='shot'&&e.actor===shooter.actorId)),`${shooter.name} shot delivered to all three adapters`);
  const shots=users.map((u,i)=>events(u,marks[i]).find(e=>e.type==='shot'&&e.actor===shooter.actorId).shot);
  await until(()=>shooter.authority.ammo===ammo-1,'authoritative ammunition consumption');
- check(`${shooter.name} ${part} shot agrees on both connections`,()=>{assert.deepEqual(shots[0],shots[1]);assert.equal(shots[0].hit,target.actorId);assert.equal(shots[0].headshot,part==='head');assert.equal(shooter.authority.ammo,ammo-1);});
+ if(shots[0].hit!==target.actorId)console.error('Shot geometry mismatch',JSON.stringify({intended,shot:shots[0],shooter:{position:shooter.game.eye(shooter.authority),yaw:shooter.authority.yaw,pitch:shooter.authority.pitch,ads:shooter.authority.ads},target:{id:target.authority.id,x:target.authority.x,y:target.authority.y,z:target.authority.z,yaw:target.authority.yaw,pose:target.authority.pose}},null,2));
+ check(`${shooter.name} ${part} shot agrees on all three connections`,()=>{for(const shot of shots)assert.deepEqual(shots[0],shot);assert.equal(shots[0].hit,target.actorId);assert.equal(shots[0].headshot,part==='head');assert.equal(shooter.authority.ammo,ammo-1);});
  combat.push({shooter:shooter.name,victim:target.name,part,serverTime:shots[0].time,headshot:shots[0].headshot});
 }
 async function fight(shooter:User,target:User){
  await navigate(shooter,target);const deaths=target.authority.deaths,kills=shooter.authority.kills;
  await shoot(shooter,target,'leg');
- await until(()=>users.every(u=>actorOn(u,target.name).hp>0&&actorOn(u,target.name).hp<100),'both adapters show nonfatal damage');
+ await until(()=>users.every(u=>actorOn(u,target.name).hp>0&&actorOn(u,target.name).hp<100),'all adapters show nonfatal damage');
  check(`${target.name} survives limb damage with matching health`,()=>{assert.equal(actorOn(shooter,target.name).hp,target.game.player.hp);assert.equal(target.authority.alive,true);assert.equal(target.authority.deaths,deaths);assert.equal(shooter.authority.kills,kills);});
  await shoot(shooter,target,'head');
- await until(()=>users.every(u=>actorOn(u,target.name).deaths===deaths+1&&!actorOn(u,target.name).alive&&actorOn(u,shooter.name).kills===kills+1),'both adapters agree on death and scores');
+ await until(()=>users.every(u=>actorOn(u,target.name).deaths===deaths+1&&!actorOn(u,target.name).alive&&actorOn(u,shooter.name).kills===kills+1),'all adapters agree on death and scores');
  check(`${target.name} death, killer score and killcam are authoritative`,()=>{for(const u of users){assert.equal(actorOn(u,target.name).hp,0);assert.ok(events(u).some(e=>e.type==='kill'&&e.actor===shooter.actorId&&e.victim===target.actorId));}assert.equal(target.game.state,'killcam');});
  target.network.skipReplay();
- await until(()=>users.every(u=>actorOn(u,target.name).alive&&actorOn(u,target.name).hp===100),'both adapters observe automatic respawn',6000);
+ await until(()=>users.every(u=>actorOn(u,target.name).alive&&actorOn(u,target.name).hp===100),'all adapters observe automatic respawn',6000);
  check(`${target.name} respawns with 150 rounds and retained scores`,()=>{for(const u of users){const actor=actorOn(u,target.name);assert.equal(actor.ammo+actor.reserve,150);assert.equal(actor.deaths,deaths+1);assert.equal(actorOn(u,shooter.name).kills,kills+1);}});
 }
 
@@ -136,38 +139,62 @@ try{
   const fresh=await lobbyInventory();assert.equal(fresh.find(row=>row.id===qaLobbyId)?.players,0,'selected QA lobby is still empty immediately before joining');
   check('production QA selected and rechecked an empty six-player lobby',()=>assert.ok(qaLobbyId));
  }
- const tag=Date.now().toString(36).slice(-5),a=user(remote?`QA Alpha ${tag}`:'Combat Alpha','british'),b=user(remote?`QA Beta ${tag}`:'Combat Beta','german',relayPort);users.push(a,b);
- await a.network.join(qaLobbyId||undefined,a.name,a.faction);qaLobbyId=a.network.lobbyId;
- if(remote){assert.equal(a.snapshot.actors.length,1,'only the first QA actor is present');assert.ok(a.snapshot.remaining>70,'enough round time remains for isolated reciprocal combat');}
- await b.network.join(qaLobbyId,b.name,b.faction);
+ const tag=Date.now().toString(36).slice(-5),a=user(remote?`QA Alpha ${tag}`:'Combat Alpha','british'),b=user(remote?`QA Beta ${tag}`:'Combat Beta','german',relayPort),observer=user(remote?`QA Observer ${tag}`:'Combat Observer','russian');users.push(a,b,observer);
+ const community=new CommunityClient(base),onlineBefore=await community.status();
+ await a.network.join(qaLobbyId||undefined,a.name,a.faction,true);qaLobbyId=a.network.lobbyId;
+ if(remote)assert.ok(a.snapshot.remaining>90,'enough round time remains for isolated reciprocal combat');
+ check('one human receives two server AI with spectator safety',()=>{assert.equal(a.snapshot.actors.filter(actor=>actor.bot===true).length,2);assert.equal(a.snapshot.actors.filter(actor=>actor.bot!==true).length,1);assert.equal(a.authority.spectator,true);for(const bot of a.snapshot.actors.filter(actor=>actor.bot))assert.equal(bot.ping,null);});
+ const firstRoom=(await lobbyInventory()).find(room=>room.id===qaLobbyId)!;
+ check('lobby inventory counts the human separately from two AI seats',()=>{assert.equal(firstRoom.players,1);assert.equal(firstRoom.bots,2);assert.equal(firstRoom.capacity,6);});
+ const onlineOne=await community.status();check('online count includes the first connected human and excludes bots',()=>{if(!remote)assert.equal(onlineOne,onlineBefore+1);else assert.ok(onlineOne>=1);});
+ await b.network.join(qaLobbyId,b.name,b.faction,true);
+ check('two humans retain exactly two server AI',()=>{assert.equal(b.snapshot.actors.filter(actor=>actor.bot===true).length,2);assert.equal(b.snapshot.actors.filter(actor=>actor.bot!==true).length,2);});
+ await observer.network.join(qaLobbyId,observer.name,observer.faction,true);
  timer=setInterval(()=>{for(const u of users){u.network.update(1/60,u.input);u.network.present();}},1000/60);
- await until(()=>users.every(u=>u.game.actors.length===2),'two actual adapters in the same lobby');
- check('two independent sessions share one lobby with correctly remapped player IDs',()=>{assert.equal(a.network.lobbyId,b.network.lobbyId);assert.equal(a.game.player.id,0);assert.equal(b.game.player.id,0);assert.equal(a.game.actors[1].name,b.name);assert.equal(b.game.actors[1].name,a.name);assert.ok([...a.storage.values()][0]!==[...b.storage.values()][0],'independent browsers receive distinct credentials');});
- await until(()=>users.every(u=>u.game.actors.every(actor=>Number.isInteger(actor.ping))),'server-measured ping on both actors',10000);
- check(remote?'both production clients receive bounded server-measured player RTTs':'each scoreboard row has its own server-measured RTT across a delayed connection',()=>{for(const u of users){const fast=actorOn(u,a.name).ping!,slow=actorOn(u,b.name).ping!;assert.ok(fast>=0&&fast<=999);assert.ok(slow>=0&&slow<=999);if(!remote){assert.ok(slow>=140);assert.ok(slow-fast>100,'the remote delayed row cannot reuse the local connection ping');}latencyEvidence.push({observer:u.name,alphaMs:fast,betaMs:slow});}});
+ await until(()=>users.every(u=>u.snapshot.actors.length===3&&u.snapshot.actors.every(actor=>actor.bot!==true)&&u.game.actors.length===3),'third human removes both AI from all three adapters');
+ check('three independent human sessions replace AI with correctly remapped IDs',()=>{for(const u of users){assert.equal(u.network.lobbyId,qaLobbyId);assert.equal(u.game.player.id,0);for(const peer of users)assert.equal(actorOn(u,peer.name).name,peer.name);}assert.equal(new Set(users.map(u=>[...u.storage.values()][0])).size,3,'independent browsers receive distinct credentials');});
+ const fullRoom=(await lobbyInventory()).find(room=>room.id===qaLobbyId)!;check('three-human lobby no longer advertises any AI',()=>{assert.equal(fullRoom.players,3);assert.equal(fullRoom.bots,0);});
+ const onlineThree=await community.status();check('online count includes all three connected humans',()=>{if(!remote)assert.equal(onlineThree,onlineBefore+3);else assert.ok(onlineThree>=3);});
+ await until(()=>users.every(u=>u.game.actors.every(actor=>Number.isInteger(actor.ping))),'server-measured ping on all three humans',10000);
+ check(remote?'all production clients receive bounded server-measured human RTTs':'each scoreboard row has its own server-measured RTT across a delayed connection',()=>{for(const u of users){const fast=actorOn(u,a.name).ping!,slow=actorOn(u,b.name).ping!,observerPing=actorOn(u,observer.name).ping!;for(const ping of [fast,slow,observerPing])assert.ok(ping>=0&&ping<=999);if(!remote){assert.ok(slow>=140);assert.ok(slow-fast>100,'the remote delayed row cannot reuse the local connection ping');}latencyEvidence.push({observer:u.name,alphaMs:fast,betaMs:slow,observerMs:observerPing});}});
+ a.network.setFaction(a.faction);b.network.setFaction(b.faction);await until(()=>users.every(u=>!actorOn(u,a.name).spectator&&!actorOn(u,b.name).spectator&&actorOn(u,observer.name).spectator),'two combatants leave spectator mode and third remains observing');
  const bodies=remote?[`${a.name}: temporary QA <b>literal</b> ^3hello`,`${b.name}: temporary QA reply`]:['Alpha says <b>literal</b> ^3hello','Beta replies after joining'];
  a.network.chat(bodies[0]);b.network.chat(bodies[1]);await until(()=>users.every(u=>bodies.every(body=>u.chat.includes(body))),'bidirectional chat');
- check('chat from both actual adapters arrives verbatim for both players',()=>{for(const u of users)assert.deepEqual([...u.chat].sort(),[...bodies].sort());});
+ check('chat from both combatants arrives verbatim for all three players',()=>{for(const u of users)assert.deepEqual([...u.chat].sort(),[...bodies].sort());});
  await fight(a,b);await fight(b,a);
- check('both clients agree on the final reciprocal combat totals',()=>{for(const u of users)for(const name of [a.name,b.name]){const actor=actorOn(u,name);assert.equal(actor.kills,1);assert.equal(actor.deaths,1);assert.equal(actor.shots,2);assert.equal(actor.hits,2);}});
+ check('all three clients agree on the final reciprocal combat totals',()=>{for(const u of users)for(const name of [a.name,b.name]){const actor=actorOn(u,name);assert.equal(actor.kills,1);assert.equal(actor.deaths,1);assert.equal(actor.shots,2);assert.equal(actor.hits,2);}});
+ const board=await community.leaderboard();
+ check('both leaderboard periods match combat totals and omit default and AI names',()=>{for(const rows of [board.allTime,board.last24Hours]){for(const name of [a.name,b.name]){const row=rows.find(row=>row.name===name);assert.ok(row);assert.equal(row.kills,1);assert.equal(row.deaths,1);}const watching=rows.find(row=>row.name===observer.name);assert.ok(watching);assert.equal(watching.kills,0);assert.equal(watching.deaths,0);assert.ok(rows.every(row=>row.name.toLowerCase()!=='unknown soldier'));if(!remote)assert.ok(rows.every(row=>!row.name.startsWith('[AI]')));}});
+ let feedbackId:string|undefined;const feedbackMessage='Multiplayer QA: menu feedback <b>stays literal</b>.',feedbackEmail='qa@example.invalid';
+ if(!remote){
+  const invalid=await fetch(base+'/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'   '})});assert.equal(invalid.status,400);
+  const feedback=await fetch(base+'/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:feedbackMessage,email:feedbackEmail})});assert.equal(feedback.status,201);feedbackId=(await feedback.json()).id;assert.ok(feedbackId);
+  check('feedback API validates required text and accepts optional email',()=>assert.ok(feedbackId));
+ }
+ // Make every human a spectator before disconnecting so momentarily restored
+ // AI cannot add combat while the three leave frames travel separately.
+ a.network.spectate();b.network.spectate();await until(()=>users.every(u=>u.snapshot.actors.filter(actor=>actor.bot!==true).every(actor=>actor.spectator)),'combatants safely return to spectators');
  for(const u of users)u.network.disconnect();if(timer){clearInterval(timer);timer=undefined;}
  await delay(350);
+ const onlineAfter=await community.status();check('online count drops after QA disconnects',()=>{if(!remote)assert.equal(onlineAfter,onlineBefore);else assert.ok(onlineAfter>=0);});
  let persisted:any;
  if(!remote){const db=new DatabaseSync(dbPath,{readOnly:true});
  try{
   check('SQLite integrity and foreign keys remain valid',()=>{assert.equal(db.prepare('PRAGMA integrity_check').get()!.integrity_check,'ok');assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);});
-  check('both identities have exactly one durable enter and leave event',()=>{const rows=db.prepare("SELECT m.id,m.left_at,(SELECT count(*) FROM events e WHERE e.event_type='player_enter' AND json_extract(e.data,'$.membershipId')=m.id) enters,(SELECT count(*) FROM events e WHERE e.event_type='player_leave' AND json_extract(e.data,'$.membershipId')=m.id) leaves FROM memberships m").all();assert.equal(rows.length,2);for(const row of rows){assert.ok(row.left_at);assert.equal(row.enters,1);assert.equal(row.leaves,1);}});
+  check('all three human identities have exactly one durable enter and leave event',()=>{const rows=db.prepare("SELECT m.id,m.left_at,(SELECT count(*) FROM events e WHERE e.event_type='player_enter' AND json_extract(e.data,'$.membershipId')=m.id) enters,(SELECT count(*) FROM events e WHERE e.event_type='player_leave' AND json_extract(e.data,'$.membershipId')=m.id) leaves FROM memberships m JOIN players p ON p.id=m.player_id WHERE p.is_bot=0").all();assert.equal(rows.length,3);for(const row of rows){assert.ok(row.left_at);assert.equal(row.enters,1);assert.equal(row.leaves,1);}});
   check('both chat bodies are linked to typed events and the sending identities',()=>{const rows=db.prepare("SELECT c.body,c.player_id,e.actor_player_id,e.event_type FROM chat_messages c JOIN events e ON e.id=c.id").all();assert.equal(rows.length,2);assert.deepEqual(rows.map(row=>row.body).sort(),[...bodies].sort());for(const row of rows){assert.equal(row.event_type,'chat');assert.equal(row.player_id,row.actor_player_id);}});
-  check('reciprocal kills and deaths form two durable linked combat records',()=>{const rows=db.prepare("SELECT k.display_name killer,v.display_name victim,c.headshot,ke.event_type kill_type,de.event_type death_type,ke.actor_player_id,de.actor_player_id victim_actor,c.killer_id,c.victim_id FROM combat_events c JOIN players k ON k.id=c.killer_id JOIN players v ON v.id=c.victim_id JOIN events ke ON ke.id=c.kill_event_id JOIN events de ON de.id=c.death_event_id").all();assert.equal(rows.length,2);assert.deepEqual(rows.map(row=>`${row.killer}->${row.victim}`).sort(),['Combat Alpha->Combat Beta','Combat Beta->Combat Alpha']);for(const row of rows){assert.equal(row.headshot,1);assert.equal(row.kill_type,'player_kill');assert.equal(row.death_type,'player_death');assert.equal(row.actor_player_id,row.killer_id);assert.equal(row.victim_actor,row.victim_id);}});
-  persisted=db.prepare('SELECT name,kills,deaths,shots,hits FROM match_players ORDER BY name').all();
-  check('durable per-player statistics match all four authoritative shots',()=>{assert.equal(persisted.length,2);for(const row of persisted){assert.equal(row.kills,1);assert.equal(row.deaths,1);assert.equal(row.shots,2);assert.equal(row.hits,2);}});
+  check('reciprocal kills and deaths form two durable linked combat records',()=>{const rows=db.prepare("SELECT k.display_name killer,v.display_name victim,c.headshot,ke.event_type kill_type,de.event_type death_type,ke.actor_player_id,de.actor_player_id victim_actor,c.killer_id,c.victim_id FROM combat_events c JOIN players k ON k.id=c.killer_id JOIN players v ON v.id=c.victim_id JOIN events ke ON ke.id=c.kill_event_id JOIN events de ON de.id=c.death_event_id WHERE k.is_bot=0 AND v.is_bot=0").all();assert.equal(rows.length,2);assert.deepEqual(rows.map(row=>`${row.killer}->${row.victim}`).sort(),['Combat Alpha->Combat Beta','Combat Beta->Combat Alpha']);for(const row of rows){assert.equal(row.headshot,1);assert.equal(row.kill_type,'player_kill');assert.equal(row.death_type,'player_death');assert.equal(row.actor_player_id,row.killer_id);assert.equal(row.victim_actor,row.victim_id);}});
+  persisted=db.prepare('SELECT m.name,m.kills,m.deaths,m.shots,m.hits FROM match_players m JOIN players p ON p.id=m.player_id WHERE p.is_bot=0 ORDER BY name').all();
+  check('durable human statistics match combat and the spectator stays unscored',()=>{assert.equal(persisted.length,3);for(const row of persisted){const watching=row.name===observer.name;assert.equal(row.kills,watching?0:1);assert.equal(row.deaths,watching?0:1);assert.equal(row.shots,watching?0:2);assert.equal(row.hits,watching?0:2);}});
+  check('bot identities persist without browser connections and close every membership',()=>{assert.equal(db.prepare('SELECT count(*) n FROM players WHERE is_bot=1').get()!.n,2);assert.equal(db.prepare('SELECT count(*) n FROM connections c JOIN players p ON p.id=c.player_id WHERE p.is_bot=1').get()!.n,0);const rows=db.prepare("SELECT m.left_at,(SELECT count(*) FROM events e WHERE e.event_type='player_enter' AND json_extract(e.data,'$.membershipId')=m.id) enters,(SELECT count(*) FROM events e WHERE e.event_type='player_leave' AND json_extract(e.data,'$.membershipId')=m.id) leaves FROM memberships m JOIN players p ON p.id=m.player_id WHERE p.is_bot=1").all();assert.ok(rows.length>=2);for(const row of rows){assert.ok(row.left_at);assert.equal(row.enters,1);assert.equal(row.leaves,1);}});
+  check('feedback text and optional email persist with one linked submitted event',()=>{const rows=db.prepare('SELECT f.id,f.message,f.email,e.event_type FROM feedback_requests f JOIN feedback_events e ON e.request_id=f.id').all();assert.equal(rows.length,1);assert.equal(rows[0].id,feedbackId);assert.equal(rows[0].message,feedbackMessage);assert.equal(rows[0].email,feedbackEmail);assert.equal(rows[0].event_type,'submitted');});
  }finally{db.close();}}
  else{
-  await until(async()=>{const rows=await lobbyInventory();inventoryAfter=rows;const room=rows.find(row=>row.id===qaLobbyId);return !room||room.players===0;},'production QA room has no remaining participants',10000);
+  await until(async()=>{const rows=await lobbyInventory();inventoryAfter=rows;const room=rows.find(row=>row.id===qaLobbyId);return !room||(room.players===0&&room.bots===0);},'production QA room has no remaining participants',10000);
   check('production QA clients disconnected and their room is empty',()=>assert.ok(inventoryAfter));
  }
- check('neither adapter experienced a connection failure',()=>{for(const u of users)assert.deepEqual(u.failures,[]);});
- const report={passed:true,mode:remote?'production QA':'isolated local',endpoint:base,lobbyId:qaLobbyId,startedAt:new Date(started).toISOString(),durationSeconds:(Date.now()-started)/1000,...(!remote?{backendSha256:createHash('sha256').update(await readFile(resolve(root,'server/target/debug/bolts-server'))).digest('hex')}:{inventoryBefore,inventoryAfter}),delayRelayMsEachDirection:remote?0:80,latencyEvidence,checks,combat,persisted};
+ check('none of the three adapters experienced a connection failure',()=>{for(const u of users)assert.deepEqual(u.failures,[]);});
+ const report={passed:true,mode:remote?'production QA':'isolated local',endpoint:base,lobbyId:qaLobbyId,startedAt:new Date(started).toISOString(),durationSeconds:(Date.now()-started)/1000,...(!remote?{backendSha256:createHash('sha256').update(await readFile(resolve(root,'server/target/debug/bolts-server'))).digest('hex')}:{inventoryBefore,inventoryAfter}),delayRelayMsEachDirection:remote?0:80,latencyEvidence,online:{before:onlineBefore,oneHuman:onlineOne,threeHumans:onlineThree,after:onlineAfter},checks,combat,persisted};
  const reportPath=remote?'artifacts/multiplayer-remote-e2e.json':'artifacts/multiplayer-client-e2e.json';
  await mkdir(resolve(root,'artifacts'),{recursive:true});await writeFile(resolve(root,reportPath),JSON.stringify(report,null,2)+'\n');
  console.log(`Multiplayer adapter combat: ${checks.length} checks passed; report ${reportPath}.`);

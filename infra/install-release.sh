@@ -28,6 +28,18 @@ runuser -u bolts-build -- env CARGO_HOME="$build_home/.cargo" RUSTUP_HOME="$buil
   CARGO_TARGET_DIR="$build_home/target" CARGO_BUILD_JOBS=1 \
   "$build_home/.cargo/bin/cargo" +1.99.0 build --release --locked --manifest-path "$source_dir/server/Cargo.toml"
 
+# Building can take several minutes. Recheck the running service immediately
+# before installation so players who arrived during compilation are not kicked.
+if systemctl is-active --quiet bolts.service; then
+  curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8080/api/lobbies | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+rooms = data.get("lobbies")
+if not isinstance(rooms, list) or any(not isinstance(room.get("players"), int) or room["players"] != 0 for room in rooms):
+    raise SystemExit("Release deferred: a human seat is occupied; current service is unchanged.")
+'
+fi
+
 install -d -m 0755 -o root -g root "/opt/bolts/releases/$release" /usr/local/libexec
 install -m 0755 -o root -g root "$build_home/target/release/bolts-server" "/opt/bolts/releases/$release/bolts-server"
 install -m 0755 -o root -g root "$source_dir/infra/backup.py" /usr/local/libexec/bolts-backup

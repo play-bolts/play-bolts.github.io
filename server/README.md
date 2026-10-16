@@ -1,6 +1,6 @@
 # Bolts multiplayer operations
 
-One Rust process owns every online lobby, player and combat decision. The TypeScript client remains a static web app. **Single player** runs the original local AI simulation without contacting this service.
+One Rust process owns every online lobby, player and combat decision. The TypeScript client remains a static web app. **Single player** runs the local AI simulation without a multiplayer connection. The main menu can fetch the public online count and leaderboard; feedback is submitted only on request.
 
 The complete game and its assets are hosted at **https://play-bolts.github.io/**. Multiplayer uses **https://bolts-api.christopherkrapu.com** and its corresponding WSS endpoint. GitHub Pages serves the frontend; the existing Oregon AWS server handles the API, lobbies and persistence.
 
@@ -40,7 +40,8 @@ BOLTS_TEST_URL=http://127.0.0.1:8080 node --import tsx scripts/test-network-adap
 
 - The server simulates at **60 Hz** and normally broadcasts snapshots at **20 Hz**. It accepts movement/action intent, never client positions, hit claims, health or scores. Rate limits and monotonic input sequences prevent packet replay from multiplying actions. Input older than 250 ms becomes neutral.
 - Clients predict local movement and provisional weapon presentation, then restore authoritative state and replay unacknowledged inputs. Other players interpolate roughly 100 ms behind the latest state. Hits use server-side obstruction/body tests and at most 200 ms of target-history rewind. Killcams use received authoritative snapshots and shot events.
-- Each lobby has **six human slots**, including spectators, without online AI. Quick join uses an available room or creates one when existing rooms are full. Lobby names combine a German general and a Greek letter. Listing rooms maintains available capacity without creating a room on every refresh.
+- Each lobby has **six total slots**, including spectators. One or two connected humans receive two AI opponents; at three connected humans the AI leave, and empty rooms have no AI. Reconnecting/arriving humans take priority, and bot fill respects seats reserved during reconnection. Spectators count as humans for this threshold; disconnected reservations do not. Lobby names combine a German general and a Greek letter. Listing rooms maintains available capacity without creating a room on every refresh.
+- Online bots use ordinary authoritative movement, ammunition, reload, damage and collision. Their perception samples line of sight and a forward view cone, with reaction delays, correlated aim error, limited memory, navigation and cover choices. They receive no client sockets or authentication credentials. Snapshots mark them with `bot: true`; lobby lists report their count separately from human seats.
 - Spectators keep chat and room membership but have no colliding or damageable body. Entering spectator mode clears combat intent without changing kills/deaths; selecting a loadout returns them to a protected combat spawn. Spectator mode persists across reconnects and round restarts, and spectators are excluded from the round winner. Camera following and free movement are local presentation only.
 - Lean sweeps a camera-clearance segment against cover and arena walls, preserving a stable partial lean when blocked. Client prediction, rendered eyes, and Rust authority share the same geometry and 0.16 m clearance; leaning changes position without rotating the view.
 - Empty rooms close after **five minutes**. A disconnected player keeps their seat for **30 seconds**, with neutralized input; explicit departure releases it immediately. Client reconnection uses bounded backoff. Reconnecting within the grace period retains the actor, score and ammunition.
@@ -58,7 +59,7 @@ Connection metadata stores keyed HMAC-SHA256 values for the observed IP and user
 
 | Table | Meaning and relationships |
 | --- | --- |
-| `players` | Persistent UUID, credential hash, latest display name and first/last seen times. |
+| `players` | Persistent UUID, credential hash, latest display name, indexed canonical `name_key`, first/last seen times and `is_bot` marker. Server-only bot keys reuse bot UUIDs without allowing authentication. |
 | `connections` | Socket lifetime, end reason and keyed network metadata; references a player. |
 | `lobbies` / `matches` | Room lifetime and successive rounds, including final winner and termination reason. |
 | `memberships` | One continuous room visit, actor ID, name/faction at join and leave reason. A partial unique index prevents two active memberships for one identity. |
@@ -66,9 +67,19 @@ Connection metadata stores keyed HMAC-SHA256 values for the observed IP and user
 | `events` | Typed append-only activity with optional room, match, connection, actor and target references, plus versioned JSON detail. |
 | `chat_messages` | Chat body and display name at send time; its primary key also references the corresponding chat event. |
 | `combat_events` | One kill record linking the killer, victim, weapon/headshot and separate `player_kill` / `player_death` events. |
+| `leaderboard_names` | Canonical name primary key, plain display name and transactional all-time kills/deaths; ranking index orders kills, deaths and name. |
+| `leaderboard_events` | Combat-time name and timestamp for each human kill/death role, unique per combat/role. Name/time and time/name indexes support rolling 24-hour totals. |
+| `feedback_requests` | Private required message, optional email, keyed network pseudonym and submission time. Indexed by network/time for a persistent hourly limit. |
+| `feedback_events` | Private append-only submitted event referencing its feedback request; committed with the request and containing no message/email copy. |
 | `schema_migrations` | Applied schema version metadata. |
 
 Event types cover server start/stop, player enter/leave/reconnect, profile/loadout changes, chat, kill/death and round end. Chat and its event commit together before broadcast. Kill/death pairs and their combat record commit in one transaction. Membership leave events are idempotent. A persistence failure stops the service instead of continuing matches without their event history.
+
+Leaderboard rows aggregate by the name used at the time of combat. `^0`–`^9` color codes are removed, whitespace is collapsed, and lowercase keys group capitalization variants. The first plain spelling is retained for display. Equal names share a row; a name is not an account or proof of ownership. Renaming starts credit under the new name without moving historical totals. `Unknown Soldier`, blank names and bot rows are omitted. Human kills against bots and deaths to bots count. Self-kills, including faction changes, count as deaths and award no leaderboard kill. Both tables include named players with zero scores; ties sort by fewer deaths, then canonical name. The 24-hour table counts each role within the server's rolling UTC window, not a calendar day.
+
+Schema migration 2 is additive and transactional. It adds bot/name columns and indexes to existing player tables, then backfills scores from existing combat records using ordered join/profile names. If an old combat has no name event, it falls back to its recorded round name and then the preserved player name. It never invents combat records or infers missing kills/deaths from incomplete round totals. A unique combat/role key and migration marker prevent double counting on restart; original UUIDs, credentials and events remain intact.
+
+Feedback accepts 1–2000 trimmed Unicode characters and an optional validated email of at most 254 ASCII bytes. Requests are limited to three attempts per minute and five accepted submissions per hour per keyed network address, with the hourly limit surviving restarts. Browser origins use the same exact allowlist as multiplayer. No public API reads feedback or contact details, and responses return only the request UUID. Authorized operators can inspect these tables through the existing private database/backup path; no email is sent automatically.
 
 Spectator admission is recorded in `player_enter.data.spectator`; later mode changes use `loadout_change` data containing `faction` and `spectator`. These transitions do not create combat records or synthetic deaths, and require no database schema migration.
 

@@ -3,7 +3,7 @@ PRAGMA synchronous=FULL;
 PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
 INSERT OR IGNORE INTO schema_migrations VALUES(1, unixepoch('subsec')*1000);
-CREATE TABLE IF NOT EXISTS players(id TEXT PRIMARY KEY, credential_hash TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL DEFAULT 'Unknown Soldier', created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS players(id TEXT PRIMARY KEY, credential_hash TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL DEFAULT 'Unknown Soldier', created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL, name_key TEXT, is_bot INTEGER NOT NULL DEFAULT 0 CHECK(is_bot IN(0,1)), bot_key TEXT UNIQUE);
 CREATE TABLE IF NOT EXISTS connections(id TEXT PRIMARY KEY, player_id TEXT NOT NULL REFERENCES players(id), opened_at INTEGER NOT NULL, closed_at INTEGER, end_reason TEXT, ip_hash TEXT NOT NULL, ua_hash TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS lobbies(id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, closed_at INTEGER, close_reason TEXT);
 CREATE TABLE IF NOT EXISTS matches(id TEXT PRIMARY KEY, lobby_id TEXT NOT NULL REFERENCES lobbies(id), round_number INTEGER NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, end_reason TEXT, winner_player_id TEXT REFERENCES players(id), UNIQUE(lobby_id,round_number));
@@ -18,3 +18,16 @@ CREATE INDEX IF NOT EXISTS events_match_type ON events(match_id,event_type,seq);
 CREATE TABLE IF NOT EXISTS chat_messages(id TEXT PRIMARY KEY REFERENCES events(id), lobby_id TEXT NOT NULL REFERENCES lobbies(id), match_id TEXT NOT NULL REFERENCES matches(id), player_id TEXT NOT NULL REFERENCES players(id), name TEXT NOT NULL, body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 256), created_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS chat_lobby_time ON chat_messages(lobby_id,created_at);
 CREATE TABLE IF NOT EXISTS combat_events(id TEXT PRIMARY KEY, kill_event_id TEXT NOT NULL UNIQUE REFERENCES events(id), death_event_id TEXT NOT NULL UNIQUE REFERENCES events(id), match_id TEXT NOT NULL REFERENCES matches(id), killer_id TEXT NOT NULL REFERENCES players(id), victim_id TEXT NOT NULL REFERENCES players(id), weapon TEXT NOT NULL CHECK(weapon IN('rifle','melee')), headshot INTEGER NOT NULL CHECK(headshot IN(0,1)), created_at INTEGER NOT NULL);
+-- Name-based scores are separate from private UUID authentication. Each combat
+-- role snapshots the name at the time, so renaming does not move old scores.
+CREATE TABLE IF NOT EXISTS leaderboard_names(name_key TEXT PRIMARY KEY, display_name TEXT NOT NULL, first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, kills INTEGER NOT NULL DEFAULT 0 CHECK(kills>=0), deaths INTEGER NOT NULL DEFAULT 0 CHECK(deaths>=0));
+CREATE INDEX IF NOT EXISTS leaderboard_rank ON leaderboard_names(kills DESC,deaths,name_key);
+CREATE TABLE IF NOT EXISTS leaderboard_events(combat_id TEXT NOT NULL REFERENCES combat_events(id), role TEXT NOT NULL CHECK(role IN('kill','death')), player_id TEXT NOT NULL REFERENCES players(id), name_key TEXT NOT NULL REFERENCES leaderboard_names(name_key), created_at INTEGER NOT NULL, PRIMARY KEY(combat_id,role));
+CREATE INDEX IF NOT EXISTS leaderboard_recent ON leaderboard_events(created_at,name_key,role);
+CREATE INDEX IF NOT EXISTS leaderboard_name_time ON leaderboard_events(name_key,created_at);
+-- Feedback is private, including contact information and network pseudonyms.
+-- It deliberately has no public read endpoint and is not copied into telemetry.
+CREATE TABLE IF NOT EXISTS feedback_requests(id TEXT PRIMARY KEY, message TEXT NOT NULL CHECK(length(message) BETWEEN 1 AND 2000), email TEXT CHECK(email IS NULL OR length(email) BETWEEN 3 AND 254), ip_hash TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS feedback_rate ON feedback_requests(ip_hash,created_at);
+CREATE TABLE IF NOT EXISTS feedback_events(id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES feedback_requests(id), event_type TEXT NOT NULL CHECK(event_type='submitted'), at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS feedback_event_request ON feedback_events(request_id,at);

@@ -17,7 +17,8 @@ import {preloadSurfaceAssets} from './materials';
 import {MenuPreview} from './menuPreview';
 import {NetworkClient,type Lobby} from './network';
 import {readLaunchAction} from './launch';
-const ui=new UI(),game=new Game(),sound=new Sound(),network=new NetworkClient(game);
+import {CommunityClient} from './community';
+const ui=new UI(),game=new Game(),sound=new Sound(),network=new NetworkClient(game),community=new CommunityClient();
 let launchAction=readLaunchAction(location.search);
 // Keep progress tied to completed asset requests, reserving the last step for
 // scene construction and the first rendered frame.
@@ -32,6 +33,16 @@ const keys=new Set<string>();let menu=true,previous=performance.now(),accumulato
 let appliedQuality:string|undefined;
 let qaLean:number|null=null,joining=false,equipRifle=false,onlineEntered=false,lobbyFetchBusy=false,lobbyFetchTime=0;
 let lobbyRequest=0,onlineSelection=false;let requestedLobby:string|undefined;let lobbyRows:Lobby[]=[];
+let communityStatusBusy=false,communityStatusTime=-Infinity,leaderboardBusy=false;
+async function refreshOnlineCount(){
+ if(communityStatusBusy)return;communityStatusBusy=true;communityStatusTime=performance.now();
+ try{ui.setOnlineCount(await community.status());}catch{ui.setOnlineCount(null);}finally{communityStatusBusy=false;}
+}
+ui.feedbackSend=(message,email)=>community.feedback(message,email);
+ui.leaderboardLoad=()=>{
+ if(leaderboardBusy)return;leaderboardBusy=true;ui.setLeaderboardStatus('Loading…',true);
+ void community.leaderboard().then(data=>ui.setLeaderboard(data)).catch(()=>ui.setLeaderboardStatus('Unable to load leaderboard.')).finally(()=>{leaderboardBusy=false;});
+};
 function syncSettings(){game.difficulty=ui.prefs.difficulty;sound.setVolume(ui.prefs.volume);if(appliedQuality!==ui.prefs.quality){view.setQuality(ui.prefs.quality);appliedQuality=ui.prefs.quality;}game.setPlayerName(ui.prefs.playerName);network.setName(ui.prefs.playerName);if(menu)view.setFaction(ui.prefs.faction);if(ui.selectionOpen&&ui.menuStage==='weapon')menuPreview?.show(ui.prefs.faction);}
 ui.menuChanged=()=>{if(ui.menuStage==='weapon')menuPreview?.show(ui.prefs.faction);};
 ui.settingsChanged=syncSettings;syncSettings();
@@ -121,7 +132,7 @@ document.addEventListener('keydown',e=>{
  if(ui.handleChatKey(e))return;
  if(e.code==='Escape'&&ui.modalOpen){ui.closeModal();return;}
  if(ui.modalOpen){ui.handleModalKey(e);return;}
- if((e.target as HTMLElement).matches('input,select'))return;
+ if((e.target as HTMLElement).matches('input,textarea,select'))return;
  if(menu||ui.selectionOpen){ui.handleMenuKey(e);return;}
  if(['Space','Tab','AltLeft','AltRight','ControlLeft','ControlRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
  if(e.code==='KeyM'&&!e.repeat&&game.state!=='ended'){selectInGame('team');return;}
@@ -170,6 +181,7 @@ function frame(now:number){
   processEvents();if(game.state==='killcam'){if(lastReplaySound<0)lastReplaySound=game.replayTime;for(const shot of game.replayShots)if(shot.time>lastReplaySound&&shot.time<=game.replayTime&&shot.kind==='shot')sound.shot({actor:shot.actor,position:shot.origin,local:shot.actor===game.killer,faction:game.actors[shot.actor]?.faction});lastReplaySound=game.replayTime;}else lastReplaySound=-1;
   ui.update(game);if(game.state==='ended'&&!endingReleased){endingReleased=true;document.exitPointerLock();keys.clear();jump=false;dragging=false;equipRifle=false;}
  }
+ if(menu&&!document.hidden&&now-communityStatusTime>15000)void refreshOnlineCount();
  if(menu&&ui.lobbyOpen&&!network.online&&!lobbyFetchBusy&&now-lobbyFetchTime>5000)void refreshLobbies();
  view.render(game,dt,menu||ui.selectionOpen,menu,network.online?network.remoteTime:game.time);
  if(!ui.ready){

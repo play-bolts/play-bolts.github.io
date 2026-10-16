@@ -553,6 +553,31 @@ impl Simulation {
         self.actors.iter_mut().find(|a| a.id == id)
     }
 
+    /// Perception uses the same occluding geometry as authoritative bullets.
+    pub(crate) fn line_of_sight(&self, from: Vec3, to: Vec3) -> bool {
+        visible(&self.boxes, from, to)
+    }
+
+    /// Navigation stays on the arena floor and pads obstacles by the player's
+    /// collision radius. AI never teleports or edits an actor's position.
+    pub(crate) fn walkable(&self, x: f64, z: f64) -> bool {
+        let margin = RADIUS + 0.12;
+        x.abs() < 21.0 / SQRT_2 - margin
+            && z.abs() < 24.0 / SQRT_2 - margin
+            && !self.boxes.iter().any(|b| {
+                (x - b.x).abs() < b.w / 2.0 + margin
+                    && (z - b.z).abs() < b.d / 2.0 + margin
+            })
+    }
+
+    pub(crate) fn walkable_segment(&self, from: Vec3, to: Vec3) -> bool {
+        let steps = ((to.x - from.x).hypot(to.z - from.z) / 0.2).ceil().max(1.0) as usize;
+        (0..=steps).all(|i| {
+            let t = i as f64 / steps as f64;
+            self.walkable(lerp(from.x, to.x, t), lerp(from.z, to.z, t))
+        })
+    }
+
     pub fn join(&mut self, id: u32, name: String, faction: Faction) -> Result<(), &'static str> {
         self.join_participant(id, name, faction, false)
     }

@@ -1,4 +1,5 @@
 use crate::{
+    bots::{BotBrain, Navigation},
     db::{self, Db, EventRow},
     sim::{self, Faction, GameEvent, InputFrame, Simulation},
 };
@@ -106,6 +107,7 @@ impl Latency {
 }
 struct Member {
     actor: u32,
+    bot: Option<BotBrain>,
     membership: String,
     disconnected: Option<Instant>,
     chat: VecDeque<Instant>,
@@ -124,12 +126,29 @@ struct Room {
     empty_since: Option<Instant>,
     ended_since: Option<Instant>,
     pending: Vec<GameEvent>,
+    navigation: Navigation,
 }
 impl Room {
+    fn human_seats(&self) -> usize {
+        self.members.values().filter(|m| m.bot.is_none()).count()
+    }
+    fn online_humans(&self, connections: &HashMap<String, Endpoint>) -> usize {
+        self.members
+            .iter()
+            .filter(|(player, m)| {
+                m.bot.is_none() && m.disconnected.is_none() && connections.contains_key(*player)
+            })
+            .count()
+    }
     fn snapshot(&self, events: &[GameEvent], connections: &HashMap<String, Endpoint>) -> Value {
         let now = Instant::now();
         let mut actors = serde_json::to_value(&self.sim.actors).expect("serializable actors");
         for actor in actors.as_array_mut().expect("actor array") {
+            actor["bot"] = json!(
+                self.members
+                    .values()
+                    .any(|m| m.bot.is_some() && Some(u64::from(m.actor)) == actor["id"].as_u64())
+            );
             let latency = self
                 .members
                 .iter()
@@ -269,6 +288,7 @@ impl Hub {
             if let Some(member) = room.members.get_mut(player) {
                 member.disconnected = Some(Instant::now());
                 room.sim.neutralize(member.actor);
+                reconcile_bots(&mut self.db, room, &self.connections)?;
             }
         }
         Ok(())
@@ -311,6 +331,7 @@ impl Hub {
         let game = db::id();
         let seed = u32::from_le_bytes(uuid::Uuid::new_v4().as_bytes()[..4].try_into().unwrap());
         let sim = Simulation::new(seed);
+        let navigation = Navigation::new(&sim);
         self.db.create_lobby(&id, &name)?;
         self.db.create_match(&game, &id, sim.round_number)?;
         self.rooms.insert(
@@ -325,6 +346,7 @@ impl Hub {
                 empty_since: Some(Instant::now()),
                 ended_since: None,
                 pending: vec![],
+                navigation,
             },
         );
         Ok(id)
@@ -333,14 +355,20 @@ impl Hub {
         if !self
             .rooms
             .values()
-            .any(|r| r.members.len() < sim::MAX_PLAYERS)
+            .any(|r| r.human_seats() < sim::MAX_PLAYERS)
             && self.rooms.len() < self.config.max_rooms
         {
             self.create_room()?;
         }
-        let mut list:Vec<_>=self.rooms.values().map(|r|json!({"id":r.id,"name":r.name,"players":r.members.len(),"capacity":sim::MAX_PLAYERS,"phase":if r.sim.ended{"ended"}else{"playing"}})).collect();
+        let mut list:Vec<_>=self.rooms.values().map(|r|json!({"id":r.id,"name":r.name,"players":r.human_seats(),"bots":r.members.len()-r.human_seats(),"capacity":sim::MAX_PLAYERS,"phase":if r.sim.ended{"ended"}else{"playing"}})).collect();
         list.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
         Ok(json!({"version":1,"lobbies":list}))
+    }
+    pub fn online_count(&self) -> usize {
+        self.rooms
+            .values()
+            .map(|r| r.online_humans(&self.connections))
+            .sum()
     }
     pub fn join(
         &mut self,
@@ -361,6 +389,7 @@ impl Hub {
             member.disconnected = None;
             room.sim.neutralize(member.actor);
             let actor = member.actor;
+            reconcile_bots(&mut self.db, room, &self.connections)?;
             self.db.event(EventRow {
                 kind: "player_reconnect",
                 lobby: Some(&room.id),
@@ -377,15 +406,15 @@ impl Hub {
         // Validate the destination before giving up an existing seat.
         let roomid = if let Some(lobby) = lobby {
             let r = self.rooms.get(lobby).ok_or("lobby_missing")?;
-            if r.members.len() >= sim::MAX_PLAYERS {
+            if r.human_seats() >= sim::MAX_PLAYERS {
                 return Err("lobby_full".into());
             }
             lobby.to_owned()
         } else if let Some(r) = self
             .rooms
             .values()
-            .filter(|r| r.members.len() < sim::MAX_PLAYERS)
-            .max_by_key(|r| r.members.len())
+            .filter(|r| r.human_seats() < sim::MAX_PLAYERS)
+            .max_by_key(|r| r.human_seats())
         {
             r.id.clone()
         } else {
@@ -393,6 +422,11 @@ impl Hub {
         };
         self.leave(player, "switch_lobby", false)?;
         let room = self.rooms.get_mut(&roomid).unwrap();
+        // A human may always take a seat held by a bot. Retained human seats
+        // during reconnect grace have priority over temporary AI as well.
+        while room.members.len() >= sim::MAX_PLAYERS {
+            remove_one_bot(&mut self.db, room, "human_priority")?;
+        }
         let actor = room.next_actor;
         room.next_actor += 1;
         let name = sanitize_name(name);
@@ -421,6 +455,7 @@ impl Hub {
             player.into(),
             Member {
                 actor,
+                bot: None,
                 membership,
                 disconnected: None,
                 chat: VecDeque::new(),
@@ -429,6 +464,7 @@ impl Hub {
             },
         );
         room.empty_since = None;
+        reconcile_bots(&mut self.db, room, &self.connections)?;
         let packet = json!({"type":"joined","lobbyId":room.id,"lobbyName":room.name,"actorId":actor,"snapshot":room.snapshot(&[], &self.connections)});
         self.send(player, packet);
         Ok(())
@@ -442,7 +478,10 @@ impl Hub {
                 let actor = member.actor;
                 room.members.remove(player);
                 room.sim.leave(actor);
-                if room.members.is_empty() {
+                if reason != "server_stop" {
+                    reconcile_bots(&mut self.db, room, &self.connections)?;
+                }
+                if room.human_seats() == 0 {
                     room.empty_since = Some(Instant::now());
                 }
             }
@@ -520,10 +559,7 @@ impl Hub {
             })?;
             sync_stats(&self.db, room)?;
         }
-        self.db.conn.execute(
-            "UPDATE players SET display_name=?1 WHERE id=?2",
-            params![name, player],
-        )?;
+        self.db.set_name(player, &name)?;
         Ok(())
     }
     pub fn loadout(&mut self, player: &str, faction: Faction) -> HResult<()> {
@@ -601,6 +637,12 @@ impl Hub {
                     closed.push(room.id.clone());
                 }
                 continue;
+            }
+            for member in room.members.values_mut() {
+                if let Some(brain) = &mut member.bot {
+                    let input = brain.input(&room.sim, &room.navigation, member.actor);
+                    room.sim.submit_input(member.actor, input);
+                }
             }
             room.sim.tick(sim::TICK_SECONDS);
             record_sim_events(&mut self.db, room)?;
@@ -703,6 +745,104 @@ impl Hub {
         Ok(())
     }
 }
+/// Two AI accompany one or two connected humans. Spectators are humans for
+/// this threshold; reconnect reservations are not. Bots never consume a seat
+/// ahead of a human, and zero connected humans removes every bot immediately.
+fn reconcile_bots(
+    db: &mut Db,
+    room: &mut Room,
+    connections: &HashMap<String, Endpoint>,
+) -> HResult<()> {
+    let online = room.online_humans(connections);
+    let wanted = if (1..3).contains(&online) {
+        2.min(sim::MAX_PLAYERS.saturating_sub(room.human_seats()))
+    } else {
+        0
+    };
+    while room.members.len() - room.human_seats() > wanted {
+        remove_one_bot(
+            db,
+            room,
+            if online >= 3 {
+                "human_priority"
+            } else {
+                "lobby_idle"
+            },
+        )?;
+    }
+    for slot in 0..2 {
+        if room.members.len() - room.human_seats() >= wanted {
+            break;
+        }
+        let name = if slot == 0 {
+            "[AI] Volkov"
+        } else {
+            "[AI] Weber"
+        };
+        let player = db.ensure_bot(&format!("{}:{slot}", room.id), name)?;
+        if room.members.contains_key(&player) {
+            continue;
+        }
+        let actor = room.next_actor;
+        room.next_actor += 1;
+        let faction = if slot == 0 {
+            Faction::Russian
+        } else {
+            Faction::German
+        };
+        let membership = db::id();
+        room.sim
+            .join(actor, name.into(), faction)
+            .map_err(str::to_owned)?;
+        db.join_bot(
+            &membership,
+            &room.id,
+            &room.game,
+            &player,
+            actor,
+            name,
+            if slot == 0 { "russian" } else { "german" },
+        )?;
+        let stats_before_join = db.conn.query_row(
+            "SELECT kills,deaths,shots,hits FROM match_players WHERE match_id=?1 AND player_id=?2",
+            params![room.game, player],
+            |row| Ok([row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?]),
+        )?;
+        room.members.insert(
+            player,
+            Member {
+                actor,
+                bot: Some(BotBrain::new(
+                    actor.wrapping_mul(19417) ^ room.sim.tick_number as u32,
+                )),
+                membership,
+                disconnected: None,
+                chat: VecDeque::new(),
+                stats_game: room.game.clone(),
+                stats_before_join,
+            },
+        );
+    }
+    Ok(())
+}
+
+fn remove_one_bot(db: &mut Db, room: &mut Room, reason: &str) -> HResult<()> {
+    let player = room
+        .members
+        .iter()
+        .filter(|(_, m)| m.bot.is_some())
+        .max_by_key(|(_, m)| m.actor)
+        .map(|(p, _)| p.clone())
+        .ok_or("no_bot_seat")?;
+    record_sim_events(db, room)?;
+    sync_stats(db, room)?;
+    let member = &room.members[&player];
+    db.leave(&member.membership, &room.id, &room.game, &player, reason)?;
+    room.sim.leave(member.actor);
+    room.members.remove(&player);
+    Ok(())
+}
+
 fn sync_stats(db: &Db, room: &Room) -> rusqlite::Result<()> {
     for (player, m) in &room.members {
         if let Some(a) = room.sim.actor(m.actor) {
@@ -801,5 +941,125 @@ mod latency_tests {
         latency.reply(&fresh, now + Duration::from_secs(33));
         assert_eq!(latency.value(now + Duration::from_secs(33)), None);
         assert!(latency.challenge(now + Duration::from_secs(33)).is_some());
+    }
+}
+
+#[cfg(test)]
+mod bot_round_tests {
+    use super::*;
+
+    #[test]
+    fn round_restart_keeps_bot_memberships_and_creates_their_new_match_rows() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut hub = Hub::new(Config {
+            bind: "127.0.0.1:0".into(),
+            database: temp.path().join("test.sqlite"),
+            origins: vec![],
+            identity_salt: "bot-round-test-salt".into(),
+            empty_seconds: 300.0,
+            reconnect_seconds: 30.0,
+            max_rooms: 1,
+            proxy: false,
+        })
+        .unwrap();
+        let (player, _) = hub.db.session(None).unwrap().unwrap();
+        let cid = db::id();
+        let (tx, _rx) = mpsc::channel(256);
+        let (cancel, _cancelled) = watch::channel(None);
+        hub.register(&player, cid.clone(), tx, cancel, "test", "test")
+            .unwrap();
+        hub.join(&player, &cid, None, "Observer", Faction::British, true)
+            .unwrap();
+        let room_id = hub.rooms.keys().next().unwrap().clone();
+        let bot_ids: Vec<_> = hub.rooms[&room_id]
+            .members
+            .iter()
+            .filter(|(_, member)| member.bot.is_some())
+            .map(|(id, _)| id.clone())
+            .collect();
+        let changes = hub.db.conn.total_changes();
+        for _ in 0..30 {
+            hub.tick().unwrap();
+        }
+        assert_eq!(
+            hub.db.conn.total_changes(),
+            changes,
+            "movement/perception ticks never write to SQLite"
+        );
+        hub.rooms.get_mut(&room_id).unwrap().sim.time = sim::ROUND_SECONDS;
+        hub.tick().unwrap();
+        assert!(hub.rooms[&room_id].sim.ended);
+        let previous_game = hub.rooms[&room_id].game.clone();
+        hub.rooms.get_mut(&room_id).unwrap().ended_since =
+            Some(Instant::now() - Duration::from_secs(9));
+        hub.tick().unwrap();
+        let room = &hub.rooms[&room_id];
+        assert_eq!(room.sim.round_number, 2);
+        assert!(!room.sim.ended);
+        assert_ne!(room.game, previous_game);
+        assert_eq!(room.sim.actors.len(), 3);
+        for bot in bot_ids {
+            assert!(room.members[&bot].bot.is_some());
+            let rows: i64 = hub
+                .db
+                .conn
+                .query_row(
+                    "SELECT count(*) FROM match_players WHERE player_id=?1",
+                    [&bot],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(rows, 2);
+            let memberships: i64 = hub
+                .db
+                .conn
+                .query_row(
+                    "SELECT count(*) FROM memberships WHERE player_id=?1",
+                    [&bot],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(memberships, 1);
+        }
+        hub.tick().unwrap();
+        assert!(hub.rooms[&room_id].sim.actors.iter().all(|a| a.shots == 0));
+
+        // Bot and human combat share the same event-to-UUID persistence path.
+        // Resolve a normal close-range attack without changing HP or scores.
+        let room = hub.rooms.get_mut(&room_id).unwrap();
+        let human = room.members[&player].actor;
+        room.sim.change_faction(human, Faction::British);
+        let bot = room
+            .members
+            .values()
+            .find(|m| m.bot.is_some())
+            .unwrap()
+            .actor;
+        for (id, z) in [(bot, 0.0), (human, 1.2)] {
+            let actor = room.sim.actor_mut(id).unwrap();
+            actor.x = 0.0;
+            actor.z = z;
+            actor.y = 0.0;
+            actor.yaw = 0.0;
+            actor.pitch = 0.0;
+            actor.spawn_safe = 0.0;
+            actor.cooldown = 0.0;
+        }
+        let seq = room.sim.actor(bot).unwrap().ack + 1;
+        assert!(room.sim.submit_input(
+            bot,
+            InputFrame {
+                seq,
+                melee: true,
+                ..InputFrame::default()
+            }
+        ));
+        room.sim.tick(sim::TICK_SECONDS);
+        record_sim_events(&mut hub.db, room).unwrap();
+        let roles: (i64, i64) = hub.db.conn.query_row(
+            "SELECT k.is_bot,v.is_bot FROM combat_events c JOIN players k ON k.id=c.killer_id JOIN players v ON v.id=c.victim_id",
+            [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+        assert_eq!(roles, (1, 0));
+        assert_eq!(hub.db.conn.query_row("SELECT count(*) FROM events WHERE event_type IN ('player_kill','player_death')", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
     }
 }

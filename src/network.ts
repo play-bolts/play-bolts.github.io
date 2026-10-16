@@ -5,8 +5,8 @@ import {advanceHipSpread} from './accuracy';
 import {advanceLean} from './lean';
 import {DEFAULT_PLAYER_NAME,sanitizePlayerName} from './names';
 
-export interface Lobby {id:string;name:string;players:number;capacity:number;phase:'playing'|'ended';ping?:number}
-export type WireActor=Omit<Actor,'ai'>&{ack:number;hipSpread:number};
+export interface Lobby {id:string;name:string;players:number;bots?:number;capacity:number;phase:'playing'|'ended';ping?:number}
+export type WireActor=Omit<Actor,'ai'>&{ack:number;hipSpread:number;bot?:boolean};
 export interface WireEvent extends Omit<Event,'shot'> {seq?:number;shot?:(Shot&{seq?:number})}
 export interface WireSnapshot {type:'snapshot';tick:number;time:number;remaining:number;roundNumber:number;ended:boolean;winner:number|null;actors:WireActor[];events:WireEvent[]}
 export interface NetworkInput extends Input {type:'input';seq:number;yaw:number;pitch:number;ads:boolean;stance:Stance;weapon:WeaponSlot;fire:boolean;reload:boolean;melee:boolean;shotTime:number}

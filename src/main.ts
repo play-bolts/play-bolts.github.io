@@ -262,7 +262,7 @@ function processEvents(){
 }
 function frame(now:number){
  const frameMs=now-previous,dt=Math.min(frameMs/1000,.075);previous=now;
- syncTouchState();touch.update(dt);
+ syncTouchState();
  const ratio=resolution.sample(frameMs,!document.hidden&&!menu&&!ui.selectionOpen&&!ui.modalOpen&&game.state==='playing');if(ratio!==null){view.renderer.setPixelRatio(ratio);view.resize();}
  if(!menu){
   const movement=touch.movement;
@@ -270,10 +270,8 @@ function frame(now:number){
   if(equipRifle&&game.state==='playing'&&!game.isSwitching()){game.selectWeapon('rifle');equipRifle=false;}
   if(game.state==='playing'){look((Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*850,(Number(keys.has('ArrowDown'))-Number(keys.has('ArrowUp')))*dt*650);}
   const step=network.online?1/60:1/120;accumulator+=dt;while(accumulator>=step){
-   if(canTouchPlay()&&!game.player.spectator){
-    if(touchTap){if(network.online)network.fireOnce();else fire();touchTap=false;}
-    else if(touch.firing&&!game.player.reload&&!game.isSwitching()&&game.player.cooldown<=step)fire();
-   }
+   // A touch press is one trigger pull, even when held through a bolt cycle.
+   if(touchTap&&canTouchPlay()&&!game.player.spectator){if(network.online)network.fireOnce();else fire();touchTap=false;}
    if(network.online)network.update(step,input,!ui.chatOpen&&!ui.modalOpen&&!ui.selectionOpen&&(!touchEnabled||canTouchPlay()));else game.update(step,input);
    input.jump=false;jump=false;accumulator-=step;
   }

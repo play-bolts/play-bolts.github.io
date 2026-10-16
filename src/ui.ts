@@ -2,7 +2,7 @@ import {WEAPONS,type Difficulty,type Faction} from './config';
 import {CROSSHAIR_DISPLAY_SCALE,crosshairDisplayGapPixels} from './accuracy';
 import {weaponIcon} from './weaponIcons';
 import {damageFlashOpacity} from './damageFeedback';
-import type {Actor,Game} from './engine';
+import type {Actor,Game,Shot} from './engine';
 import {FEEDBACK_MESSAGE_LIMIT,FEEDBACK_EMAIL_LIMIT,validateFeedback,type Leaderboard,type LeaderboardPeriod} from './community';
 import {DEFAULT_PLAYER_NAME,PLAYER_NAME_PREFERENCE_VERSION,MAX_NAME_RAW_LENGTH,playerNameHTML,sanitizePlayerName,restorePlayerNamePreference} from './names';
 import {HudMarkup,hudClass,hudStyle,hudText} from './hudUpdates';
@@ -10,7 +10,7 @@ import {locationLabel,type Lobby,type LobbyLocation} from './lobbies';
 import {bindTouchAction} from './touchActions';
 const closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg>';
 const controls=[['W A S D','Move'],['Mouse','Look'],['LMB','Fire / grenade bash'],['RMB','Iron sights'],['1 / 2','Rifle / grenade'],['Wheel','Switch weapon'],['R','Reload'],['Space','Jump / stand'],['C','Crouch'],['Ctrl','Prone'],['Q / E','Lean'],['Shift','Melee'],['Alt','Walk'],['Tab','Scoreboard'],['T / Enter','Chat'],['M','Change team'],['Esc','Menu / leave follow'],['LMB / RMB','Spectator: next / previous'],['Space / Ctrl','Spectator: up / down'],['Shift','Spectator: faster']];
-export interface Preferences {faction:Faction;difficulty:Difficulty;playerName:string;playerNameVersion:number;sensitivity:number;volume:number;aim:'toggle'|'hold';quality:string;invert:boolean;controlsMode:'auto'|'touch'|'mouse';touchSensitivity:number;touchSize:number}
+export interface Preferences {faction:Faction;difficulty:Difficulty;playerName:string;playerNameVersion:number;sensitivity:number;volume:number;aim:'toggle'|'hold';quality:string;invert:boolean;hitIndicators:boolean;controlsMode:'auto'|'touch'|'mouse';touchSensitivity:number;touchSize:number}
 export type TouchAction='aim'|'reload'|'crouch'|'prone'|'team'|'score'|'chat'|'menu'|'up'|'down'|'next'|'previous'|'unfollow';
 export interface TouchState {enabled:boolean;mobile:boolean;controls:boolean;rotate:boolean;resume:boolean;spectator:boolean;following:boolean;ads:boolean;weapon:'rifle'|'grenade'}
 export type LobbyRow=Pick<Lobby,'id'|'name'|'players'|'capacity'|'ping'|'location'> & Partial<Pick<Lobby,'phase'>>;
@@ -35,7 +35,7 @@ export class UI {
  private modalReturnFocus:HTMLElement|null=null;
  private feedbackBusy=false;private leaderboardBusy=false;private leaderboardStatus='';private leaderboardData:Leaderboard|null=null;private leaderboardPeriod:LeaderboardPeriod='allTime';
  feedbackSend=async(_message:string,_email:string)=>{};leaderboardLoad=()=>{};
- prefs:Preferences={faction:'british',difficulty:'regular',playerName:DEFAULT_PLAYER_NAME,playerNameVersion:PLAYER_NAME_PREFERENCE_VERSION,sensitivity:1,volume:.6,aim:'toggle',quality:'high',invert:false,controlsMode:'auto',touchSensitivity:1,touchSize:1};
+ prefs:Preferences={faction:'british',difficulty:'regular',playerName:DEFAULT_PLAYER_NAME,playerNameVersion:PLAYER_NAME_PREFERENCE_VERSION,sensitivity:1,volume:.6,aim:'toggle',quality:'high',invert:false,hitIndicators:false,controlsMode:'auto',touchSensitivity:1,touchSize:1};
  touchAction=(_action:TouchAction)=>{};mobileResume=()=>{};mobileBack=()=>{};
  selectLoadout=()=>{};selectSpectator=()=>{};selectTeam=()=>{};cancelSelection=()=>{};
  start=()=>{};resume=()=>{};pause=()=>{};leave=()=>{};settingsChanged=()=>{};skip=()=>{};captureMouse=()=>{};
@@ -55,6 +55,7 @@ export class UI {
    if(typeof saved.touchSensitivity==='number'&&Number.isFinite(saved.touchSensitivity))this.prefs.touchSensitivity=Math.max(.5,Math.min(2,saved.touchSensitivity));
    if(typeof saved.touchSize==='number'&&Number.isFinite(saved.touchSize))this.prefs.touchSize=Math.max(.8,Math.min(1.25,saved.touchSize));
    this.prefs.invert=!!saved.invert;
+   this.prefs.hitIndicators=saved.hitIndicators===true;
    if(saved.playerName==='Player'&&this.prefs.playerName!==saved.playerName)localStorage.setItem('bolts-preferences',JSON.stringify({...saved,playerName:this.prefs.playerName,playerNameVersion:PLAYER_NAME_PREFERENCE_VERSION}));
   }catch{}
   document.querySelector('#app')!.innerHTML=`
@@ -83,7 +84,7 @@ export class UI {
    <div id="match-clock">05:00</div><button id="hud-menu" aria-label="Pause and open menu">Esc · Menu</button><div id="killfeed"></div><div id="network-status" class="hidden" role="status"></div>
    <button id="mouse-capture" class="hidden">Click to enable mouse look<span id="mouse-capture-help" class="hidden">You can also hold the left mouse button and drag to look.</span></button>
    <div id="chat" class="chat hidden"><div id="chat-log" role="log" aria-label="Game chat" aria-live="polite" aria-relevant="additions"></div><form id="chat-form" class="hidden" autocomplete="off"><label for="chat-input">Say:</label><input id="chat-input" type="text" maxlength="512" autocomplete="off" spellcheck="false" aria-label="Chat message"></form></div>
-   <div id="crosshair" style="--tick-length:${6*CROSSHAIR_DISPLAY_SCALE}px"><i></i><i></i><i></i><i></i></div><div id="damage-flash"></div><div id="hit-confirm" class="hidden">×</div><div id="spawn-protection" class="hidden">Spawn protection</div>
+   <div id="crosshair" style="--tick-length:${6*CROSSHAIR_DISPLAY_SCALE}px"><i></i><i></i><i></i><i></i></div><div id="damage-flash"></div><svg id="hit-confirm" class="hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3 3 5 5m8 0 5-5M3 21l5-5m8 0 5 5"/></svg><div id="spawn-protection" class="hidden">Spawn protection</div>
    <div class="compass-wrap"><div class="compass"><div id="compass-rose"><span class="north">N</span><span class="east">E</span><span class="south">S</span><span class="west">W</span><i class="needle"></i></div><i class="compass-pointer"></i></div></div>
    <div id="spectator-status" class="hidden" role="status"></div><div id="spectator-help" class="hidden"></div><div id="status-message"></div><div id="kill-message" class="hidden" role="status"></div>
    <div class="ammo-hud"><div id="weapon-slot"></div><div class="ammo-line"><strong id="ammo">10</strong><span class="ammo-divider">/</span><span id="reserve">60</span></div><div id="round-icons"></div><div class="health-row"><span>✚</span><div class="health-track"><i id="health-fill"></i></div><b id="health">100</b></div></div>
@@ -137,6 +138,7 @@ export class UI {
     <label class="setting">Volume <output id="volume-value">60%</output><input id="volume" type="range" min="0" max="1" step="0.05" value=".6"></label>
     <label class="setting select-setting">Iron sights<select id="aim-mode"><option value="toggle">Toggle</option><option value="hold">Hold</option></select></label>
     <label class="setting select-setting">Visual quality<select id="quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+    <label class="setting select-setting">Hit indicators<input id="hit-indicators" type="checkbox"></label>
     <label class="setting select-setting">Invert mouse Y<input id="invert" type="checkbox"></label><button id="fullscreen" class="text-button">Fullscreen</button>
    </div>
   </div></div><div id="toast" role="status" class="hidden"></div><div id="loading" class="overlay loading-overlay" role="status" aria-live="polite"><div class="loading-content"><div id="loading-label">Loading</div><div id="loading-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="loading-label"><div id="loading-fill"></div></div></div></div><div id="load-error" class="overlay hidden"></div>`;
@@ -172,6 +174,7 @@ export class UI {
   (this.el['aim-mode'] as HTMLSelectElement).onchange=()=>{this.prefs.aim=(this.el['aim-mode'] as HTMLSelectElement).value as 'toggle'|'hold';this.save();};
   (this.el.quality as HTMLSelectElement).onchange=()=>{this.prefs.quality=(this.el.quality as HTMLSelectElement).value;this.save();};
   (this.el.invert as HTMLInputElement).onchange=()=>{this.prefs.invert=(this.el.invert as HTMLInputElement).checked;this.save();};
+  (this.el['hit-indicators'] as HTMLInputElement).onchange=()=>{this.prefs.hitIndicators=(this.el['hit-indicators'] as HTMLInputElement).checked;this.hitUntil=0;hudClass(this.el['hit-confirm'],'hidden',true);this.save();};
   this.refreshSelection();this.refreshSettings();this.setReady(false);
  }
  save(){try{localStorage.setItem('bolts-preferences',JSON.stringify(this.prefs));}catch{}this.settingsChanged();}
@@ -320,7 +323,7 @@ export class UI {
  }
  openSelection(){this.setSelectionBusy(false);this.spectatorSelection=this.spectating;this.selectionOpen=true;this.closeChat();this.closeModal();this.scoreHeld=false;this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.refreshSelection();this.setMenuStage('team');}
  closeSelection(){this.selectionOpen=false;this.el.menu.classList.add('hidden');this.el.hud.classList.remove('hidden');this.setMenuStage('main',false);}
- refreshSettings(){(this.el.difficulty as HTMLSelectElement).value=this.prefs.difficulty;(this.el['player-name'] as HTMLInputElement).value=this.prefs.playerName;this.el['player-name-preview'].innerHTML=playerNameHTML(this.prefs.playerName);(this.el.sensitivity as HTMLInputElement).value=String(this.prefs.sensitivity);(this.el.volume as HTMLInputElement).value=String(this.prefs.volume);this.el['sensitivity-value'].textContent=this.prefs.sensitivity.toFixed(1);this.el['volume-value'].textContent=Math.round(this.prefs.volume*100)+'%';(this.el['aim-mode'] as HTMLSelectElement).value=this.prefs.aim;(this.el.quality as HTMLSelectElement).value=this.prefs.quality;(this.el.invert as HTMLInputElement).checked=this.prefs.invert;this.refreshTouchSettings();}
+ refreshSettings(){(this.el.difficulty as HTMLSelectElement).value=this.prefs.difficulty;(this.el['player-name'] as HTMLInputElement).value=this.prefs.playerName;this.el['player-name-preview'].innerHTML=playerNameHTML(this.prefs.playerName);(this.el.sensitivity as HTMLInputElement).value=String(this.prefs.sensitivity);(this.el.volume as HTMLInputElement).value=String(this.prefs.volume);this.el['sensitivity-value'].textContent=this.prefs.sensitivity.toFixed(1);this.el['volume-value'].textContent=Math.round(this.prefs.volume*100)+'%';(this.el['aim-mode'] as HTMLSelectElement).value=this.prefs.aim;(this.el.quality as HTMLSelectElement).value=this.prefs.quality;(this.el.invert as HTMLInputElement).checked=this.prefs.invert;(this.el['hit-indicators'] as HTMLInputElement).checked=this.prefs.hitIndicators;this.refreshTouchSettings();}
  openModal(tab:string){
   this.el['difficulty-setting'].classList.toggle('hidden',!this.inGame||this.online);const selected=['controls','credits','feedback','leaderboard'].includes(tab)?tab:'settings';
   if(!this.modalOpen)this.modalReturnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
@@ -360,9 +363,11 @@ export class UI {
  }
  toast(message:string){this.el.toast.textContent=message;this.el.toast.classList.remove('hidden');setTimeout(()=>this.el.toast.classList.add('hidden'),4000);}
  showDamage(lethal=false){this.damageStarted=performance.now();this.damageLethal=lethal;this.damageUntil=this.damageStarted+(lethal?1100:620);}
+ // Predicted multiplayer shots have no target; only confirmed local hits flash.
+ showHit(shot:Shot){if(this.prefs.hitIndicators&&shot.actor===0&&shot.hit!==null&&shot.hit>0)this.hitUntil=performance.now()+250;}
  showKill(victimName:string){this.killUntil=performance.now()+3000;this.el['kill-message'].innerHTML=`You killed ${playerNameHTML(victimName)}`;this.el['kill-message'].style.opacity='1';this.el['kill-message'].classList.remove('hidden');}
- showMenu(){this.setSelectionBusy(false);this.spectating=this.spectatorSelection=false;this.inGame=false;this.selectionOpen=false;this.setOnline(false);this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.feed=[];this.killUntil=0;this.setMenuStage('main');}
- begin(){this.inGame=true;this.closeSelection();this.closeModal();this.damageStarted=-Infinity;this.damageUntil=0;this.feed=[];this.killUntil=0;this.scoreHeld=false;this.el['kill-message'].classList.add('hidden');this.el.menu.classList.add('hidden');this.el.pause.classList.add('hidden');this.el.scoreboard.classList.add('hidden');this.el.hud.classList.remove('hidden');}
+ showMenu(){this.setSelectionBusy(false);this.spectating=this.spectatorSelection=false;this.inGame=false;this.selectionOpen=false;this.setOnline(false);this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.feed=[];this.hitUntil=0;this.killUntil=0;this.setMenuStage('main');}
+ begin(){this.inGame=true;this.closeSelection();this.closeModal();this.damageStarted=-Infinity;this.damageUntil=0;this.feed=[];this.hitUntil=0;this.killUntil=0;this.scoreHeld=false;this.el['hit-confirm'].classList.add('hidden');this.el['kill-message'].classList.add('hidden');this.el.menu.classList.add('hidden');this.el.pause.classList.add('hidden');this.el.scoreboard.classList.add('hidden');this.el.hud.classList.remove('hidden');}
  update(game:Game,waitingForRespawn=false){
   if(!game.player)return;const replayActor=game.state==='killcam'?game.replayFrame()?.actors[game.killer]:null;const p=replayActor?{...game.actors[game.killer],...replayActor}:game.viewedActor??game.player,now=performance.now();
   const markup=this.hudMarkup;
@@ -379,7 +384,8 @@ export class UI {
   // Follow the physical spread state, with presentation-only reticle scaling.
   hudStyle(this.el.crosshair,'--spread',`${crosshairDisplayGapPixels(game.playerHipSpread,window.innerHeight)}px`);
   hudStyle(this.el['damage-flash'],'opacity',String(spectating?0:damageFlashOpacity(now-this.damageStarted,this.damageLethal)));
-  hudClass(this.el['hit-confirm'],'hidden',spectating||now>this.hitUntil);
+  hudClass(this.el['hit-confirm'],'hidden',!this.prefs.hitIndicators||spectating||!game.player.alive||game.state!=='playing'||this.modalOpen||this.selectionOpen||now>=this.hitUntil);
+  hudStyle(this.el['hit-confirm'],'opacity',String(Math.min(1,Math.max(0,(this.hitUntil-now)/100))));
   hudClass(this.el['kill-message'],'hidden',spectating||now>=this.killUntil||game.state!=='playing');hudStyle(this.el['kill-message'],'opacity',String(Math.min(1,Math.max(0,(this.killUntil-now)/600))));
   hudClass(this.el['spawn-protection'],'hidden',spectating||p.spawnSafe<=0||game.state!=='playing');
   hudStyle(this.el['compass-rose'],'transform',`rotate(${(spectating&&!followed?game.spectator.yaw:p.yaw)*180/Math.PI}deg)`);

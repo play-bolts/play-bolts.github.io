@@ -171,8 +171,8 @@ network.onJoined=name=>{
 network.onStatus=text=>{if(network.online&&!network.connected)clearTouchInput();if(onlineEntered)ui.setNetworkStatus(text);else if(ui.selectionOpen)ui.setSelectionStatus(text);else if(ui.lobbyOpen)ui.setLobbyStatus(text,!!text&&network.online);};
 network.onFailure=message=>{leave();lobbyFetchTime=performance.now();ui.showLobbies(lobbyRows,message);};
 network.onChat=message=>ui.addChat(message);
-network.onImpact=shot=>{if(game.state==='killcam')return;view.effect(shot,false,0,true,game.time);playImpactSound(sound,shot,game.actors,game.viewedActor?.id);};
-network.onRound=()=>{if(touchEnabled)clearTouchInput();sound.resetScene();endingReleased=false;ui.feed=[];ui.killUntil=0;ui.damageUntil=0;ui.damageStarted=-Infinity;lastReplaySound=-1;};
+network.onImpact=shot=>{if(game.state==='killcam')return;ui.showHit(shot);view.effect(shot,false,0,true,game.time);playImpactSound(sound,shot,game.actors,game.viewedActor?.id);};
+network.onRound=()=>{if(touchEnabled)clearTouchInput();sound.resetScene();endingReleased=false;ui.feed=[];ui.hitUntil=0;ui.killUntil=0;ui.damageUntil=0;ui.damageStarted=-Infinity;lastReplaySound=-1;};
 ui.chatSend=text=>network.chat(text);
 ui.chatOpened=()=>{clearTouchInput();releaseMouse();};
 ui.chatClosed=()=>{keys.clear();jump=false;updateTouchViewport();if(network.online&&!menu&&!ui.selectionOpen&&!ui.modalOpen&&game.state==='playing')capture();};
@@ -251,7 +251,7 @@ function processEvents(){
   if(!a)continue;
   const emitter={actor:a.id,position:game.eye(a),local:a.id===viewed?.id,faction:a.faction};
   if(game.state!=='killcam'){
-   if(event.type==='shot'&&event.shot){view.effect(event.shot,emitter.local);playCombatSound(sound,event.shot,game.actors,viewed?.id);}
+   if(event.type==='shot'&&event.shot){ui.showHit(event.shot);view.effect(event.shot,emitter.local);playCombatSound(sound,event.shot,game.actors,viewed?.id);}
    if(event.type==='bolt')sound.bolt(emitter);if(event.type==='reload')sound.reload(emitter);if(event.type==='step')sound.step(event.value??3,emitter);
    if(event.type==='switch')sound.switch(emitter);
   }

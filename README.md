@@ -29,6 +29,8 @@ Open the printed local URL in a desktop browser with WebGL 2, a mouse and keyboa
 
 Mobile browsers with WebGL 2 can also play. The mobile menu displays **Best experienced on a PC.** Rotate into landscape to enter a match; menus remain usable in portrait.
 
+Enable **Options → Hit indicators** for four small diagonal marks around the aim point when you hit an opponent, including while using iron sights. They are off by default, and your choice is saved in this browser. Multiplayer indicators wait for the server to confirm the hit.
+
 To use a local multiplayer server, follow [the backend setup](server/README.md) and run the frontend with its origin:
 
 ```sh

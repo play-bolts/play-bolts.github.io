@@ -121,7 +121,7 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 #crosshair i { position: absolute; background: #e3e2c7; width: var(--tick-length, 6px); height: 1px; }
 #crosshair i:nth-child(1) { left: var(--spread); }#crosshair i:nth-child(2) { right: var(--spread); }#crosshair i:nth-child(3) { height: var(--tick-length, 6px); width: 1px; top: var(--spread); }#crosshair i:nth-child(4) { height: var(--tick-length, 6px); width: 1px; bottom: var(--spread); }
 #damage-flash { position: absolute; inset: 0; background: radial-gradient(ellipse, transparent 30%, #820c06b0); opacity: 0; }
-#hit-confirm { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font: 22px Arial; color: #efdebd; }
+#hit-confirm { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); color: #e3e2c7; filter: drop-shadow(0 1px 1px #000); pointer-events: none; z-index: 6; }
 #status-message { position: absolute; bottom: 17%; width: 100%; text-align: center; font-size: 18px; color: #eee9cb; }
 #kill-message { position: absolute; top: 78%; left: 15%; right: 15%; transform: translateY(-50%); text-align: center; font-size: 21px; color: #eee9d5; overflow-wrap: anywhere; }
 #hud-menu { position: absolute; top: 20px; right: 25px; z-index: 3; padding: 5px 8px; color: #e0dec9; font-size: 16px; background: #242b2040; }

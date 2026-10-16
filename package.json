@@ -1,6 +1,6 @@
 {
   "name": "bolts",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "scripts": {"dev": "vite --host 127.0.0.1", "build": "tsc --noEmit && vite build", "test": "node --import tsx --test tests/*.test.ts", "preview": "vite preview --host 127.0.0.1"},

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {Sound,type SoundEmitter} from '../src/audio.ts';
 import {listenerBasis,soundEnvironment} from '../src/audioSpatial.ts';
 import {BOXES} from '../src/config.ts';
+import {COMBAT_SOUNDS} from '../src/audioSynthesis.ts';
 
 class Param {value=0;setValueAtTime(v:number){this.value=v;}setTargetAtTime(v:number){this.value=v;}exponentialRampToValueAtTime(v:number){this.value=v;}}
 class Node {
@@ -77,6 +78,27 @@ test('voice count remains bounded under excessive repeated events',()=>{
  sound.resetScene();assert.equal(ctx.sources.filter(s=>!s.disconnected).length,0);
 });
 
+test('swing and contact use independent spatial voices, with no phantom impact on a miss',()=>{
+ const {sound,ctx,master}=setup();sound.melee(remote);
+ assert.equal(ctx.sources.length,1,'a swing alone does not imply a hit');
+ const swing=ctx.sources[0].buffer;sound.impact({...remote,actor:3,position:{x:2,y:1,z:4}},'melee');
+ assert.equal(ctx.sources.length,2);assert.notEqual(ctx.sources[1].buffer,swing);
+ assert.equal(ctx.panners[1].positionX.value,2);assert.equal(ctx.panners[1].positionZ.value,4);
+ assert.equal(ctx.gains.filter(g=>g.connections.includes(master)).length,0);
+ sound.stopActor(remote.actor);assert.ok(ctx.sources[0].disconnected);assert.equal(ctx.sources[1].disconnected,false,'victim contact is not owned by the attacker');
+ sound.impact({...remote,actor:0,local:true},'shot');assert.equal(ctx.gains.filter(g=>g.connections.includes(master)).length,1,'first-person damage remains centered');
+ sound.resetScene();assert.ok(ctx.sources.every(source=>source.disconnected));
+});
+
+test('repeated actions vary their waveform without growing the fixed sample cache',()=>{
+ const {sound,ctx}=setup(),random=Math.random;Math.random=()=>.1;
+ try{
+  for(let i=0;i<12;i++){sound.shot(remote);sound.melee(remote);sound.impact(remote,'melee');sound.impact(remote,'shot');}
+  for(let kind=0;kind<4;kind++)for(let i=kind+4;i<ctx.sources.length;i+=4)assert.notEqual(ctx.sources[i].buffer,ctx.sources[i-4].buffer,'adjacent instances cannot repeat even when randomness repeats');
+  assert.ok(ctx.buffers.length<=13,'one noise buffer plus at most three samples of each kind');
+ }finally{Math.random=random;}
+});
+
 test('batched scene transforms route queued sounds once using the final actor position',()=>{
  const {sound,ctx}=setup();sound.updateListener({x:0,y:2,z:0},0);sound.reload(remote);
  const old=ctx.panners.map(p=>p.positionX.value);
@@ -86,7 +108,7 @@ test('batched scene transforms route queued sounds once using the final actor po
  sound.cancelReload(remote.actor);assert.ok(ctx.sources.every(source=>source.disconnected),'batching preserves scheduled reload cancellation');
 });
 
-test('initialization warms all rifle variants asynchronously and warm shots allocate no new buffers',()=>{
+test('initialization warms combat variants asynchronously and warm playback allocates no new buffers',()=>{
  const contextDescriptor=Object.getOwnPropertyDescriptor(globalThis,'AudioContext'),workerDescriptor=Object.getOwnPropertyDescriptor(globalThis,'Worker');
  const workers:WorkerStub[]=[];
  class WorkerStub {
@@ -101,11 +123,18 @@ test('initialization warms all rifle variants asynchronously and warm shots allo
   assert.equal(workers.length,1);assert.equal(worker.options.type,'module');assert.match(worker.url.pathname,/rifleAudio\.worker\.ts$/);assert.equal(worker.rate,48000);assert.equal(ctx.buffers.length,1,'init only creates its noise buffer; rifle synthesis is off-thread');
   const factions=['british','russian','german'] as const;
   for(const faction of factions)for(let variant=0;variant<3;variant++)worker.onmessage!({data:{faction,variant,samples:new Float32Array([variant/10,.5,-.5,0])}});
-  worker.onmessage!({data:{done:true}});assert.equal(worker.terminated,true);assert.equal(ctx.buffers.length,10);
+  for(const kind of COMBAT_SOUNDS)for(let variant=0;variant<3;variant++)worker.onmessage!({data:{kind,variant,samples:new Float32Array([variant/10,.25,-.25,0])}});
+  worker.onmessage!({data:{done:true}});assert.equal(worker.terminated,true);assert.equal(ctx.buffers.length,19);
   for(const faction of factions)for(let variant=0;variant<3;variant++){
    Math.random=()=>variant/3+.01;sound.shot({...remote,faction});const buffer=ctx.sources.at(-1)!.buffer as ReturnType<Context['createBuffer']>;
    assert.deepEqual([...buffer.getChannelData()],[Math.fround(variant/10),.5,-.5,0]);
   }
-  assert.equal(ctx.buffers.length,10,'shooting uses all nine warmed buffers');sound.resetScene();
+  for(const kind of COMBAT_SOUNDS)for(let variant=0;variant<3;variant++){
+   Math.random=()=>variant/3+.01;
+   if(kind==='swing')sound.melee(remote);else sound.impact(remote,kind==='melee-impact'?'melee':'shot');
+   const buffer=ctx.sources.at(-1)!.buffer as ReturnType<Context['createBuffer']>;
+   assert.deepEqual([...buffer.getChannelData()],[Math.fround(variant/10),.25,-.25,0]);
+  }
+  assert.equal(ctx.buffers.length,19,'rifles, swings and contacts use all 18 warmed buffers');sound.resetScene();
  }finally{Math.random=random;if(contextDescriptor)Object.defineProperty(globalThis,'AudioContext',contextDescriptor);else delete(globalThis as any).AudioContext;if(workerDescriptor)Object.defineProperty(globalThis,'Worker',workerDescriptor);else delete(globalThis as any).Worker;}
 });

@@ -173,15 +173,15 @@ export class View {
   // their exact current pose and recorded death animation state.
   for(let i=0;i<this.soldiers.length;i++)if(game.actors[i]?.alive)delete this.soldiers[i].userData.soldierState;
  }
- effect(shot:Shot,local:boolean,elapsed=0){
+ effect(shot:Shot,local:boolean,elapsed=0,impactOnly=false,startedAt=shot.time){
   const melee=shot.kind==='melee';
-  if(local){if(melee)this.weaponMeleeStart=shot.time;else this.weaponShotStart=shot.time;}
+  if(local&&!impactOnly){if(melee)this.weaponMeleeStart=shot.time;else this.weaponShotStart=shot.time;}
   const delta=new THREE.Vector3(shot.end.x-shot.origin.x,shot.end.y-shot.origin.y,shot.end.z-shot.origin.z),len=delta.length();
   const seed=shotFeedbackSeed(shot);
   if(len<119&&elapsed>=0&&elapsed<IMPACT_SECONDS&&(!melee||shot.hit!==null)){
-   const mesh=this.burstPool().acquireImpact(shot);updateImpactEffect(mesh,elapsed);this.scene.add(mesh);this.effects.push({mesh,life:IMPACT_SECONDS-elapsed,total:IMPACT_SECONDS,started:shot.time,kind:'impact',seed});
+   const mesh=this.burstPool().acquireImpact(shot);updateImpactEffect(mesh,elapsed);this.scene.add(mesh);this.effects.push({mesh,life:IMPACT_SECONDS-elapsed,total:IMPACT_SECONDS,started:startedAt,kind:'impact',seed});
   }
-  if(!local&&!melee&&elapsed>=0&&elapsed<MUZZLE_EFFECT_SECONDS){const spark=this.burstPool().acquireMuzzle(),anchor=this.soldiers[shot.actor]?.getObjectByName('muzzle-anchor');if(anchor)placeMuzzleFlash(spark,anchor);else{spark.position.set(shot.origin.x,shot.origin.y,shot.origin.z);if(len>0)spark.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,-1),delta.normalize());}updateMuzzleFlash(spark,elapsed,undefined,seed);this.scene.add(spark);this.effects.push({mesh:spark,life:MUZZLE_EFFECT_SECONDS-elapsed,total:MUZZLE_EFFECT_SECONDS,started:shot.time,kind:'muzzle',seed,anchor});}
+  if(!impactOnly&&!local&&!melee&&elapsed>=0&&elapsed<MUZZLE_EFFECT_SECONDS){const spark=this.burstPool().acquireMuzzle(),anchor=this.soldiers[shot.actor]?.getObjectByName('muzzle-anchor');if(anchor)placeMuzzleFlash(spark,anchor);else{spark.position.set(shot.origin.x,shot.origin.y,shot.origin.z);if(len>0)spark.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,-1),delta.normalize());}updateMuzzleFlash(spark,elapsed,undefined,seed);this.scene.add(spark);this.effects.push({mesh:spark,life:MUZZLE_EFFECT_SECONDS-elapsed,total:MUZZLE_EFFECT_SECONDS,started:shot.time,kind:'muzzle',seed,anchor});}
   while(this.effects.length>MAX_WORLD_EFFECTS){const oldest=this.effects.shift()!;this.burstPool().release(oldest.mesh);}
  }
  render(game:Game,dt:number,inMenu:boolean,intro=true,remoteTime=game.time,localPosition:{x:number;y:number;z:number}|null=null){

@@ -11,7 +11,7 @@ import {bindTouchAction} from './touchActions';
 const closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg>';
 const controls=[['W A S D','Move'],['Mouse','Look'],['LMB','Fire / grenade bash'],['RMB','Iron sights'],['1 / 2','Rifle / grenade'],['Wheel','Switch weapon'],['R','Reload'],['Space','Jump / stand'],['C','Crouch'],['Ctrl','Prone'],['Q / E','Lean'],['Shift','Melee'],['Alt','Walk'],['Tab','Scoreboard'],['T / Enter','Chat'],['M','Change team'],['Esc','Menu / leave follow'],['LMB / RMB','Spectator: next / previous'],['Space / Ctrl','Spectator: up / down'],['Shift','Spectator: faster']];
 export interface Preferences {faction:Faction;difficulty:Difficulty;playerName:string;playerNameVersion:number;sensitivity:number;volume:number;aim:'toggle'|'hold';quality:string;invert:boolean;controlsMode:'auto'|'touch'|'mouse';touchSensitivity:number;touchSize:number}
-export type TouchAction='aim'|'reload'|'jump'|'crouch'|'weapon'|'melee'|'prone'|'team'|'score'|'chat'|'menu'|'up'|'down'|'next'|'previous'|'unfollow';
+export type TouchAction='aim'|'reload'|'crouch'|'prone'|'team'|'score'|'chat'|'menu'|'up'|'down'|'next'|'previous'|'unfollow';
 export interface TouchState {enabled:boolean;mobile:boolean;controls:boolean;rotate:boolean;resume:boolean;spectator:boolean;following:boolean;ads:boolean;weapon:'rifle'|'grenade'}
 export type LobbyRow=Pick<Lobby,'id'|'name'|'players'|'capacity'|'ping'|'location'> & Partial<Pick<Lobby,'phase'>>;
 export interface ChatLine {id?:string;name?:string;message:string;system?:boolean}
@@ -21,7 +21,7 @@ export function scoreboardRows(actors:readonly Actor[],online:boolean){
 export class UI {
  menuStage:'main'|'team'='main';selectionOpen=false;ready=false;private selectionBusy=false;
  private inGame=false;private spectating=false;private spectatorSelection=false;
- online=false;lobbyOpen=false;chatOpen=false;
+ online=false;lobbyOpen=false;chatOpen=false;private onlineCount:number|null=null;
  private lobbyRows:LobbyRow[]=[];private selectedLobby='';private lobbyBusy=false;
  private lobbyLocations:readonly LobbyLocation[]=[];private selectedLocation:LobbyLocation='ca';
  private chatIds=new Set<string>();
@@ -63,7 +63,7 @@ export class UI {
      <h1>BOLTS</h1>
      <div class="main-choices"><button id="start" class="classic-choice">Single player</button><button id="multiplayer" class="classic-choice">Multiplayer</button><button id="leaderboard-open" class="classic-choice">Leaderboard</button><button id="feedback-open" class="classic-choice">Feedback</button><button class="classic-choice settings-button">Options</button><button class="classic-choice controls-button">Controls</button><button id="credits-open" class="classic-choice">Credits</button></div>
      <p id="mobile-notice" class="hidden"><strong>Best experienced on a PC.</strong><span>On mobile, rotate to landscape and use the touch controls.</span></p>
-    </section><div id="players-online" role="status" aria-live="polite">— players online</div>
+    </section><div id="players-online" class="hidden" role="status" aria-live="polite"></div>
   <section id="lobby-window" class="classic-window lobby-window hidden" aria-labelledby="lobby-title">
    <header class="lobby-heading"><h2 id="lobby-title">Join game</h2></header>
    <div id="lobby-location-controls" class="lobby-location-controls hidden"><div class="lobby-location-picker" role="group" aria-labelledby="lobby-location-label"><span id="lobby-location-label">Location</span><div id="lobby-locations"></div></div><button id="lobby-play" aria-describedby="lobby-location-hint">Play</button><p id="lobby-location-hint"></p></div>
@@ -90,15 +90,15 @@ export class UI {
    <div id="killcam" class="hidden"><div class="killcam-top"><span>Killcam</span><span id="killer-name"></span></div><div class="killcam-bottom"><button id="skip-killcam">Skip <kbd>Space</kbd></button><span id="respawn-wait" class="hidden" role="status">Waiting to respawn…</span></div></div>
    <div id="touch-controls" class="hidden" aria-label="Touch controls">
     <div id="touch-look" aria-label="Drag to look without firing"></div>
-    <div id="touch-move" class="touch-pad" role="group" aria-label="Movement joystick"><span class="touch-knob" aria-hidden="true"></span><span class="touch-label">Move</span></div>
+    <div id="touch-move" class="touch-pad" role="group" aria-label="Movement joystick; tap to jump"><span class="touch-knob" aria-hidden="true"></span><span id="touch-move-label" class="touch-label">Move · Tap to jump</span></div>
     <div id="touch-fire" class="touch-pad" role="group" aria-label="Aim and fire joystick"><span class="touch-knob" aria-hidden="true"></span><span class="touch-label">Aim / Fire</span></div>
     <div class="touch-utility"><button type="button" data-touch-action="menu">Menu</button><button type="button" data-touch-action="score">Score</button><button id="touch-chat" type="button" data-touch-action="chat">Chat</button></div>
-    <div id="touch-player-actions" class="touch-actions"><button id="touch-aim" type="button" data-touch-action="aim" aria-pressed="false">Sights</button><button type="button" data-touch-action="reload">Reload</button><button type="button" data-touch-action="jump">Jump</button><button type="button" data-touch-action="crouch">Crouch</button><button id="touch-weapon" type="button" data-touch-action="weapon">Grenade</button><button type="button" data-touch-action="melee">Melee</button></div>
+    <div id="touch-player-actions"><div class="touch-actions touch-movement-actions" aria-label="Stance"><button type="button" data-touch-action="crouch">Crouch</button><button type="button" data-touch-action="prone">Prone</button></div><div class="touch-actions touch-weapon-actions" aria-label="Rifle controls"><button id="touch-aim" type="button" data-touch-action="aim" aria-pressed="false">Aim</button><button type="button" data-touch-action="reload">Reload</button></div></div>
     <div id="touch-spectator-actions" class="touch-spectator-actions hidden"><button type="button" data-touch-action="previous" aria-label="Follow previous player">Previous</button><button type="button" data-touch-action="next" aria-label="Follow next player">Next</button><button id="touch-unfollow" type="button" data-touch-action="unfollow">Free fly</button><button id="touch-up" type="button" data-touch-action="up">Rise</button><button id="touch-down" type="button" data-touch-action="down">Lower</button><button type="button" data-touch-action="team">Join game</button></div>
    </div>
   </div>
   <div id="mobile-rotate" class="overlay mobile-orientation hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-rotate-title"><div class="dialog mobile-card"><svg class="rotate-phone" viewBox="0 0 100 90" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="37" y="19" width="29" height="53" rx="4" transform="rotate(33 51 46)"/><path d="M46 23h10M36 72c-17-7-23-24-16-39m-9 2 9-3 5 9m42-22c17 7 23 24 16 39m9-2-9 3-5-9"/></svg><h2 id="mobile-rotate-title">Rotate your phone to landscape to play</h2><p>Best experienced on a PC.</p><p class="mobile-match-note">In multiplayer, the match continues while this screen is open.</p><button id="mobile-rotate-back" type="button" class="secondary-button">Back to menu</button></div></div>
-  <div id="mobile-resume" class="overlay mobile-orientation hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-resume-title"><div class="dialog mobile-card"><h2 id="mobile-resume-title">Ready to play?</h2><p>Left joystick to move. Right joystick to aim and fire. Drag elsewhere on the right to look.</p><button id="mobile-resume-button" type="button" class="start-button">Resume</button><button id="mobile-resume-back" type="button" class="secondary-button">Back to menu</button></div></div>
+  <div id="mobile-resume" class="overlay mobile-orientation hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-resume-title"><div class="dialog mobile-card"><h2 id="mobile-resume-title">Ready to play?</h2><p>Left joystick to move; tap it to jump. Right joystick to aim and fire. Drag elsewhere on the right to look.</p><button id="mobile-resume-button" type="button" class="start-button">Resume</button><button id="mobile-resume-back" type="button" class="secondary-button">Back to menu</button></div></div>
   <div id="pause" class="overlay hidden"><div class="dialog pause-card"><h2 id="pause-title">Paused</h2><button id="resume" class="start-button">Resume</button><button id="open-team" class="secondary-button">Select team</button><button id="pause-score" class="secondary-button">Scoreboard</button><button class="secondary-button settings-button">Options</button><button class="secondary-button controls-button">Controls</button><button id="leave" class="secondary-button">Main menu</button></div></div>
   <div id="scoreboard" class="overlay hidden"><div class="score-card"><button id="score-close" class="icon-button" aria-label="Close scoreboard">${closeIcon}</button><div class="score-heading"><span id="score-time">05:00</span></div><h2 id="score-title">Scoreboard</h2><p id="score-winner" class="hidden"></p><table><thead><tr><th>#</th><th>Player</th><th>Kills</th><th>Deaths</th><th id="score-ping" class="hidden" aria-label="Ping in milliseconds">Ping</th></tr></thead><tbody id="score-rows"></tbody></table><div id="end-actions" class="hidden"><button id="again" class="start-button">Play again</button><button id="end-leave" class="secondary-button">Main menu</button></div></div></div>
   <div id="modal" class="overlay hidden"><div id="modal-dialog" class="dialog manual" role="dialog" aria-modal="true" aria-label="Options"><button id="modal-close" class="icon-button" aria-label="Close dialog">${closeIcon}</button><div id="options-tabs" class="modal-tabs"><button data-tab="settings" class="active">Options</button><button data-tab="controls">Controls</button></div>
@@ -127,7 +127,7 @@ export class UI {
     <p>Title font: <a href="https://github.com/google/fonts/tree/main/ofl/alfaslabone" target="_blank" rel="noopener">Alfa Slab One</a> — JM Solé · <a href="./assets/fonts/alfa-slab-one/OFL.txt" target="_blank" rel="noopener">SIL OFL 1.1</a></p>
     <p>Visit counts use a random browser ID. <a href="https://github.com/play-bolts/play-bolts.github.io/blob/main/research/user-analytics.md" target="_blank" rel="noopener">Privacy and analytics</a></p>
    </section>
-   <div id="tab-controls" class="hidden"><div class="touch-controls-help"><h2>Touch controls</h2><p>Play in landscape. Use the left joystick to move; release it to stop.</p><p>Drag the right joystick to aim. Tap for one shot or hold to fire as the rifle cycles. Drag the open right side of the screen to look without firing.</p><p>Tap Sights to toggle aiming. Use the buttons above the sticks to reload, jump, crouch, switch weapons or melee.</p><p>Change sensitivity and control size in Options. Returning from an interruption clears held inputs; tap Resume to continue.</p><p>Best experienced on a PC.</p></div><div class="controls-grid keyboard-controls">${controls.map(([key,label])=>`<div><kbd>${key}</kbd><span>${label}</span></div>`).join('')}</div></div>
+   <div id="tab-controls" class="hidden"><div class="touch-controls-help"><h2>Touch controls</h2><p>Play in landscape. Use the left joystick to move; release it to stop. Tap the left joystick to jump.</p><p>Drag the right joystick to aim. Tap for one shot or hold to fire as the rifle cycles. Drag the open right side of the screen to look without firing.</p><p>Crouch and Prone are above the left joystick. Aim toggles iron sights, beside Reload above the right joystick.</p><p>Change sensitivity and control size in Options. Returning from an interruption clears held inputs; tap Resume to continue.</p><p>Best experienced on a PC.</p></div><div class="controls-grid keyboard-controls">${controls.map(([key,label])=>`<div><kbd>${key}</kbd><span>${label}</span></div>`).join('')}</div></div>
    <div id="tab-settings">
     <label id="difficulty-setting" class="setting select-setting hidden">Difficulty<select id="difficulty"><option value="recruit">Recruit</option><option value="regular">Regular</option><option value="veteran">Veteran</option></select></label>
     <div class="name-setting"><label for="player-name">Player name</label><input id="player-name" type="text" maxlength="${MAX_NAME_RAW_LENGTH}" autocomplete="off" spellcheck="false" aria-describedby="name-color-help"><div class="name-preview-row"><div id="player-name-preview" aria-label="Name preview"></div><small id="name-color-help">^0–^9</small></div></div>
@@ -195,9 +195,10 @@ export class UI {
   }
   hudClass(this.el['touch-player-actions'],'hidden',state.spectator);hudClass(this.el['touch-spectator-actions'],'hidden',!state.spectator);
   hudClass(this.el['touch-move'],'hidden',state.spectator&&state.following);hudClass(this.el['touch-fire'],'hidden',state.spectator);
+  hudText(this.el['touch-move-label'],state.spectator?'Move':'Move · Tap to jump');this.el['touch-move'].setAttribute('aria-label',state.spectator?'Movement joystick':'Movement joystick; tap to jump');
   hudClass(this.el['touch-unfollow'],'hidden',!state.following);hudClass(this.el['touch-up'],'hidden',state.following);hudClass(this.el['touch-down'],'hidden',state.following);
   hudClass(this.el['touch-chat'],'hidden',!this.online);hudClass(this.el['touch-aim'],'hidden',state.weapon==='grenade');
-  this.el['touch-aim'].setAttribute('aria-pressed',String(state.ads));hudText(this.el['touch-weapon'],state.weapon==='rifle'?'Grenade':'Rifle');
+  this.el['touch-aim'].setAttribute('aria-pressed',String(state.ads));
   // Keep the normal menu button available during killcams, when the sticks hide.
   hudText(this.el['hud-menu'],state.enabled?'Menu':'Esc · Menu');
   this.refreshTouchSettings();
@@ -221,7 +222,7 @@ export class UI {
    for(const id of locations){const label=locationLabel(id)!;const button=document.createElement('button'),flag=document.createElement('img');button.type='button';button.dataset.location=id;button.title=label.name;button.setAttribute('aria-label',label.name);flag.className='lobby-flag';flag.src=`${import.meta.env?.BASE_URL??'/'}flags/${label.country}.svg`;flag.alt='';button.append(flag,document.createTextNode(` ${label.abbreviation}`));button.onclick=()=>{this.selectedLocation=id;this.refreshLobbyButtons();};this.el['lobby-locations'].append(button);}
   }
   if(!rows.some(row=>row.id===this.selectedLobby))this.selectedLobby=rows.find(row=>row.players<row.capacity)?.id??rows[0]?.id??'';
-  const opening=!this.lobbyOpen;this.lobbyOpen=true;this.menuStage='main';this.el.menu.classList.remove('hidden','intro-active');this.el['menu-main'].classList.add('hidden');this.el['selection-window'].classList.add('hidden');this.el['lobby-window'].classList.remove('hidden');this.el['players-online'].classList.add('hidden');
+  const opening=!this.lobbyOpen;this.lobbyOpen=true;this.menuStage='main';this.el.menu.classList.remove('hidden','intro-active');this.el['menu-main'].classList.add('hidden');this.el['selection-window'].classList.add('hidden');this.el['lobby-window'].classList.remove('hidden');this.refreshOnlineCountVisibility();
   this.el['lobby-rows'].replaceChildren();
   for(const row of this.lobbyRows){
    const tr=document.createElement('tr'),name=document.createElement('td'),location=document.createElement('td'),players=document.createElement('td'),ping=document.createElement('td'),button=document.createElement('button');
@@ -298,7 +299,7 @@ export class UI {
    this.el.loading.classList.remove('hidden','loading-complete');
   }
  }
- setMenuStage(stage:typeof this.menuStage,focus=true){this.lobbyOpen=false;this.el['lobby-window'].classList.add('hidden');this.menuStage=stage;this.el['players-online'].classList.toggle('hidden',stage!=='main');this.el.menu.classList.toggle('intro-active',stage==='main');this.el['selection-window'].classList.toggle('hidden',stage==='main');
+ setMenuStage(stage:typeof this.menuStage,focus=true){this.lobbyOpen=false;this.el['lobby-window'].classList.add('hidden');this.menuStage=stage;this.refreshOnlineCountVisibility();this.el.menu.classList.toggle('intro-active',stage==='main');this.el['selection-window'].classList.toggle('hidden',stage==='main');
   for(const name of ['main','team'])this.el['menu-'+name].classList.toggle('hidden',name!==stage);
   document.querySelectorAll<HTMLElement>('[data-menu-tab]').forEach(b=>{const active=b.dataset.menuTab===stage;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
   if(focus){const target=stage==='main'?this.el.multiplayer:document.querySelector<HTMLElement>(`[data-faction="${this.prefs.faction}"]`);if(target instanceof HTMLButtonElement&&target.disabled)document.querySelector<HTMLElement>(`[data-menu-tab="${stage}"]`)?.focus();else target?.focus();}
@@ -329,7 +330,8 @@ export class UI {
   if(selected==='feedback')(this.feedbackBusy?this.el['modal-close']:this.el['feedback-message']).focus();else this.el['modal-close'].focus();
   if(selected==='leaderboard')this.leaderboardLoad();
  }
- setOnlineCount(count:number|null){this.el['players-online'].textContent=count===null?'— players online':`${count} ${count===1?'player':'players'} online`;this.el['players-online'].title=count===null?'Online count unavailable':'';}
+ setOnlineCount(count:number|null){this.onlineCount=typeof count==='number'&&Number.isSafeInteger(count)&&count>=0?count:null;hudText(this.el['players-online'],this.onlineCount!==null&&this.onlineCount>1?`${this.onlineCount} players online`:'');this.refreshOnlineCountVisibility();}
+ private refreshOnlineCountVisibility(){hudClass(this.el['players-online'],'hidden',this.onlineCount===null||this.onlineCount<=1||this.menuStage!=='main'||this.lobbyOpen);}
  async submitFeedback(){
   if(this.feedbackBusy)return;const message=this.el['feedback-message'] as HTMLTextAreaElement,email=this.el['feedback-email'] as HTMLInputElement,status=this.el['feedback-status'],submit=this.el['feedback-submit'] as HTMLButtonElement;
   try{validateFeedback(message.value,email.value);}catch(error){status.textContent=error instanceof Error?error.message:'Enter your feedback.';(status.textContent.includes('email')?email:message).focus();return;}

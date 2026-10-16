@@ -14,17 +14,18 @@ class Surface extends EventTarget {
  setPointerCapture(pointer:number){this.captured.add(pointer);}
  hasPointerCapture(pointer:number){return this.captured.has(pointer);}
  releasePointerCapture(pointer:number){this.captured.delete(pointer);this.pointer('lostpointercapture',pointer);}
- pointer(type:string,pointerId:number,x=50,y=50,pointerType='touch'){
+ pointer(type:string,pointerId:number,x=50,y=50,pointerType='touch',timeStamp?:number){
   const event=new Event(type,{cancelable:true});
   Object.assign(event,{pointerId,clientX:x,clientY:y,pointerType});
+  if(timeStamp!==undefined)Object.defineProperty(event,'timeStamp',{value:timeStamp});
   this.dispatchEvent(event);return event;
  }
 }
 function fixture(){
  const move=new Surface(),fire=new Surface(),look=new Surface();
- const callbacks={shots:0,releases:0,cancellations:[] as boolean[],resets:0,looks:[] as [number,number][]};
+ const callbacks={shots:0,jumps:0,releases:0,cancellations:[] as boolean[],resets:0,looks:[] as [number,number][]};
  const controls=new TouchControls({move:move as unknown as HTMLElement,fire:fire as unknown as HTMLElement,look:look as unknown as HTMLElement},{
-  look:(dx,dy)=>callbacks.looks.push([dx,dy]),fire:()=>callbacks.shots++,fireReleased:cancelled=>{callbacks.releases++;callbacks.cancellations.push(cancelled);},reset:()=>callbacks.resets++,
+  look:(dx,dy)=>callbacks.looks.push([dx,dy]),fire:()=>callbacks.shots++,fireReleased:cancelled=>{callbacks.releases++;callbacks.cancellations.push(cancelled);},jump:()=>callbacks.jumps++,reset:()=>callbacks.resets++,
  });
  controls.setEnabled(true);return {move,fire,look,controls,callbacks};
 }
@@ -110,4 +111,44 @@ test('repeated enabled state updates do not reset input or rewrite inactive pads
  controls.setEnabled(false);const inactiveWrites=move.writes+fire.writes;
  for(let frame=0;frame<120;frame++)controls.setEnabled(false);
  assert.equal(move.writes+fire.writes,inactiveWrites);assert.equal(callbacks.resets,1);
+});
+
+test('a short stationary movement-stick tap jumps once on release while another finger fires',()=>{
+ const {move,fire,controls,callbacks}=fixture();
+ fire.pointer('pointerdown',2,90,50,'touch',90);
+ move.pointer('pointerdown',1,50,50,'touch',100);
+ assert.equal(callbacks.jumps,0,'jump waits for a confirmed tap');
+ move.pointer('pointermove',1,54,53,'touch',180);
+ move.pointer('pointerup',1,54,53,'touch',250);
+ assert.equal(callbacks.jumps,1,'small finger jitter is allowed');
+ assert.deepEqual(controls.movement,{forward:0,right:0});assert.equal(controls.firing,true);
+ move.pointer('pointerup',1,54,53,'touch',260);fire.pointer('pointerup',2,90,50,'touch',270);
+ assert.equal(callbacks.jumps,1,'duplicate release, capture loss, and fire release cannot jump');
+});
+
+test('movement drags and long holds never become a jump',()=>{
+ for(const gesture of ['drag-return','release-displaced','hold']){
+  const {move,callbacks}=fixture();
+  move.pointer('pointerdown',1,50,50,'touch',100);
+  if(gesture==='drag-return'){
+   move.pointer('pointermove',1,50,10,'touch',150);
+   move.pointer('pointermove',1,50,50,'touch',180);
+  }
+  move.pointer('pointerup',1,gesture==='release-displaced'?61:50,50,'touch',gesture==='hold'?351:200);
+  assert.equal(callbacks.jumps,0,gesture);
+ }
+});
+
+test('interrupted movement taps and releases from another finger cannot jump',()=>{
+ for(const interruption of ['pointercancel','lostpointercapture','clear','disable']){
+  const {move,controls,callbacks}=fixture();move.pointer('pointerdown',1,50,50,'touch',100);
+  move.pointer('pointerup',2,50,50,'touch',150);assert.equal(callbacks.jumps,0,'foreign pointer cannot release a tap');
+  if(interruption==='clear')controls.clear();
+  else if(interruption==='disable')controls.setEnabled(false);
+  else move.pointer(interruption,1,50,50,'touch',180);
+  controls.setEnabled(true);move.pointer('pointerup',1,50,50,'touch',200);
+  assert.equal(callbacks.jumps,0,interruption);
+  move.pointer('pointerdown',3,50,50,'touch',300);move.pointer('pointerup',3,50,50,'touch',400);
+  assert.equal(callbacks.jumps,1,'a fresh touch can jump after interruption');
+ }
 });

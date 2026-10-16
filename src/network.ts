@@ -45,7 +45,7 @@ function validEvents(value:unknown):value is WireEvent[]{
  * and an opaque bearer token, sent only over HTTPS / the first WebSocket frame. */
 export class NetworkClient {
  readonly game:Game;
- onRoster=()=>{};onJoined=(_name:string)=>{};onStatus=(_text:string)=>{};onFailure=(_message:string)=>{};onChat=(_message:ChatMessage)=>{};onRound=()=>{};
+ onRoster=()=>{};onJoined=(_name:string)=>{};onStatus=(_text:string)=>{};onFailure=(_message:string)=>{};onChat=(_message:ChatMessage)=>{};onRound=()=>{};onImpact=(_shot:Shot)=>{};
  online=false;connected=false;ping=0;lobbyId='';lobbyName='';
  private origin:string;private fetcher:typeof fetch;private socketFactory:(url:string)=>SocketLike;private storage?:Pick<Storage,'getItem'|'setItem'|'removeItem'>;private now:()=>number;
  private socket:SocketLike|null=null;private token='';private actorId=-1;private ids:number[]=[];private seq=0;private pending:PendingInput[]=[];private snapshots:WireSnapshot[]=[];private predictedEffects=new Set<string>();
@@ -71,14 +71,18 @@ export class NetworkClient {
   return new URL(path,origin).href;
  }
  async lobbies():Promise<Lobby[]>{
+  const started=this.now();
   const response=await this.fetcher(this.endpoint('/api/lobbies'),{cache:'no-store',signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error('Unable to load servers.');const body=await response.json();if(!Array.isArray(body.lobbies))throw new Error('Invalid server list.');
   const rows:Lobby[]=body.lobbies.filter((l:any)=>l&&typeof l.id==='string'&&!l.id.startsWith('new:')&&typeof l.name==='string'&&Number.isInteger(l.players)&&l.players>=0&&l.capacity===6&&['playing','ended','starting'].includes(l.phase)).map((l:any)=>({id:l.id,name:l.name,players:l.players,bots:l.bots,capacity:6,phase:l.phase,location:typeof l.location==='string'?l.location:undefined,pingUrl:typeof l.pingUrl==='string'?l.pingUrl:undefined,managed:l.managed===true}));
   this.directoryLocations=body.version===2&&Array.isArray(body.locations)?[...new Set<LobbyLocation>(body.locations.filter((id:unknown):id is LobbyLocation=>typeof id==='string'&&!!locationLabel(id)))]:[];
+  // Classic directory responses use their request RTT for the lobby list.
+  if(body.version!==2){const ping=Math.max(0,Math.round(this.now()-started));for(const row of rows)if(!row.managed)row.ping=ping;}
   this.directory=new Map(rows.map(row=>[row.id,row]));return rows;
  }
  async measureLobbies(rows:readonly Lobby[],signal?:AbortSignal):Promise<Lobby[]>{
   const endpoints=new Map<string,Promise<number|undefined>>();
   return Promise.all(rows.map(async row=>{
+   if(!row.managed&&!row.pingUrl&&row.ping!==undefined)return {...row};
    let ping:number|undefined;
    if(row.phase!=='starting'&&(!row.managed||row.pingUrl))try{
     const url=gameEndpoint(row.pingUrl??this.endpoint('/api/ping'),this.origin);url.protocol=url.protocol==='https:'?'wss:':url.protocol==='http:'?'ws:':url.protocol;
@@ -402,6 +406,9 @@ export class NetworkClient {
    const event:Event={...source,actor,victim,shot};
    if(shot){game.shots.push(shot);if(game.shots.length>200)game.shots.shift();}
    const effectKey=`${event.type}:${source.seq??source.shot?.seq??-1}`,predicted=actor===0&&this.predictedEffects.delete(effectKey);
+   // The attack already played locally; its confirmed hit still needs blood
+   // and contact audio, without a second muzzle flash, report or recoil.
+   if(predicted&&event.type==='shot'&&shot?.actor===0&&shot.hit!==null&&shot.hit>=0)this.onImpact(shot);
    if(!predicted&&!(actor===0&&event.type==='step'))game.events.push(event);
    if(event.type==='kill'&&!staleRound&&!staleActor&&!staleVictim&&actor>=0&&victim===0&&!self.alive&&!self.spectator&&!s.ended){game.killer=actor;game.replay=game.history.map(f=>({time:f.time,actors:f.actors.map(a=>({...a,pose:a.pose?{...a.pose}:undefined}))}));game.replayEnd=source.time??eventTime;game.replayTime=Math.max(game.replay[0]?.time??0,game.replayEnd-3.3);game.replayShots=game.shots.filter(shot=>shot.time>=game.replayTime&&shot.time<=game.replayEnd);this.replaying=true;this.desiredADS=false;}
    if(event.type==='spawn'&&actor===0){this.desiredStance=self.stance;this.desiredWeapon=self.selectedWeapon;this.desiredADS=false;this.replaying=false;}

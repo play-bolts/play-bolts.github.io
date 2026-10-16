@@ -6,7 +6,7 @@ import {sampleBodyMotion,sourceGaitRate,proceduralBootClearance} from './soldier
 import {solveTwoBone,solveArmGrip,solveHeldArms} from './hitboxArms';
 export {solveTwoBone,solveArmGrip} from './hitboxArms';
 import type {ImportedWeaponProfile} from './importedWeapons';
-import type {SoldierMotionState} from './soldierMotionState';
+import {advanceMotionBlend,type SoldierMotionState} from './soldierMotionState';
 import {poseSoldierHand,soldierHandContact,type SoldierHand} from './soldierHands';
 
 export type Triple=[number,number,number];
@@ -597,26 +597,12 @@ export function updateSoldier(model:THREE.Group,actor:SoldierActor,dt:number,sim
     model.userData.soldierState=state;
   }
   const s=state!,elapsedTime=Math.max(0,simTime-s.time);
-  const weight=1-Math.exp(-elapsedTime*12);
   if(s.alive&&!actor.alive){
     s.deathAt=Number.isFinite(actor.deadAt)?actor.deadAt!:simTime;
     s.deathBlend=actor.pose?{...actor.pose}:{crouch:s.crouch,prone:s.prone,aim:s.aim,speed:s.speed,phase:s.phase,forward:s.forward,sideways:s.sideways};
   }
   if((actor.hp??100)<s.hp)s.hurtAt=Number.isFinite(actor.lastHurtTime)?actor.lastHurtTime!:simTime;
-  // Integrate the eased speed, not just its end-of-frame value. Otherwise a
-  // start/stop advances different gait phases at 30, 60 and 144 Hz. Gaussian
-  // sampling keeps this inexpensive while matching the same smooth envelope.
-  const targetSpeed=actor.alive?actor.moving:0,targetCrouch=Number(actor.stance==='crouch'),targetProne=Number(actor.stance==='prone');
-  const rateAt=(t:number)=>sourceGaitRate(lerp(targetSpeed,s.speed,Math.exp(-t*9)),lerp(targetCrouch,s.crouch,Math.exp(-t*12)),lerp(targetProne,s.prone,Math.exp(-t*12)));
-  const steps=Math.max(1,Math.ceil(elapsedTime/.02)),step=elapsedTime/steps,offset=Math.sqrt(3/5)*step*.5;
-  for(let i=0;i<steps;i++){
-    const middle=(i+.5)*step;
-    s.phase+=step*(5*rateAt(middle-offset)+8*rateAt(middle)+5*rateAt(middle+offset))/18;
-  }
-  s.crouch=lerp(s.crouch,Number(actor.stance==='crouch'),weight);s.prone=lerp(s.prone,Number(actor.stance==='prone'),weight);
-  s.aim=lerp(s.aim,Number(actor.ads),weight);s.speed=lerp(s.speed,targetSpeed,1-Math.exp(-elapsedTime*9));
-  const dx=actor.x-s.x,dz=actor.z-s.z,moved=Math.hypot(dx,dz);
-  if(moved>.0001&&elapsedTime>0){s.forward=lerp(s.forward,(dx*Math.sin(actor.yaw)+dz*Math.cos(actor.yaw))/moved,weight);s.sideways=lerp(s.sideways,(dx*Math.cos(actor.yaw)-dz*Math.sin(actor.yaw))/moved,weight);}
+  advanceMotionBlend(s,actor,elapsedTime,s.x,s.z);
   model.visible=true;model.position.set(actor.x,actor.y,actor.z);model.rotation.set(0,actor.yaw,0);model.scale.set(1,1,1);
   // Hidden models still advance phase, blends and death history. Only the
   // expensive IK, hand skinning and cloth posing wait until they contribute

@@ -156,3 +156,18 @@ The applied-rig sweep measures approximately 4.3 degrees peak chest tilt and
 5.3 cm lateral travel, while preserving more than 80 cm of stride and fixed limb
 lengths. These are Bolts measurements and tuning choices, not recovered Call of
 Duty constants. The regression lives in `tests/soldier-animation.test.ts`.
+
+## Footstep cadence correction
+
+Standing locomotion now uses a 1.35–2.40 m stride per two-footfall cycle, with a
+maximum of 4.2 footfalls per second. At 1.6 m/s this produces 2.37 footfalls per
+second, and at 4.5 m/s it produces 3.80, about 22–23% above the previous cadence.
+These are Bolts tuning choices; crouch and crawl stride lengths are unchanged.
+
+The step clock advances from resolved movement speed immediately and stops when
+movement stops. Only the pose blend eases, reaching over 90% of the requested
+speed within 100 ms. This prevents short moves from losing most of their step
+phase during acceleration. The renderer, simulation and Rust hitbox fallback
+share the cadence calculation within their respective runtimes. Shared movement
+fixtures verify matching client/server phase and blends, including short bursts
+and direction changes; dedicated tests cover frame rates and blocked movement.

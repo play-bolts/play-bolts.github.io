@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {sampleSourceMotion,sampleLoopedSourceMotion,sourceMotionAverage,sourceMotionBind,type MotionVector,type SourceMotionFrame} from './humanoidMotion';
+export {gaitRate as sourceGaitRate} from './soldierMotionState';
 
 const clamp=(v:number,a=0,b=1)=>Math.max(a,Math.min(b,v));
 const ease=(v:number)=>{const t=clamp(v);return t*t*(3-2*t);};
@@ -126,14 +127,4 @@ export function sampleBodyMotion(input:BodyMotionInput):BodyMotion {
   pelvis[1]+=bodyClearance;left.knee.y+=bodyClearance;right.knee.y+=bodyClearance;
  }
  return{pelvis,pelvisRotation,spineRotation,leftFoot:triple(left.foot),rightFoot:triple(right.foot),leftKnee:triple(left.knee),rightKnee:triple(right.knee),leftFootRotation:left.footRotation,rightFootRotation:right.footRotation,stage};
-}
-
-/** Distance-driven cycle rate avoids accelerating a stationary gait when the
- * simulation is paused. Caps keep slow crouched shuffles from becoming jittery. */
-export function sourceGaitRate(speed:number,crouch:number,prone:number){
- // Each source cycle contains TWO steps. Treating its stride as one step
- // played a full run at over five footfalls per second.
- const stride=mix(mix(1.65,2.95,ease((speed-1.8)/3)),1.80,crouch);
- const limit=mix(mix(1.75,1.60,crouch),1.20,prone);
- return Math.min(limit,Math.max(0,speed)/mix(stride,1.10,prone));
 }

@@ -1,2 +1,3 @@
+v1.0.4 - Increases soldier footstep cadence and fixes delayed steps during short moves
 v1.0.2 - Ignores temporary artifacts and verification output
 v1.0.1 - Adds optional crosshair hit indicators with a saved, default-off menu setting

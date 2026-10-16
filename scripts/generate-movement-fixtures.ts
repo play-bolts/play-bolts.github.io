@@ -2,15 +2,18 @@
 import {writeFileSync} from 'node:fs';
 import {createActor,type Actor} from '../src/engine.ts';
 import {MAP_SCALE} from '../src/config.ts';
+import {initialMotion} from '../src/soldierMotionState.ts';
 import {fixtureGame,movementStep,movementState,type MovementFixture,type MovementSegment} from '../tests/helpers/movement-fixtures.ts';
 
 function body(id:number,patch:Partial<Actor>={}){
  const {ai,...a}=Object.assign(createActor(id,'british','Fixture'),{x:13.5,z:-5},patch);
+ a.pose=initialMotion(a);
  return Object.fromEntries(Object.entries({...a,ack:0,hipSpread:.08,spawnGeneration:1}).map(([key,value])=>[key,typeof value==='number'&&!Number.isFinite(value)?-1000:value]));
 }
 const segment=(ticks:number,input:MovementSegment['inputs'][number]['input'],id=42):MovementSegment=>({ticks,inputs:[{id,input}]});
 const cases:MovementFixture[]=[
  {name:'run and stop',actors:[body(42)],segments:[segment(12,{forward:1}),segment(8,{})]},
+ {name:'short runs and direction changes',actors:[body(42)],segments:[segment(6,{forward:1}),segment(12,{}),segment(6,{forward:1}),segment(12,{}),segment(6,{right:1}),segment(12,{}),segment(6,{forward:-1}),segment(12,{})]},
  {name:'diagonal walk and lean',actors:[body(42)],segments:[segment(20,{forward:1,right:1,walk:true,yaw:.3,lean:1}),segment(10,{lean:-1}),segment(10,{})]},
  {name:'stance speed and ADS transitions',actors:[body(42)],segments:[segment(12,{forward:1,stance:'crouch',ads:true}),segment(18,{forward:1,stance:'prone',ads:true}),segment(1,{stance:'prone',ads:true,jump:true}),segment(1,{stance:'stand',ads:true,jump:true}),segment(45,{stance:'stand'})]},
  {name:'jump and landing',actors:[body(42)],segments:[segment(1,{forward:1,jump:true}),segment(12,{forward:1}),segment(50,{})]},

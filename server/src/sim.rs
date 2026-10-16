@@ -126,13 +126,17 @@ impl MotionPose {
         }
     }
 }
-fn gait_rate(speed: f64, crouch: f64, prone: f64) -> f64 {
+pub(crate) fn gait_rate(speed: f64, crouch: f64, prone: f64) -> f64 {
     let v = ((speed - 1.8) / 3.0).clamp(0.0, 1.0);
-    let stride = lerp(lerp(1.65, 2.95, v * v * (3.0 - 2.0 * v)), 1.80, crouch);
-    lerp(lerp(1.75, 1.60, crouch), 1.20, prone).min(speed.max(0.0) / lerp(stride, 1.10, prone))
+    let stride = lerp(lerp(1.35, 2.40, v * v * (3.0 - 2.0 * v)), 1.80, crouch);
+    lerp(lerp(2.10, 1.60, crouch), 1.20, prone).min(speed.max(0.0) / lerp(stride, 1.10, prone))
 }
 fn advance_motion(a: &mut Actor, dt: f64, old_x: f64, old_z: f64) {
     let mut s = a.pose.unwrap_or_else(|| MotionPose::initial(a));
+    if dt <= 0.0 {
+        a.pose = Some(s);
+        return;
+    }
     let speed = if a.alive { a.moving } else { 0.0 };
     let crouch = if a.stance == Stance::Crouch { 1.0 } else { 0.0 };
     let prone = if a.stance == Stance::Prone { 1.0 } else { 0.0 };
@@ -142,7 +146,8 @@ fn advance_motion(a: &mut Actor, dt: f64, old_x: f64, old_z: f64) {
     let offset = (3.0_f64 / 5.0).sqrt() * step * 0.5;
     let rate_at = |t: f64| {
         gait_rate(
-            lerp(speed, s.speed, (-t * 9.0).exp()),
+            // Resolved movement drives the step clock without an acceleration lag.
+            speed,
             lerp(crouch, s.crouch, (-t * 12.0).exp()),
             lerp(prone, s.prone, (-t * 12.0).exp()),
         )
@@ -160,7 +165,8 @@ fn advance_motion(a: &mut Actor, dt: f64, old_x: f64, old_z: f64) {
     s.crouch = lerp(s.crouch, crouch, weight);
     s.prone = lerp(s.prone, prone, weight);
     s.aim = lerp(s.aim, if a.ads { 1.0 } else { 0.0 }, weight);
-    s.speed = lerp(s.speed, speed, 1.0 - (-dt * 9.0).exp());
+    let response = if speed > s.speed { 24.0 } else { 12.0 };
+    s.speed = lerp(s.speed, speed, 1.0 - (-dt * response).exp());
     let dx = a.x - old_x;
     let dz = a.z - old_z;
     let distance = dx.hypot(dz);

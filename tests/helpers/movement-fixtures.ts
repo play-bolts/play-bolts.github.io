@@ -7,7 +7,7 @@ export interface MovementSegment {ticks:number;inputs:MovementInput[];expected?:
 export interface MovementFixture {name:string;actors:Record<string,unknown>[];segments:MovementSegment[]}
 export const movementFields=['id','x','y','z','vy','eyeHeight','moving','lean','stance','grounded','ads'] as const;
 export function fixtureGame(fixture:MovementFixture){
- const game=new Game();game.state='playing';game.actors=fixture.actors.map(a=>Object.assign(createActor(a.id as number,'british','Fixture'),a)).sort((a,b)=>a.id-b.id);return game;
+ const game=new Game();game.state='playing';game.actors=fixture.actors.map(a=>Object.assign(createActor(a.id as number,'british','Fixture'),structuredClone(a))).sort((a,b)=>a.id-b.id);return game;
 }
 export function movementStep(game:Game,inputs:MovementInput[]){
  const dt=1/60;game.time+=dt;
@@ -21,4 +21,4 @@ export function movementStep(game:Game,inputs:MovementInput[]){
   actor.lean=advanceLean(actor,input.lean??0,dt);
  }
 }
-export function movementState(actors:Actor[]){return actors.map(a=>Object.fromEntries(movementFields.map(key=>[key,a[key]])));}
+export function movementState(actors:Actor[]){return actors.map(a=>({...Object.fromEntries(movementFields.map(key=>[key,a[key]])),pose:a.pose?{...a.pose}:undefined}));}

@@ -35,9 +35,9 @@ test('looped locomotion closes source export seams in position and velocity',()=
 });
 
 test('rifle locomotion uses a two-step cadence and a steady upright torso',()=>{
- assert.ok(sourceGaitRate(1.6,0,0)>.85&&sourceGaitRate(1.6,0,0)<1.1);
+ assert.ok(sourceGaitRate(1.6,0,0)*2>2.3&&sourceGaitRate(1.6,0,0)*2<2.5,'walking uses shorter, more frequent steps');
  for(const speed of [2.8,3.1,4.5,4.86]){
-  assert.ok(sourceGaitRate(speed,0,0)*2<=3.5,'a complete source loop contains two footfalls');
+  assert.ok(sourceGaitRate(speed,0,0)*2>3.4&&sourceGaitRate(speed,0,0)*2<=4.2,'running turns over promptly without exceeding the two-footfall cycle cap');
   const poses=Array.from({length:180},(_,i)=>sampleBodyMotion({speed,crouch:0,prone:0,phase:i/180,time:2,forward:1,sideways:0,grounded:true}));
   const heights=poses.map(pose=>pose.pelvis[1]);
   assert.ok(Math.max(...heights)-Math.min(...heights)<.075,'hips do not bound up and down through the running cycle');

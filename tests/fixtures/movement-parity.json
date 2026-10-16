@@ -46,6 +46,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -74,7 +83,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.379999999999999,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 4.760497214164704,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       },
@@ -98,7 +116,352 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.379999999999999,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.9611278114631105,
+              "forward": 1,
+              "sideways": 0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "short runs and direction changes",
+    "actors": [
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 13.5,
+        "y": 0,
+        "z": -5,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 6,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -4.52,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 4.8,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false,
+            "pose": {
+              "phase": 8.18,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 4.36455382421082,
+              "forward": 1,
+              "sideways": 0
+            }
+          }
+        ]
+      },
+      {
+        "ticks": 12,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -4.52,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false,
+            "pose": {
+              "phase": 8.18,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.3959433899538838,
+              "forward": 1,
+              "sideways": 0
+            }
+          }
+        ]
+      },
+      {
+        "ticks": 6,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -4.039999999999999,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 4.8,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false,
+            "pose": {
+              "phase": 8.379999999999999,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 4.400472998165908,
+              "forward": 1,
+              "sideways": 0
+            }
+          }
+        ]
+      },
+      {
+        "ticks": 12,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -4.039999999999999,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false,
+            "pose": {
+              "phase": 8.379999999999999,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.39920190389893556,
+              "forward": 1,
+              "sideways": 0
+            }
+          }
+        ]
+      },
+      {
+        "ticks": 6,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "right": 1
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.02,
+            "y": 0,
+            "z": -4.039999999999999,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 4.8,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false,
+            "pose": {
+              "phase": 8.579999999999998,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 4.400768603881768,
+              "forward": 0.30119421191220197,
+              "sideways": -0.698805788087798
+            }
+          }
+        ]
+      },
+      {
+        "ticks": 12,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.02,
+            "y": 0,
+            "z": -4.039999999999999,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false,
+            "pose": {
+              "phase": 8.579999999999998,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.3992287206444591,
+              "forward": 0.30119421191220197,
+              "sideways": -0.698805788087798
+            }
+          }
+        ]
+      },
+      {
+        "ticks": 6,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": -1
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.02,
+            "y": 0,
+            "z": -4.52,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 4.8,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false,
+            "pose": {
+              "phase": 8.779999999999998,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 4.400771036642036,
+              "forward": -0.6080878347983855,
+              "sideways": -0.21047625862278957
+            }
+          }
+        ]
+      },
+      {
+        "ticks": 12,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.02,
+            "y": 0,
+            "z": -4.52,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false,
+            "pose": {
+              "phase": 8.779999999999998,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.3992289413394915,
+              "forward": -0.6080878347983855,
+              "sideways": -0.21047625862278957
+            }
           }
         ]
       }
@@ -151,6 +514,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -183,7 +555,16 @@
             "lean": 0.9816843611112659,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.547426812258063,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 2.6391143786623372,
+              "forward": 0.7124713076152938,
+              "sideways": -0.6941556687265596
+            }
           }
         ]
       },
@@ -209,7 +590,16 @@
             "lean": -0.7318081857034412,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.547426812258063,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.3571652919300844,
+              "forward": 0.7124713076152938,
+              "sideways": -0.6941556687265596
+            }
           }
         ]
       },
@@ -233,7 +623,16 @@
             "lean": -0.09903946808704683,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.547426812258063,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.0483370659456454,
+              "forward": 0.7124713076152938,
+              "sideways": -0.6941556687265596
+            }
           }
         ]
       }
@@ -286,6 +685,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -316,7 +724,16 @@
             "lean": 0,
             "stance": "crouch",
             "grounded": true,
-            "ads": true
+            "ads": true,
+            "pose": {
+              "phase": 8.223015091330275,
+              "crouch": 0.9092820467105875,
+              "prone": 0,
+              "aim": 0.9092820467105875,
+              "speed": 1.800187997636085,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       },
@@ -344,7 +761,16 @@
             "lean": 0,
             "stance": "prone",
             "grounded": true,
-            "ads": true
+            "ads": true,
+            "pose": {
+              "phase": 8.435249495359468,
+              "crouch": 0.02484497027062618,
+              "prone": 0.9726762775527075,
+              "aim": 0.9975212478233336,
+              "speed": 0.7545779840070013,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       },
@@ -372,7 +798,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": true
+            "ads": true,
+            "pose": {
+              "phase": 8.435249495359468,
+              "crouch": 0.02034134121986984,
+              "prone": 0.7963599812218163,
+              "aim": 0.9979705693637042,
+              "speed": 0.6177962011021174,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       },
@@ -400,7 +835,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": false,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.435249495359468,
+              "crouch": 0.01665408161556023,
+              "prone": 0.6520044071469051,
+              "aim": 0.8170691958048079,
+              "speed": 0.5058087489770529,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       },
@@ -426,7 +870,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.435249495359468,
+              "crouch": 0.0000020552769494198545,
+              "prone": 0.00008046373614965105,
+              "aim": 0.00010083434937953198,
+              "speed": 0.00006242175861658646,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       }
@@ -479,6 +932,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -508,7 +970,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": false,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.013333333333334,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 1.582463779028931,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       },
@@ -534,7 +1005,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": false,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.413333333333332,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 4.773520490780348,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       },
@@ -558,7 +1038,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.413333333333332,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.0002167174950012095,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       }
@@ -611,6 +1100,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -640,7 +1138,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.680000000000003,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 5.1822609617369535,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       },
@@ -667,7 +1174,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.910902254236074,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 3.3218330914079637,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       },
@@ -691,7 +1207,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.910902254236074,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.6706665345146894,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       }
@@ -744,6 +1269,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -773,7 +1307,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.878260426323772,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 3.397352940787108,
+              "forward": 0.9990205725515255,
+              "sideways": 0.0026074215346566627
+            }
           }
         ]
       },
@@ -797,7 +1340,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.878260426323772,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.45978172249616195,
+              "forward": 0.9990205725515255,
+              "sideways": 0.0026074215346566627
+            }
           }
         ]
       }
@@ -850,6 +1402,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 1.33,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -898,6 +1459,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -933,7 +1503,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 1.4966666666666675,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.20663578257013668,
+              "forward": 1,
+              "sideways": 0
+            }
           },
           {
             "id": 42,
@@ -946,7 +1525,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.146662501749548,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.20662593429109188,
+              "forward": 1,
+              "sideways": 7.741244190446295e-17
+            }
           }
         ]
       },
@@ -977,7 +1565,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 1.8150084181299617,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 4.644270181573308,
+              "forward": 0.638665762004698,
+              "sideways": -0.6753190815935524
+            }
           },
           {
             "id": 42,
@@ -990,7 +1587,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.146662501749548,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.027963779341314624,
+              "forward": 1,
+              "sideways": 7.741244190446295e-17
+            }
           }
         ]
       }
@@ -1043,6 +1649,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -1091,6 +1706,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 1.33,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -1117,7 +1741,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 1.33,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0,
+              "forward": 0.8218943376498452,
+              "sideways": 0.18124163873771462
+            }
           },
           {
             "id": 42,
@@ -1130,7 +1763,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 7.98,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       },
@@ -1156,7 +1798,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 1.33,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0,
+              "forward": 0.8218943376498452,
+              "sideways": 0.18124163873771462
+            }
           },
           {
             "id": 42,
@@ -1169,7 +1820,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.146662180091282,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 4.150347617996464,
+              "forward": 0.9999890895940584,
+              "sideways": -0.0013331075279981305
+            }
           }
         ]
       }
@@ -1222,6 +1882,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -1248,7 +1917,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 7.98,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0,
+              "forward": 1,
+              "sideways": 0
+            }
           }
         ]
       }
@@ -1301,6 +1979,15 @@
         "switchDuration": 0.6,
         "deathYaw": 0,
         "deathHeadshot": false,
+        "pose": {
+          "phase": 7.98,
+          "crouch": 0,
+          "prone": 0,
+          "aim": 0,
+          "speed": 0,
+          "forward": 1,
+          "sideways": 0
+        },
         "ack": 0,
         "hipSpread": 0.08,
         "spawnGeneration": 1
@@ -1330,7 +2017,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": false,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.979999999999997,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 4.799970507780704,
+              "forward": 1,
+              "sideways": 6.108056016141596e-17
+            }
           }
         ]
       },
@@ -1354,7 +2050,16 @@
             "lean": 0,
             "stance": "stand",
             "grounded": true,
-            "ads": false
+            "ads": false,
+            "pose": {
+              "phase": 8.979999999999997,
+              "crouch": 0,
+              "prone": 0,
+              "aim": 0,
+              "speed": 0.011897937344095728,
+              "forward": 1,
+              "sideways": 6.108056016141596e-17
+            }
           }
         ]
       }

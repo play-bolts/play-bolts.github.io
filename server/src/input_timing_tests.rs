@@ -192,6 +192,18 @@ fn shot_diagnostics_report_rewind_clipping_without_extending_the_fairness_window
 
 #[test]
 fn typescript_and_rust_share_movement_traces() {
+    fn compare(actual: &serde_json::Value, expected: &serde_json::Value, path: &str) {
+        if let Some(number) = expected.as_f64() {
+            let value = actual.as_f64().unwrap();
+            assert!((value - number).abs() < 1e-8, "{path}: {value} != {number}");
+        } else if let Some(fields) = expected.as_object() {
+            for (key, value) in fields {
+                compare(&actual[key], value, &format!("{path}.{key}"));
+            }
+        } else {
+            assert_eq!(actual, expected, "{path}");
+        }
+    }
     #[derive(Deserialize)]
     struct Row {
         id: u32,
@@ -243,18 +255,7 @@ fn typescript_and_rust_share_movement_traces() {
             for expected in segment.expected {
                 let actor = sim.actor(expected["id"].as_u64().unwrap() as u32).unwrap();
                 let actual = serde_json::to_value(actor).unwrap();
-                for (key, expected) in expected.as_object().unwrap() {
-                    if let Some(number) = expected.as_f64() {
-                        let value = actual[key].as_f64().unwrap();
-                        assert!(
-                            (value - number).abs() < 1e-8,
-                            "{} / {key}: {value} != {number}",
-                            fixture.name
-                        );
-                    } else {
-                        assert_eq!(&actual[key], expected, "{} / {key}", fixture.name);
-                    }
-                }
+                compare(&actual, &expected, &fixture.name);
             }
         }
     }

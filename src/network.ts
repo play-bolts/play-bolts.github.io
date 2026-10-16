@@ -1,15 +1,17 @@
 /// <reference types="vite/client" />
 import {Game,createActor,type Actor,type Event,type Input,type Shot,type Snapshot} from './engine';
-import {MELEE_SECONDS,RULES,WEAPONS,WEAPON_SWITCH_SECONDS,clamp,lerp,worldHit,type Faction,type Stance,type WeaponSlot} from './config';
+import {MELEE_SECONDS,RULES,WEAPONS,WEAPON_SWITCH_SECONDS,clamp,lerp,worldHit,type Faction,type Stance,type WeaponSlot,type Vec} from './config';
 import {advanceHipSpread} from './accuracy';
 import {advanceLean} from './lean';
 import {DEFAULT_PLAYER_NAME,sanitizePlayerName} from './names';
+import {LocalPredictionView} from './localPredictionView';
+import {sampleNetworkColliders} from './networkCollision';
 
 export interface Lobby {id:string;name:string;players:number;bots?:number;capacity:number;phase:'playing'|'ended';ping?:number}
-export type WireActor=Omit<Actor,'ai'>&{ack:number;hipSpread:number;bot?:boolean};
+export type WireActor=Omit<Actor,'ai'>&{ack:number;hipSpread:number;bot?:boolean;spawnGeneration?:number};
 export interface WireEvent extends Omit<Event,'shot'> {seq?:number;shot?:(Shot&{seq?:number})}
-export interface WireSnapshot {type:'snapshot';tick:number;time:number;remaining:number;roundNumber:number;ended:boolean;winner:number|null;actors:WireActor[];events:WireEvent[]}
-export interface NetworkInput extends Input {type:'input';seq:number;yaw:number;pitch:number;ads:boolean;stance:Stance;weapon:WeaponSlot;fire:boolean;reload:boolean;melee:boolean;shotTime:number}
+export interface WireSnapshot {type:'snapshot';inputTiming?:'tick-v1';tick:number;time:number;remaining:number;roundNumber:number;ended:boolean;winner:number|null;actors:WireActor[];events:WireEvent[]}
+export interface NetworkInput extends Input {type:'input';seq:number;tick?:number;generation?:number;yaw:number;pitch:number;ads:boolean;stance:Stance;weapon:WeaponSlot;fire:boolean;reload:boolean;melee:boolean;shotTime:number}
 interface PendingInput {input:NetworkInput;time:number}
 export interface ChatMessage {id?:string;name:string;message:string}
 export interface SocketLike {readyState:number;onopen:((event:any)=>void)|null;onmessage:((event:any)=>void)|null;onerror:((event:any)=>void)|null;onclose:((event:any)=>void)|null;send(data:string):void;close():void}
@@ -17,6 +19,7 @@ interface NetworkOptions {origin?:string;fetch?:typeof fetch;socket?:(url:string
 const EMPTY_INPUT:Input={forward:0,right:0,jump:false,walk:false,lean:0};
 const TOKEN_KEY='bolts-multiplayer-session-v1';
 const STEP=1/60,INTERPOLATION=.1;
+const INPUT_BUFFER_TICKS=2,MAX_INPUT_BUFFER_TICKS=6,MAX_PREDICTION_TICKS=120;
 const poseFields=['phase','crouch','prone','aim','speed','forward','sideways'] as const;
 const timestampFields=['leftGroundAt','jumpStarted','landedAt','deadAt','lastShotTime','lastHurtTime','lastMeleeTime','switchStarted'] as const;
 const actorNumericFields=['x','y','z','yaw','pitch','eyeHeight','hp','ammo','reserve','kills','deaths','shots','hits','cooldown','reload','reloadTotal','vy','landingSpeed','moving','lean','recoil','spawnSafe','switchDuration','deathYaw','ack','hipSpread',...timestampFields] as const;
@@ -32,6 +35,8 @@ export class NetworkClient {
  private socket:SocketLike|null=null;private token='';private actorId=-1;private ids:number[]=[];private seq=0;private pending:PendingInput[]=[];private snapshots:WireSnapshot[]=[];private predictedEffects=new Set<string>();
  private lastSnapshotAt=0;private latestTime=0;private lastMessageAt=0;private lastPingAt=0;private roundNumber=-1;private actions={fire:false,reload:false,melee:false};private desiredStance:Stance='stand';private desiredWeapon:WeaponSlot='rifle';private desiredADS=false;
  private presentationTime=0;private presentationAt=0;private clockReady=false;
+ private tickInputs=false;private latestTick=0;private predictionTick=0;private playerGeneration:number|undefined;private roundTrip=0;private openedAt=0;
+ private predictionView=new LocalPredictionView();private renderedPosition:Vec|null=null;
  private profile={name:DEFAULT_PLAYER_NAME,faction:'british' as Faction,spectator:false};private generation=0;private reconnectTimer:ReturnType<typeof setTimeout>|null=null;private reconnectAttempt=0;private reconnecting=false;private replaying=false;private uiPaused=false;private pingSent=new Map<number,number>();private connectionPromise:Promise<void>|null=null;private cancelOpening:(()=>void)|null=null;private profileTimer:ReturnType<typeof setTimeout>|null=null;
  constructor(game:Game,options:NetworkOptions={}) {
   this.game=game;this.origin=options.origin??import.meta.env?.VITE_MULTIPLAYER_URL??'';this.fetcher=options.fetch??globalThis.fetch.bind(globalThis);this.socketFactory=options.socket??(url=>new WebSocket(url));this.now=options.now??(()=>performance.now());
@@ -64,20 +69,21 @@ export class NetworkClient {
   this.connectionPromise=new Promise((resolve,reject)=>{
    let joined=false,settled=false;const timeout=setTimeout(()=>{if(settled)return;settled=true;reject(new Error('Connection timed out.'));socket.close();},10000);
    const fail=(message:string)=>{if(!settled){settled=true;clearTimeout(timeout);reject(new Error(message));}};this.cancelOpening=()=>fail('Connection cancelled.');
-   socket.onopen=()=>{if(generation===this.generation)this.send({type:'hello',version:1,token:this.token});};
+   socket.onopen=()=>{if(generation===this.generation){this.openedAt=this.now();this.send({type:'hello',version:1,token:this.token});}};
    socket.onmessage=event=>{
     if(generation!==this.generation)return;let message:any;try{message=JSON.parse(String(event.data));}catch{return;}
     this.lastMessageAt=this.now();
-    if(message.type==='welcome'){this.send({type:'join',...(this.lobbyId?{lobbyId:this.lobbyId}:{}),name:this.profile.name,faction:this.profile.faction,...(this.profile.spectator?{spectator:true}:{})});return;}
+    if(message.type==='welcome'){this.roundTrip=Math.max(0,this.now()-this.openedAt);this.send({type:'join',...(this.lobbyId?{lobbyId:this.lobbyId}:{}),name:this.profile.name,faction:this.profile.faction,...(this.profile.spectator?{spectator:true}:{})});return;}
     if(message.type==='joined'){
      if(!Number.isSafeInteger(message.actorId)||typeof message.lobbyId!=='string'||typeof message.lobbyName!=='string'){fail('Invalid server response.');socket.close();return;}
      this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.lobbyName=message.lobbyName;this.connected=true;this.reconnecting=false;this.reconnectAttempt=0;this.seq=0;this.pending=[];this.snapshots=[];this.ids=[];this.predictedEffects.clear();this.actions={fire:false,reload:false,melee:false};this.replaying=false;
+     this.tickInputs=false;this.predictionTick=0;this.playerGeneration=undefined;this.clockReady=false;
      if(!this.receiveSnapshot(message.snapshot)){fail('Invalid game state.');socket.close();return;}
      joined=true;settled=true;clearTimeout(timeout);this.onStatus('');this.onJoined(this.lobbyName);if(this.profile.name!==this.game.player.name)this.send({type:'profile',name:this.profile.name});resolve();return;
     }
     if(message.type==='snapshot'&&joined){this.receiveSnapshot(message);return;}
     if(message.type==='chat'&&joined&&typeof message.text==='string'&&typeof message.name==='string'){this.onChat({id:typeof message.id==='string'?message.id:undefined,name:sanitizePlayerName(message.name),message:message.text.slice(0,2048)});return;}
-    if(message.type==='pong'&&typeof message.nonce==='number'){const sent=this.pingSent.get(message.nonce);if(sent!==undefined){this.ping=Math.round(this.now()-sent);this.pingSent.delete(message.nonce);}return;}
+    if(message.type==='pong'&&typeof message.nonce==='number'){const sent=this.pingSent.get(message.nonce);if(sent!==undefined){this.ping=Math.round(this.now()-sent);this.roundTrip=this.ping;this.pingSent.delete(message.nonce);}return;}
     if(message.type==='error'){
      const text=typeof message.message==='string'?message.message:'Connection failed.';
      if(message.code==='session_replaced'||message.code==='unauthenticated'){if(message.code==='unauthenticated'){this.token='';try{this.storage?.removeItem(TOKEN_KEY);}catch{}}fail(text);this.fatal(text);return;}
@@ -103,6 +109,7 @@ export class NetworkClient {
   this.generation++;this.cancelOpening?.();this.cancelOpening=null;this.online=false;this.connected=false;this.reconnecting=false;if(this.reconnectTimer)clearTimeout(this.reconnectTimer);this.reconnectTimer=null;if(this.profileTimer)clearTimeout(this.profileTimer);this.profileTimer=null;
   const socket=this.socket;this.socket=null;if(socket){socket.onclose=null;socket.onmessage=null;socket.onerror=null;socket.onopen=null;if(socket.readyState===1)try{socket.send(JSON.stringify({type:'leave'}));}catch{}socket.close();}
   this.pending=[];this.snapshots=[];this.predictedEffects.clear();this.actions={fire:false,reload:false,melee:false};this.ids=[];this.actorId=-1;this.replaying=false;this.uiPaused=false;this.pingSent.clear();this.clockReady=false;for(const actor of this.game.actors)actor.ping=null;
+  this.tickInputs=false;this.predictionTick=0;this.renderedPosition=null;this.playerGeneration=undefined;
  }
  private send(message:unknown){if(this.socket?.readyState===1){this.socket.send(JSON.stringify(message));return true;}return false;}
  setName(name:string){const safe=sanitizePlayerName(name);if(this.profile.name===safe)return;this.profile.name=safe;if(this.profileTimer)clearTimeout(this.profileTimer);if(this.online)this.profileTimer=setTimeout(()=>{this.profileTimer=null;if(this.connected)this.send({type:'profile',name:this.profile.name});},450);}
@@ -132,13 +139,28 @@ export class NetworkClient {
    const correction=clamp(estimate-candidate,-dt*.1,dt*.1);
    this.presentationTime=Math.max(this.presentationTime,this.latestTime,Math.min(this.latestTime+.25,candidate+correction));
   }
-  this.presentationAt=now;this.game.time=this.presentationTime;
+  this.presentationAt=now;this.game.time=this.tickInputs?this.predictionTime:this.presentationTime;
   const latest=this.snapshots.at(-1);if(latest)this.game.remaining=Math.max(0,latest.remaining-Math.max(0,this.presentationTime-latest.time));
  }
  /** Call once before each rendered frame, including frames between 60 Hz ticks. */
- present(){if(!this.online||!this.game.player||!this.snapshots.length)return;this.advancePresentation(this.now());this.interpolate();}
+ present(alpha=1){
+  if(!this.online||!this.game.player||!this.snapshots.length)return;const now=this.now();this.advancePresentation(now);this.interpolate();
+  this.renderedPosition=this.predictionView.sample(alpha,now);
+  if(this.tickInputs)this.game.time=this.predictionTime+clamp(alpha,0,1)*STEP;
+ }
+ /** A camera-only position; authoritative and predicted actors stay untouched. */
+ get localPosition(){return !this.replaying&&this.game.player?.alive&&!this.game.player.spectator?this.renderedPosition:null;}
+ private get predictionTime(){return this.latestTime+(this.predictionTick-this.latestTick)*STEP;}
  /** Remote action timestamps use the same delayed clock as remote positions. */
- get remoteTime(){if(!this.snapshots.length)return this.game.time;return clamp(this.game.time-INTERPOLATION,this.snapshots[0].time,this.snapshots.at(-1)!.time);}
+ get remoteTime(){if(!this.snapshots.length)return this.game.time;return clamp((this.tickInputs?this.presentationTime:this.game.time)-INTERPOLATION,this.snapshots[0].time,this.snapshots.at(-1)!.time);}
+ private neutralCommand():NetworkInput{
+  const p=this.game.player;return{type:'input',seq:0,...EMPTY_INPUT,yaw:p.yaw,pitch:p.pitch,ads:false,stance:p.stance,weapon:p.selectedWeapon,fire:false,reload:false,melee:false,shotTime:0};
+ }
+ private inputHorizon(now:number){
+  // The snapshot is already roughly RTT/2 old on arrival, and the command
+  // needs another RTT/2 to reach the server. Two extra ticks absorb batching.
+  return this.latestTick+Math.ceil((Math.max(0,now-this.lastSnapshotAt)+this.roundTrip)/(STEP*1000));
+ }
  /** Fixed 60 Hz local prediction. Never runs Game.update / AI or Game.damage. */
  update(dt:number,input:Input,enabled=true){
   if(!this.online||!this.game.player)return;const now=this.now();
@@ -147,13 +169,29 @@ export class NetworkClient {
   const latest=this.snapshots.at(-1);if(!latest)return;
   this.advancePresentation(now);
   if(this.replaying&&!this.uiPaused){this.game.replayTime+=dt;if(this.game.replayTime>this.game.replayEnd+.65)this.skipReplay();}
-  if(!this.connected){this.interpolate();return;}
+  if(!this.connected){this.predictionView.step(this.game.player,this.game.player);this.interpolate();return;}
   const active=enabled&&this.canInput(),p=this.game.player,movement=active?input:EMPTY_INPUT;
-  const command:NetworkInput={type:'input',seq:++this.seq,...movement,yaw:p.yaw,pitch:p.pitch,ads:active&&this.desiredADS,stance:this.desiredStance,weapon:this.desiredWeapon,fire:active&&this.actions.fire,reload:active&&this.actions.reload,melee:active&&this.actions.melee,shotTime:Math.max(0,this.game.time-INTERPOLATION)};
+  if(this.tickInputs){
+   // Keep a little scheduling slack, but don't let clock drift turn the
+   // server's larger safety bound into a growing input latency buffer.
+   const horizon=this.inputHorizon(now),limit=Math.min(this.latestTick+MAX_PREDICTION_TICKS,horizon+MAX_INPUT_BUFFER_TICKS);
+   // A stalled frame/connection may have lost its lead. Fill the missing
+   // simulation intervals with the same neutral fallback as the authority.
+   if(this.predictionTick<horizon){
+    const target=Math.min(limit,horizon+INPUT_BUFFER_TICKS);
+    while(this.predictionTick<target){this.predictionTick++;this.game.time=this.predictionTime;if(!latest.ended)this.predict(this.neutralCommand(),STEP,false);}
+    this.predictionView.reset(p,now);
+   }
+   if(this.predictionTick>=limit){p.moving=0;this.predictionView.step(p,p);return;}
+   this.predictionTick++;this.game.time=this.predictionTime;
+  }
+  const command:NetworkInput={type:'input',seq:++this.seq,...(this.tickInputs?{tick:this.predictionTick,generation:this.playerGeneration}:{}),...movement,yaw:p.yaw,pitch:p.pitch,ads:active&&this.desiredADS,stance:this.desiredStance,weapon:this.desiredWeapon,fire:active&&this.actions.fire,reload:active&&this.actions.reload,melee:active&&this.actions.melee,shotTime:Math.max(0,this.remoteTime)};
   this.actions={fire:false,reload:false,melee:false};
   if(command.jump&&command.stance!=='stand')this.desiredStance='stand';
   if(this.send(command)){this.pending.push({input:command,time:this.game.time});if(this.pending.length>120)this.pending.shift();}
-  if(active)this.predict(command,dt,true);else{p.moving=0;p.ads=false;}
+  const before={x:p.x,y:p.y,z:p.z};
+  if(active||this.tickInputs&&!latest.ended)this.predict(command,this.tickInputs?STEP:dt,active);else{p.moving=0;p.ads=false;}
+  this.predictionView.step(before,p);
   this.interpolate();this.applyState();
  }
  private predict(input:NetworkInput,dt:number,effects:boolean){
@@ -168,7 +206,7 @@ export class NetworkClient {
   if(input.reload&&p.selectedWeapon==='rifle'&&!game.isSwitching(p)&&!game.isMeleeRecovery(p)&&!p.reload&&p.ammo<WEAPONS[p.faction].capacity&&p.reserve>0){p.reloadTotal=WEAPONS[p.faction].reload*(p.faction==='british'&&p.ammo>=5?.66:1);p.reload=p.reloadTotal;p.ads=false;startedReload=true;}
   p.ads=input.ads&&game.canADS(p);
   const length=Math.max(1,Math.hypot(input.forward,input.right)),f=input.forward/length,r=input.right/length,walk=input.walk?.55:1;
-  game.move(p,(Math.sin(p.yaw)*f-Math.cos(p.yaw)*r)*walk,(Math.cos(p.yaw)*f+Math.sin(p.yaw)*r)*walk,dt,input.jump);
+  game.move(p,(Math.sin(p.yaw)*f-Math.cos(p.yaw)*r)*walk,(Math.cos(p.yaw)*f+Math.sin(p.yaw)*r)*walk,dt,input.jump,sampleNetworkColliders(this.snapshots,game.time,this.actorId));
   game.playerHipSpread=advanceHipSpread(game.playerHipSpread,p.stance,p.moving,dt);
   p.lean=advanceLean(p,input.lean,dt);
   const melee=input.melee||p.selectedWeapon==='grenade';
@@ -185,6 +223,8 @@ export class NetworkClient {
  }
  private validSnapshot(value:unknown):value is WireSnapshot {
   const s=value as WireSnapshot;if(!s||!Array.isArray(s.actors)||s.actors.length<1||s.actors.length>6||!Array.isArray(s.events)||!Number.isFinite(s.time)||!Number.isFinite(s.remaining)||!Number.isSafeInteger(s.tick)||!Number.isSafeInteger(s.roundNumber))return false;
+  if(s.inputTiming!==undefined&&s.inputTiming!=='tick-v1')return false;
+  for(const a of s.actors)if(!Number.isSafeInteger(a.ack)||a.ack<0||s.inputTiming==='tick-v1'&&(!Number.isSafeInteger(a.spawnGeneration)||a.spawnGeneration!<0))return false;
   const ids=new Set<number>();for(const a of s.actors){if(!Number.isSafeInteger(a.id)||ids.has(a.id)||!['british','russian','german'].includes(a.faction)||!['stand','crouch','prone'].includes(a.stance)||!['rifle','grenade'].includes(a.selectedWeapon)||!['rifle','grenade'].includes(a.switchFrom)||typeof a.name!=='string'||typeof a.spectator!=='boolean')return false;ids.add(a.id);if(actorNumericFields.some(key=>!Number.isFinite(a[key])))return false;if(a.ping!=null&&(!Number.isInteger(a.ping)||a.ping<0||a.ping>999))return false;if(a.pose&&(poseFields.some(key=>!Number.isFinite(a.pose![key]))||['crouch','prone','aim'].some(key=>a.pose![key as 'crouch']<0||a.pose![key as 'crouch']>1)||a.pose.speed<0||a.pose.speed>10||Math.abs(a.pose.forward)>1.001||Math.abs(a.pose.sideways)>1.001))return false;}
   return ids.has(this.actorId);
  }
@@ -193,20 +233,38 @@ export class NetworkClient {
   if(!this.validSnapshot(snapshot))return false;const s=snapshot,last=this.snapshots.at(-1);if(last&&(s.tick<=last.tick||s.time<last.time))return false;
   const game=this.game,newIds=[this.actorId,...s.actors.filter(a=>a.id!==this.actorId).map(a=>a.id).sort((a,b)=>a-b)],rosterChanged=newIds.join(',')!==this.ids.join(',')||s.actors.some(a=>{const index=this.ids.indexOf(a.id);return index>=0&&game.actors[index]?.faction!==a.faction;});
   const oldIds=this.ids;const newRound=this.roundNumber!==s.roundNumber,oldPlayer=game.player,oldYaw=oldPlayer?.yaw,oldPitch=oldPlayer?.pitch,wasAlive=oldPlayer?.alive??false,wasSpectator=oldPlayer?.spectator??false;
-  if(rosterChanged){this.ids=newIds;game.actors=newIds.map((id,index)=>{const a=s.actors.find(p=>p.id===id)!;return Object.assign(createActor(index,a.faction,a.name),a,{id:index,renderIdentity:`${this.lobbyId}:${id}`,pose:a.pose?{...a.pose}:undefined});});game.history=[];game.shots=[];game.events=[];this.replaying=false;game.replay=[];game.replayShots=[];}
-  const self=s.actors.find(a=>a.id===this.actorId)!;this.seq=Math.max(this.seq,self.ack);
+  const self=s.actors.find(a=>a.id===this.actorId)!,before=oldPlayer?{x:oldPlayer.x,y:oldPlayer.y,z:oldPlayer.z}:self;
+  const tickInputs=s.inputTiming==='tick-v1';
+  const reset=!last||newRound||wasAlive!==self.alive||wasSpectator!==self.spectator||oldPlayer?.faction!==self.faction||self.spawnGeneration!==this.playerGeneration||tickInputs!==this.tickInputs;
+  this.tickInputs=tickInputs;this.playerGeneration=self.spawnGeneration;
+  if(self.ping!=null)this.roundTrip=Math.max(self.ping,this.ping);
+  if(rosterChanged){
+   const existing=new Map(oldIds.map((id,index)=>[id,game.actors[index]]));this.ids=newIds;
+   game.actors=newIds.map((id,index)=>{const a=s.actors.find(p=>p.id===id)!;const actor=existing.get(id)??Object.assign(createActor(index,a.faction,a.name),a,{pose:a.pose?{...a.pose}:undefined});return Object.assign(actor,{id:index,collisionId:id,renderIdentity:`${this.lobbyId}:${id}`});});
+   game.history=[];game.shots=[];game.events=[];this.replaying=false;game.replay=[];game.replayShots=[];
+  }
+  this.seq=Math.max(this.seq,self.ack);
   if(self.spectator&&!wasSpectator)game.spectator.enter(oldPlayer??self);
   if(!self.spectator&&wasSpectator)game.spectator.reset();
-  Object.assign(game.player,self,{id:0,name:sanitizePlayerName(self.name),ping:self.ping??null,pose:self.pose?{...self.pose}:undefined});game.time=s.time;game.remaining=s.remaining;game.playerHipSpread=self.hipSpread;
-  this.latestTime=s.time;this.lastSnapshotAt=this.now();this.roundNumber=s.roundNumber;
-  this.advancePresentation(this.lastSnapshotAt);const renderTime=this.presentationTime;
-  if(newRound||!wasAlive&&self.alive||wasSpectator!==self.spectator||rosterChanged){this.pending=[];this.actions={fire:false,reload:false,melee:false};this.desiredStance=self.stance;this.desiredWeapon=self.selectedWeapon;this.desiredADS=false;}
-  this.pending=this.pending.filter(p=>p.input.seq>self.ack&&s.time-p.time<.5);
-  if(!newRound&&wasAlive&&self.alive&&!self.spectator&&!rosterChanged){
-   for(const pending of this.pending){game.time=pending.time;this.predict(pending.input,STEP,false);}
-   if(oldYaw!==undefined){game.player.yaw=oldYaw;game.player.pitch=oldPitch!;}
+  Object.assign(game.player,self,{id:0,collisionId:this.actorId,name:sanitizePlayerName(self.name),ping:self.ping??null,pose:self.pose?{...self.pose}:undefined});game.time=s.time;game.remaining=s.remaining;game.playerHipSpread=self.hipSpread;
+  this.latestTime=s.time;this.latestTick=s.tick;this.lastSnapshotAt=this.now();this.roundNumber=s.roundNumber;
+  if(newRound)this.snapshots=[];this.snapshots.push(s);if(this.snapshots.length>12)this.snapshots.shift();
+  if(reset){
+   this.pending=[];this.actions={fire:false,reload:false,melee:false};this.desiredStance=self.stance;this.desiredWeapon=self.selectedWeapon;this.desiredADS=false;this.predictedEffects.clear();
+   this.predictionTick=s.tick+(s.ended?0:Math.min(MAX_PREDICTION_TICKS-1,Math.ceil(this.roundTrip/(STEP*1000))+INPUT_BUFFER_TICKS));
   }
-  game.time=renderTime;game.remaining=Math.max(0,s.remaining-Math.max(0,renderTime-s.time));if(newRound)this.snapshots=[];this.snapshots.push(s);if(this.snapshots.length>12)this.snapshots.shift();
+  this.predictionTick=Math.max(this.predictionTick,s.tick);
+  this.advancePresentation(this.lastSnapshotAt);
+  this.pending=this.pending.filter(p=>this.tickInputs?p.input.tick!>s.tick:p.input.seq>self.ack&&s.time-p.time<.5);
+  if(self.alive&&!self.spectator&&!s.ended){
+   if(this.tickInputs){
+    const commands=new Map(this.pending.map(p=>[p.input.tick,p.input]));
+    for(let tick=s.tick+1;tick<=this.predictionTick;tick++){game.time=s.time+(tick-s.tick)*STEP;this.predict(commands.get(tick)??this.neutralCommand(),STEP,false);}
+   }else if(!reset){for(const pending of this.pending){game.time=pending.time;this.predict(pending.input,STEP,false);}}
+   if(!reset&&oldYaw!==undefined){game.player.yaw=oldYaw;game.player.pitch=oldPitch!;}
+  }
+  game.time=this.tickInputs?this.predictionTime:this.presentationTime;game.remaining=Math.max(0,s.remaining-Math.max(0,this.presentationTime-s.time));
+  this.predictionView.reconcile(before,game.player,this.lastSnapshotAt,reset);this.renderedPosition=this.predictionView.sample(1,this.lastSnapshotAt);
   const mapActor=(a:WireActor)=>({...a,pose:a.pose?{...a.pose}:undefined,id:this.ids.indexOf(a.id),name:sanitizePlayerName(a.name)});
   const frame:Snapshot={time:s.time,actors:this.ids.map(id=>mapActor(s.actors.find(a=>a.id===id)!))};game.history.push(frame);while(game.history.length&&s.time-game.history[0].time>4.5)game.history.shift();
   // Never expose the newest remote position between a socket callback and the

@@ -10,6 +10,9 @@ pub const DEFAULT_PLAYER_NAME: &str = "Unknown Soldier";
 pub const TICK_SECONDS: f64 = 1.0 / 60.0;
 pub const ROUND_SECONDS: f64 = 300.0;
 pub const INPUT_TIMEOUT: f64 = 0.25;
+/// Scheduled commands may lead the authority by at most half a second. The
+/// queue has at most one command per tick; packet count never advances time.
+pub const MAX_INPUT_LEAD_TICKS: u64 = 30;
 pub const MAX_REWIND: f64 = 0.2;
 const UNSET: f64 = -1000.0;
 const RADIUS: f64 = 0.3;
@@ -69,6 +72,8 @@ pub struct Vec3 {
 #[serde(rename_all = "camelCase", default)]
 pub struct InputFrame {
     pub seq: u64,
+    pub tick: Option<u64>,
+    pub generation: Option<u64>,
     pub forward: f64,
     pub right: f64,
     pub yaw: f64,
@@ -224,7 +229,7 @@ pub struct Actor {
     pub death_headshot: bool,
     pub hip_spread: f64,
     pub ack: u64,
-    #[serde(skip)]
+    #[serde(default)]
     spawn_generation: u64,
 }
 
@@ -489,6 +494,10 @@ struct PendingAttack {
 #[derive(Default)]
 struct Control {
     latest: InputFrame,
+    scheduled: bool,
+    queue: BTreeMap<u64, InputFrame>,
+    received_seq: u64,
+    received_tick: u64,
     received: f64,
     seen_input: bool,
     jump: bool,
@@ -619,6 +628,8 @@ impl Simulation {
     /// period. Sequence state remains intact for a reconnect to the same actor.
     pub fn neutralize(&mut self, id: u32) {
         if let Some(c) = self.controls.get_mut(&id) {
+            c.queue.clear();
+            c.received_tick = self.tick_number;
             c.latest.forward = 0.0;
             c.latest.right = 0.0;
             c.latest.lean = 0.0;
@@ -627,6 +638,19 @@ impl Simulation {
             c.reload = None;
             c.fire = None;
             c.melee = None;
+        }
+    }
+
+    /// A replacement connection starts from the acknowledged sequence, not an
+    /// input that was queued by the previous socket and never simulated.
+    pub fn reset_input_stream(&mut self, id: u32) {
+        self.neutralize(id);
+        let ack = self.actor(id).map_or(0, |a| a.ack);
+        if let Some(c) = self.controls.get_mut(&id) {
+            c.scheduled = false;
+            c.latest.seq = ack;
+            c.received_seq = ack;
+            c.received_tick = 0;
         }
     }
 
@@ -725,10 +749,19 @@ impl Simulation {
         {
             return false;
         }
+        if let Some(tick) = input.tick {
+            if self.ended
+                || tick <= self.tick_number
+                || tick > self.tick_number.saturating_add(MAX_INPUT_LEAD_TICKS)
+                || self.actor(id).is_none_or(|a| input.generation != Some(a.spawn_generation))
+            {
+                return false;
+            }
+        }
         let Some(control) = self.controls.get_mut(&id) else {
             return false;
         };
-        if control.seen_input && input.seq <= control.latest.seq {
+        if control.seen_input && input.seq <= control.received_seq {
             return false;
         }
         input.forward = input.forward.clamp(-1.0, 1.0);
@@ -736,6 +769,27 @@ impl Simulation {
         input.lean = input.lean.clamp(-1.0, 1.0);
         input.yaw = (input.yaw + PI).rem_euclid(2.0 * PI) - PI;
         input.pitch = input.pitch.clamp(-1.45, 1.45);
+        if let Some(tick) = input.tick {
+            if tick <= control.received_tick {
+                return false;
+            }
+            // Transitioning from a legacy stream must not carry latched actions
+            // into a scheduled tick. Each pulse belongs to exactly one command.
+            control.scheduled = true;
+            control.jump = false;
+            control.reload = None;
+            control.fire = None;
+            control.melee = None;
+            control.received_seq = input.seq;
+            control.received_tick = tick;
+            control.received = self.time;
+            control.seen_input = true;
+            control.queue.insert(tick, input);
+            return true;
+        }
+        if control.scheduled {
+            return false;
+        }
         let attack = PendingAttack {
             seq: input.seq,
             yaw: input.yaw,
@@ -753,6 +807,7 @@ impl Simulation {
             control.reload = Some(input.seq);
         }
         control.jump |= input.jump;
+        control.received_seq = input.seq;
         control.latest = input;
         control.received = self.time;
         control.seen_input = true;
@@ -900,6 +955,9 @@ impl Simulation {
         self.time += dt;
         self.tick_number += 1;
         if self.ended {
+            for control in self.controls.values_mut() {
+                control.queue.clear();
+            }
             return;
         }
         self.remaining = (ROUND_SECONDS - (self.time - self.round_started)).max(0.0);
@@ -945,7 +1003,29 @@ impl Simulation {
             let Some(control) = self.controls.get_mut(&id) else {
                 continue;
             };
-            let fresh = control.seen_input && self.time - control.received <= INPUT_TIMEOUT;
+            let fresh = if control.scheduled {
+                // Missing ticks use neutral movement (gravity/timers still
+                // run). Late commands are rejected, never applied to a second
+                // tick. The snapshot tick acknowledges these neutral gaps too.
+                if let Some(input) = control.queue.remove(&self.tick_number) {
+                    let attack = PendingAttack {
+                        seq: input.seq,
+                        yaw: input.yaw,
+                        pitch: input.pitch,
+                        shot_time: input.shot_time,
+                    };
+                    control.jump = input.jump;
+                    control.reload = input.reload.then_some(input.seq);
+                    control.fire = input.fire.then_some(attack.clone());
+                    control.melee = input.melee.then_some(attack);
+                    control.latest = input;
+                    true
+                } else {
+                    false
+                }
+            } else {
+                control.seen_input && self.time - control.received <= INPUT_TIMEOUT
+            };
             let mut input = control.latest.clone();
             if !fresh {
                 input.forward = 0.0;
@@ -1841,6 +1921,10 @@ fn resolve_movement(
     }
     (x, z, travelled)
 }
+
+#[cfg(test)]
+#[path = "input_timing_tests.rs"]
+mod input_timing_tests;
 
 #[cfg(test)]
 mod tests {

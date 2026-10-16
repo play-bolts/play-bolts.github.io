@@ -3,7 +3,7 @@ import {coverPoints,findPath,selectCover} from './navigation';
 import {DEFAULT_PLAYER_NAME,sanitizePlayerName} from './names';
 import {advanceStanceHeight,stanceSpeedFactor} from './stance';
 import {advanceHipSpread} from './accuracy';
-import {resolveActorMovement} from './actorCollision';
+import {resolveActorMovement,type CollisionActor} from './actorCollision';
 import {SpectatorCamera} from './spectator';
 import {advanceLean,leanEye} from './lean';
 import {sampleHitVolumes,rayHitVolumes} from './hitboxes';
@@ -17,6 +17,7 @@ function createBrain(id:number):AIBrain{return{target:null,known:null,seen:-100,
 export interface Actor extends Vec {
  /** Stable renderer key across network roster reindexing; never used for gameplay. */
  renderIdentity?:string;
+ collisionId?:number;
  id:number;name:string;faction:Faction;yaw:number;pitch:number;stance:Stance;eyeHeight:number;hp:number;ammo:number;reserve:number;kills:number;deaths:number;shots:number;hits:number;
  spectator:boolean;alive:boolean;cooldown:number;reload:number;reloadTotal:number;vy:number;grounded:boolean;leftGroundAt:number;jumpStarted:number;landedAt:number;landingSpeed:number;moving:number;ads:boolean;lean:number;recoil:number;spawnSafe:number;deadAt:number;lastShotTime:number;lastHurtTime:number;lastMeleeTime:number;
  selectedWeapon:WeaponSlot;switchFrom:WeaponSlot;switchStarted:number;switchDuration:number;deathYaw:number;deathHeadshot:boolean;
@@ -142,7 +143,7 @@ export class Game {
   this.stepClock=0;this.events.push({type:'end',actor:this.winner?.id??0});
  }
  skipReplay(){if(this.state!=='killcam')return;this.spawn(this.player);this.state='playing';this.history=[];this.replay=[];}
- move(a:Actor,dx:number,dz:number,dt:number,jump=false){
+ move(a:Actor,dx:number,dz:number,dt:number,jump=false,colliders?:readonly CollisionActor[]){
   if(this.state!=='playing'||!a.alive||a.spectator)return;
   const wasGrounded=a.grounded,oldX=a.x,oldZ=a.z;
   if(jump&&a.grounded){if(a.stance!=='stand')a.stance='stand';else{a.vy=RULES.jump;a.grounded=false;a.ads=false;a.jumpStarted=this.time;}}
@@ -154,7 +155,7 @@ export class Game {
   for(const b of BOXES)if(a.x>b.x-b.w/2-.18&&a.x<b.x+b.w/2+.18&&a.z>b.z-b.d/2-.18&&a.z<b.z+b.d/2+.18&&oldY>=b.h-.08&&a.y<=b.h&&a.vy<=0){a.y=b.h;a.vy=0;a.grounded=true;}
   if(!a.grounded)a.ads=false;
   const speed=RULES.speed*stanceSpeedFactor(a.eyeHeight)*(a.ads?.58:1)*(a.selectedWeapon==='grenade'&&!this.isSwitching(a)?GRENADE.speedMultiplier:1);
-  const movement=resolveActorMovement(a,this.actors.filter(other=>!other.spectator),dx*speed*dt,dz*speed*dt,{height:other=>other.eyeHeight+.18});
+  const movement=resolveActorMovement<CollisionActor>(a,colliders??this.actors.filter(other=>!other.spectator),dx*speed*dt,dz*speed*dt,{height:other=>(other.eyeHeight??HEIGHTS[other.stance??'stand'])+.18});
   a.x=movement.x;a.z=movement.z;
   if(a.y>0&&!BOXES.some(b=>Math.abs(a.y-b.h)<.1&&Math.abs(a.x-b.x)<b.w/2+.18&&Math.abs(a.z-b.z)<b.d/2+.18))a.grounded=false;
   if(!a.grounded)a.ads=false;

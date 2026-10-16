@@ -157,7 +157,7 @@ impl Room {
                 .and_then(|endpoint| endpoint.latency.value(now));
             actor["ping"] = json!(latency);
         }
-        json!({"type":"snapshot","tick":self.sim.tick_number,"time":self.sim.time,"remaining":self.sim.remaining,"roundNumber":self.sim.round_number,"ended":self.sim.ended,"winner":self.sim.winner,"actors":actors,"events":events})
+        json!({"type":"snapshot","inputTiming":"tick-v1","tick":self.sim.tick_number,"time":self.sim.time,"remaining":self.sim.remaining,"roundNumber":self.sim.round_number,"ended":self.sim.ended,"winner":self.sim.winner,"actors":actors,"events":events})
     }
 }
 pub struct Hub {
@@ -387,7 +387,7 @@ impl Hub {
         {
             let member = room.members.get_mut(player).unwrap();
             member.disconnected = None;
-            room.sim.neutralize(member.actor);
+            room.sim.reset_input_stream(member.actor);
             let actor = member.actor;
             reconcile_bots(&mut self.db, room, &self.connections)?;
             self.db.event(EventRow {

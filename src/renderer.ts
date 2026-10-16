@@ -179,7 +179,7 @@ export class View {
   if(!local&&!melee&&elapsed>=0&&elapsed<MUZZLE_EFFECT_SECONDS){const spark=this.burstPool().acquireMuzzle(),anchor=this.soldiers[shot.actor]?.getObjectByName('muzzle-anchor');if(anchor)placeMuzzleFlash(spark,anchor);else{spark.position.set(shot.origin.x,shot.origin.y,shot.origin.z);if(len>0)spark.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,-1),delta.normalize());}updateMuzzleFlash(spark,elapsed,undefined,seed);this.scene.add(spark);this.effects.push({mesh:spark,life:MUZZLE_EFFECT_SECONDS-elapsed,total:MUZZLE_EFFECT_SECONDS,started:shot.time,kind:'muzzle',seed,anchor});}
   while(this.effects.length>MAX_WORLD_EFFECTS){const oldest=this.effects.shift()!;this.burstPool().release(oldest.mesh);}
  }
- render(game:Game,dt:number,inMenu:boolean,intro=true,remoteTime=game.time){
+ render(game:Game,dt:number,inMenu:boolean,intro=true,remoteTime=game.time,localPosition:{x:number;y:number;z:number}|null=null){
   this.clock+=dt;this.menu=inMenu;
   if(inMenu&&intro&&this.introFrameReady)return;
   if(!inMenu||!intro)this.introFrameReady=false;
@@ -192,6 +192,7 @@ export class View {
   else{
    const a=viewedId===null?undefined:actors[viewedId];if(a){this.ads=lerp(this.ads,a.ads?1:0,1-Math.exp(-dt*14));const eye=leanEye(a);
     this.camera.position.set(eye.x,eye.y,eye.z);
+    if(localPosition&&!replay&&!spectating){this.camera.position.x+=localPosition.x-a.x;this.camera.position.y+=localPosition.y-a.y;this.camera.position.z+=localPosition.z-a.z;}
     const pitch=a.pitch+a.recoil;V.set(Math.sin(a.yaw)*Math.cos(pitch),Math.sin(pitch),Math.cos(a.yaw)*Math.cos(pitch));this.camera.up.set(0,1,0);this.camera.lookAt(this.camera.position.clone().add(V));this.camera.fov=lerp(72,49,this.ads);this.updateCameraProjection();
     const live={...game.actors[a.id],...a};
     if(this.weaponActor!==a.id){this.weaponActor=a.id;this.weaponMeleeStart=this.weaponShotStart=-Infinity;}

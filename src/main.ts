@@ -178,13 +178,13 @@ function frame(now:number){
   if(equipRifle&&game.state==='playing'&&!game.isSwitching()){game.selectWeapon('rifle');equipRifle=false;}
   if(game.state==='playing'){look((Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*850,(Number(keys.has('ArrowDown'))-Number(keys.has('ArrowUp')))*dt*650);}
   const step=network.online?1/60:1/120;accumulator+=dt;while(accumulator>=step){if(network.online)network.update(step,input,!ui.chatOpen&&!ui.modalOpen&&!ui.selectionOpen);else game.update(step,input);input.jump=false;jump=false;accumulator-=step;}
-  if(network.online)network.present();if(game.player.spectator){game.spectator.sync(game.actors);if(game.state==='playing'&&!ui.chatOpen&&!ui.modalOpen&&!ui.selectionOpen)game.spectator.move(dt,{forward:input.forward,right:input.right,up:Number(keys.has('Space'))-Number(keys.has('ControlLeft')||keys.has('ControlRight')),fast:keys.has('ShiftLeft')||keys.has('ShiftRight')});}
+  if(network.online)network.present(accumulator/step);if(game.player.spectator){game.spectator.sync(game.actors);if(game.state==='playing'&&!ui.chatOpen&&!ui.modalOpen&&!ui.selectionOpen)game.spectator.move(dt,{forward:input.forward,right:input.right,up:Number(keys.has('Space'))-Number(keys.has('ControlLeft')||keys.has('ControlRight')),fast:keys.has('ShiftLeft')||keys.has('ShiftRight')});}
   processEvents();if(game.state==='killcam'){if(lastReplaySound<0)lastReplaySound=game.replayTime;for(const shot of game.replayShots)if(shot.time>lastReplaySound&&shot.time<=game.replayTime&&shot.kind==='shot')sound.shot({actor:shot.actor,position:shot.origin,local:shot.actor===game.killer,faction:game.actors[shot.actor]?.faction});lastReplaySound=game.replayTime;}else lastReplaySound=-1;
   ui.update(game);if(game.state==='ended'&&!endingReleased){endingReleased=true;document.exitPointerLock();keys.clear();jump=false;dragging=false;equipRifle=false;}
  }
  if(menu&&!document.hidden&&now-communityStatusTime>15000)void refreshOnlineCount();
  if(menu&&ui.lobbyOpen&&!network.online&&!lobbyFetchBusy&&now-lobbyFetchTime>5000)void refreshLobbies();
- view.render(game,dt,menu||ui.selectionOpen,menu,network.online?network.remoteTime:game.time);
+ view.render(game,dt,menu||ui.selectionOpen,menu,network.online?network.remoteTime:game.time,network.online?network.localPosition:null);
  if(!ui.ready){
   ui.setReady(true);
   if(launchAction){

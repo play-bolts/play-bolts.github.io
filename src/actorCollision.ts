@@ -2,6 +2,8 @@ import {HEIGHTS,RULES,blocked as worldBlocked,type Stance} from './config';
 
 export interface CollisionActor {
   id:number;x:number;y:number;z:number;alive:boolean;stance?:Stance;eyeHeight?:number;
+  /** Stable server identity, independent of the client's display-array index. */
+  collisionId?:number;
 }
 export interface ActorCollisionOptions<T extends CollisionActor> {
   /** Full body height, measured from the feet. Supports an interpolated stance. */
@@ -14,6 +16,7 @@ interface Contact {time:number;nx:number;nz:number}
 
 const SKIN=.00001,EPSILON=1e-10;
 const bodyHeight=(actor:CollisionActor)=>Math.max(.1,(actor.eyeHeight??HEIGHTS[actor.stance??'stand'])+.18);
+const identity=(actor:CollisionActor)=>actor.collisionId??actor.id;
 
 /** Move one actor without mutating it or pushing its neighbours. Circular
  * contacts are swept, then the remaining motion slides along the tangent.
@@ -25,8 +28,8 @@ export function resolveActorMovement<T extends CollisionActor>(actor:T,actors:re
   const height=options.height??bodyHeight,isBlocked=options.blocked??worldBlocked;
   const top=actor.y+height(actor);
   // Sorting gives deterministic tie-breaking independent of array order.
-  const others=actors.filter(other=>other!==actor&&other.id!==actor.id&&other.alive&&
-    actor.y<other.y+height(other)-SKIN&&top>other.y+SKIN).sort((a,b)=>a.id-b.id);
+  const others=actors.filter(other=>other!==actor&&identity(other)!==identity(actor)&&other.alive&&
+    actor.y<other.y+height(other)-SKIN&&top>other.y+SKIN).sort((a,b)=>identity(a)-identity(b));
   const blocked=(x:number,z:number)=>isBlocked(x,z,actor.y,radius);
   const clearSegment=(x:number,z:number,nx:number,nz:number)=>{
     const steps=Math.max(1,Math.ceil(Math.hypot(nx-x,nz-z)/.04));
@@ -44,8 +47,8 @@ export function resolveActorMovement<T extends CollisionActor>(actor:T,actors:re
       const sx=result.x-other.x,sz=result.z-other.z,distance=Math.hypot(sx,sz);
       if(distance>=diameter-SKIN)continue;
       result.collided=true;
-      const fallback=((Math.min(actor.id,other.id)+1)*73856093^(Math.max(actor.id,other.id)+1)*19349663)>>>0;
-      const direction=distance>SKIN?Math.atan2(sz,sx):(fallback%360)*Math.PI/180+(actor.id<other.id?Math.PI:0);
+      const aid=identity(actor),bid=identity(other),fallback=(Math.imul(Math.min(aid,bid)+1,73856093)^Math.imul(Math.max(aid,bid)+1,19349663))>>>0;
+      const direction=distance>SKIN?Math.atan2(sz,sx):(fallback%360)*Math.PI/180+(aid<bid?Math.PI:0);
       let best:{x:number;z:number;score:number;length:number}|undefined;
       const before=penetration(result.x,result.z);
       for(const angle of [0,Math.PI/8,-Math.PI/8,Math.PI/4,-Math.PI/4,Math.PI/2,-Math.PI/2]) {

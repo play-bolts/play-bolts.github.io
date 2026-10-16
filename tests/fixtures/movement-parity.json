@@ -1,0 +1,1363 @@
+[
+  {
+    "name": "run and stop",
+    "actors": [
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 13.5,
+        "y": 0,
+        "z": -5,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 12,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -4.039999999999999,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 4.8,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 8,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -4.039999999999999,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "diagonal walk and lean",
+    "actors": [
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 13.5,
+        "y": 0,
+        "z": -5,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 20,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1,
+              "right": 1,
+              "walk": true,
+              "yaw": 0.3,
+              "lean": 1
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.089426700452357,
+            "y": 0,
+            "z": -4.221649458342487,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 2.6399999999999997,
+            "lean": 0.9816843611112659,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 10,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "lean": -1
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.089426700452357,
+            "y": 0,
+            "z": -4.221649458342487,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": -0.7318081857034412,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 10,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.089426700452357,
+            "y": 0,
+            "z": -4.221649458342487,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": -0.09903946808704683,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "stance speed and ADS transitions",
+    "actors": [
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 13.5,
+        "y": 0,
+        "z": -5,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 12,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1,
+              "stance": "crouch",
+              "ads": true
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -4.601397478397521,
+            "vy": 0,
+            "eyeHeight": 1.0964558209608677,
+            "moving": 1.7052531038885388,
+            "lean": 0,
+            "stance": "crouch",
+            "grounded": true,
+            "ads": true
+          }
+        ]
+      },
+      {
+        "ticks": 18,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1,
+              "stance": "prone",
+              "ads": true
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -4.337423411316867,
+            "vy": 0,
+            "eyeHeight": 0.4443583554005177,
+            "moving": 0.6628857766165556,
+            "lean": 0,
+            "stance": "prone",
+            "grounded": true,
+            "ads": true
+          }
+        ]
+      },
+      {
+        "ticks": 1,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "stance": "prone",
+              "ads": true,
+              "jump": true
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -4.337423411316867,
+            "vy": 0,
+            "eyeHeight": 0.6758504188528716,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": true
+          }
+        ]
+      },
+      {
+        "ticks": 1,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "stance": "stand",
+              "ads": true,
+              "jump": true
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0.11555555555555556,
+            "z": -4.337423411316867,
+            "vy": 6.933333333333334,
+            "eyeHeight": 0.8628943034608135,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": false,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 45,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "stance": "stand"
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -4.337423411316867,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "jump and landing",
+    "actors": [
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 13.5,
+        "y": 0,
+        "z": -5,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 1,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1,
+              "jump": true
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0.11555555555555556,
+            "z": -4.92,
+            "vy": 6.933333333333334,
+            "eyeHeight": 1.65,
+            "moving": 4.8,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": false,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 12,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 1.0255555555555562,
+            "z": -3.959999999999999,
+            "vy": 2.5333333333333368,
+            "eyeHeight": 1.65,
+            "moving": 4.8,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": false,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 50,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -3.959999999999999,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "grenade movement",
+    "actors": [
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 13.5,
+        "y": 0,
+        "z": -5,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "grenade",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 20,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1,
+              "ads": true
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -3.271999999999999,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 5.184,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 8,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1,
+              "walk": true
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -2.891839999999999,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 2.8512000000000004,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 8,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": -2.891839999999999,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "slide along arena wall",
+    "actors": [
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 14.3,
+        "y": 0,
+        "z": -5,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 30,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1,
+              "right": -1
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 14.549235322043439,
+            "y": 0,
+            "z": -3.302943725152289,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 3.3941125496954276,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 10,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 14.549235322043439,
+            "y": 0,
+            "z": -3.302943725152289,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "opposing actors and sliding",
+    "actors": [
+      {
+        "id": 7,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 13.5,
+        "y": 0,
+        "z": -0.7,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      },
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 13.5,
+        "y": 0,
+        "z": 0.7,
+        "yaw": 3.141592653589793,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 20,
+        "inputs": [
+          {
+            "id": 7,
+            "input": {
+              "forward": 1
+            }
+          },
+          {
+            "id": 42,
+            "input": {
+              "forward": 1,
+              "yaw": 3.141592653589793
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 7,
+            "x": 13.5,
+            "y": 0,
+            "z": -0.29999999999999977,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          },
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": 0.30001000000000017,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 10,
+        "inputs": [
+          {
+            "id": 7,
+            "input": {
+              "forward": 1,
+              "right": 1
+            }
+          },
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 7,
+            "x": 12.89357197495963,
+            "y": 0,
+            "z": 0.05759188095134177,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 4.8,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          },
+          {
+            "id": 42,
+            "x": 13.5,
+            "y": 0,
+            "z": 0.30001000000000017,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "coincident bodies",
+    "actors": [
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 0,
+        "y": 0,
+        "z": -3,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      },
+      {
+        "id": 7,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 0,
+        "y": 0,
+        "z": -3,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 1,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 7,
+            "x": 0.5999186155707863,
+            "y": 0,
+            "z": -2.9895283816135656,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          },
+          {
+            "id": 42,
+            "x": 0,
+            "y": 0,
+            "z": -3,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 5,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 7,
+            "x": 0.5999186155707863,
+            "y": 0,
+            "z": -2.9895283816135656,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          },
+          {
+            "id": 42,
+            "x": -0.001309205174253982,
+            "y": 0,
+            "z": -2.6000215656411996,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 4.8,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "landing on cover",
+    "actors": [
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 2.121320343559643,
+        "y": 3.6,
+        "z": -12.727922061357857,
+        "yaw": 0,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": -2,
+        "grounded": false,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 30,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 2.121320343559643,
+            "y": 2.3,
+            "z": -12.727922061357857,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "walking off cover",
+    "actors": [
+      {
+        "id": 42,
+        "name": "Fixture",
+        "faction": "british",
+        "x": 2.121320343559643,
+        "y": 2.3,
+        "z": -12.727922061357857,
+        "yaw": 1.5707963267948966,
+        "pitch": 0,
+        "stance": "stand",
+        "eyeHeight": 1.65,
+        "hp": 100,
+        "ammo": 10,
+        "reserve": 140,
+        "kills": 0,
+        "deaths": 0,
+        "shots": 0,
+        "hits": 0,
+        "spectator": false,
+        "alive": true,
+        "cooldown": 0,
+        "reload": 0,
+        "reloadTotal": 0,
+        "vy": 0,
+        "grounded": true,
+        "leftGroundAt": -1000,
+        "jumpStarted": -1000,
+        "landedAt": -1000,
+        "landingSpeed": 0,
+        "moving": 0,
+        "ads": false,
+        "lean": 0,
+        "recoil": 0,
+        "spawnSafe": 0,
+        "deadAt": -1000,
+        "lastShotTime": -1000,
+        "lastHurtTime": -1000,
+        "lastMeleeTime": -1000,
+        "selectedWeapon": "rifle",
+        "switchFrom": "rifle",
+        "switchStarted": -1000,
+        "switchDuration": 0.6,
+        "deathYaw": 0,
+        "deathHeadshot": false,
+        "ack": 0,
+        "hipSpread": 0.08,
+        "spawnGeneration": 1
+      }
+    ],
+    "segments": [
+      {
+        "ticks": 30,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {
+              "forward": 1,
+              "yaw": 1.5707963267948966
+            }
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 4.521320343559645,
+            "y": 2.208333333333333,
+            "z": -12.727922061357857,
+            "vy": -1.8333333333333333,
+            "eyeHeight": 1.65,
+            "moving": 4.8,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": false,
+            "ads": false
+          }
+        ]
+      },
+      {
+        "ticks": 30,
+        "inputs": [
+          {
+            "id": 42,
+            "input": {}
+          }
+        ],
+        "expected": [
+          {
+            "id": 42,
+            "x": 4.521320343559645,
+            "y": 0,
+            "z": -12.727922061357857,
+            "vy": 0,
+            "eyeHeight": 1.65,
+            "moving": 0,
+            "lean": 0,
+            "stance": "stand",
+            "grounded": true,
+            "ads": false
+          }
+        ]
+      }
+    ]
+  }
+]

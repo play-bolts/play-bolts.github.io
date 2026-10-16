@@ -14,7 +14,6 @@ import {loadHandAssets} from './hands';
 import {preloadHumanHead} from './humanHead';
 import {preloadSoldierMaterials} from './soldier';
 import {preloadSurfaceAssets} from './materials';
-import {MenuPreview} from './menuPreview';
 import {NetworkClient,type Lobby} from './network';
 import {readLaunchAction} from './launch';
 import {CommunityClient} from './community';
@@ -29,9 +28,6 @@ try{graphics=new WebGLRenderer({antialias:true,powerPreference:'high-performance
 try{await Promise.all([loadHandAssets(),preloadHumanHead(),preloadSoldierMaterials(),preloadSurfaceAssets(graphics),preloadModelDetails(),preloadImportedWeapons()]);ui.setLoadingProgress(.9);}catch(error){ui.el.loading.classList.add('hidden');ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].innerHTML='<div class="dialog"><h2>Unable to load models</h2><button onclick="location.reload()">Retry</button></div>';throw error;}finally{DefaultLoadingManager.onProgress=()=>{};}
 let view:View;
 try{view=new View(ui.el.world,graphics);view.setQuality(ui.prefs.quality);ui.setLoadingProgress(.95);await view.prepare();}catch(error){ui.el.loading.classList.add('hidden');ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].innerHTML='<div class="dialog"><h2>Unable to initialize graphics</h2><button class="start-button" onclick="location.reload()">Reload</button></div>';throw error;}
-let menuPreview:MenuPreview|null=null;
-try{menuPreview=new MenuPreview(ui.el['weapon-preview'] as HTMLCanvasElement);}
-catch(error){menuPreview?.dispose();menuPreview=null;ui.el['weapon-preview'].classList.add('hidden');console.warn('Menu preview unavailable',error);}
 const keys=new Set<string>();let menu=true,previous=performance.now(),accumulator=0,resumeState:'playing'|'killcam'='playing',dragMode=false,dragging=false,previousX=0,previousY=0,jump=false,endingReleased=false,lastReplaySound=-1;
 let appliedQuality:string|undefined;
 const resolution=new AdaptiveResolution();
@@ -47,24 +43,22 @@ ui.leaderboardLoad=()=>{
  if(leaderboardBusy)return;leaderboardBusy=true;ui.setLeaderboardStatus('Loading…',true);
  void community.leaderboard().then(data=>ui.setLeaderboard(data)).catch(()=>ui.setLeaderboardStatus('Unable to load leaderboard.')).finally(()=>{leaderboardBusy=false;});
 };
-function syncSettings(){game.difficulty=ui.prefs.difficulty;sound.setVolume(ui.prefs.volume);if(appliedQuality!==ui.prefs.quality){view.setQuality(ui.prefs.quality);resolution.setBase(view.renderer.getPixelRatio());appliedQuality=ui.prefs.quality;}game.setPlayerName(ui.prefs.playerName);network.setName(ui.prefs.playerName);if(menu)view.setFaction(ui.prefs.faction);if(ui.selectionOpen&&ui.menuStage==='weapon')menuPreview?.show(ui.prefs.faction);}
-ui.menuChanged=()=>{if(ui.menuStage==='weapon')menuPreview?.show(ui.prefs.faction);};
+function syncSettings(){game.difficulty=ui.prefs.difficulty;sound.setVolume(ui.prefs.volume);if(appliedQuality!==ui.prefs.quality){view.setQuality(ui.prefs.quality);resolution.setBase(view.renderer.getPixelRatio());appliedQuality=ui.prefs.quality;}game.setPlayerName(ui.prefs.playerName);network.setName(ui.prefs.playerName);if(menu)view.setFaction(ui.prefs.faction);}
 ui.settingsChanged=syncSettings;syncSettings();
 function capture(){const canvas=view.renderer.domElement;try{const promise=canvas.requestPointerLock();if(promise)promise.catch(()=>{dragMode=true;ui.toast('Drag or arrow keys to look.');});}catch{dragMode=true;ui.toast('Drag or arrow keys to look.');}}
-function start(){sound.resetScene();network.disconnect();onlineEntered=false;onlineSelection=false;ui.setOnline(false);equipRifle=false;sound.init();sound.click();game.start(ui.prefs.faction,ui.prefs.difficulty,ui.prefs.playerName);view.setupActors(game);menu=false;joining=true;resumeState='playing';game.state='paused';ui.begin();keys.clear();jump=false;endingReleased=false;accumulator=0;ui.openSelection('team');}
+function start(){sound.resetScene();network.disconnect();onlineEntered=false;onlineSelection=false;ui.setOnline(false);equipRifle=false;sound.init();sound.click();game.start(ui.prefs.faction,ui.prefs.difficulty,ui.prefs.playerName);view.setupActors(game);menu=false;joining=true;resumeState='playing';game.state='paused';ui.begin();keys.clear();jump=false;endingReleased=false;accumulator=0;ui.openSelection();}
 function pause(){if(game.state==='playing'||game.state==='killcam'){resumeState=game.state;if(network.online)network.setPaused(true);else game.state='paused';keys.clear();jump=false;if(game.player)game.player.ads=false;}}
 function resume(){sound.init();if(network.online)network.setPaused(false);else game.state=resumeState;ui.closeModal();keys.clear();jump=false;capture();}
 function leave(){sound.resetScene();game.spectator.reset();network.disconnect();onlineEntered=false;onlineSelection=false;requestedLobby=undefined;lobbyRequest++;menu=true;joining=false;equipRifle=false;game.state='menu';document.exitPointerLock();ui.closeModal();ui.showMenu();keys.clear();for(const s of view.soldiers)s.visible=false;}
 ui.start=start;ui.resume=resume;ui.pause=()=>{pause();document.exitPointerLock();};ui.leave=leave;ui.skip=()=>network.online?network.skipReplay():game.skipReplay();
-function selectInGame(stage:'team'|'weapon'){
- if(menu||game.state==='ended')return;pause();document.exitPointerLock();ui.prefs.faction=game.player.faction;ui.openSelection(stage);
+function selectInGame(){
+ if(menu||game.state==='ended')return;pause();document.exitPointerLock();ui.prefs.faction=game.player.faction;ui.openSelection();
 }
-ui.selectTeam=()=>selectInGame('team');ui.selectWeapon=()=>selectInGame('weapon');
+ui.selectTeam=selectInGame;
 ui.cancelSelection=()=>{ui.prefs.faction=game.player.faction;ui.refreshSelection();ui.save();if(joining){leave();return;}ui.closeSelection();};
 function joinOnline(spectator=false){
- if(network.online)return;for(const id of ['choose-weapon','choose-spectator'])(ui.el[id] as HTMLButtonElement).disabled=true;
- ui.el['weapon-choice-name'].textContent='Connecting…';
- void network.join(requestedLobby,ui.prefs.playerName,ui.prefs.faction,spectator).catch(error=>{leave();lobbyFetchTime=performance.now();ui.showLobbies(lobbyRows,error instanceof Error?error.message:'Unable to connect.');}).finally(()=>{for(const id of ['choose-weapon','choose-spectator'])(ui.el[id] as HTMLButtonElement).disabled=!ui.ready;ui.refreshSelection();});
+ if(network.online)return;const request=lobbyRequest;ui.setSelectionBusy(true);ui.save();
+ void network.join(requestedLobby,ui.prefs.playerName,ui.prefs.faction,spectator).catch(error=>{if(request!==lobbyRequest)return;leave();lobbyFetchTime=performance.now();ui.showLobbies(lobbyRows,error instanceof Error?error.message:'Unable to connect.');}).finally(()=>{if(request===lobbyRequest){ui.setSelectionBusy(false);ui.refreshSelection();}});
 }
 ui.selectSpectator=()=>{
  if(onlineSelection){joinOnline(true);return;}
@@ -73,7 +67,7 @@ ui.selectSpectator=()=>{
 };
 ui.selectLoadout=()=>{
  if(onlineSelection){joinOnline();return;}
- if(network.online){network.setFaction(ui.prefs.faction);ui.save();ui.closeSelection();joining=false;resume();return;}
+ if(network.online){network.setFaction(ui.prefs.faction);ui.save();ui.closeSelection();joining=false;resume();network.selectWeapon('rifle');return;}
  const changed=game.changePlayerFaction(ui.prefs.faction);
  if(changed){view.syncActors(game);resumeState='playing';}
  ui.save();ui.closeSelection();joining=false;resume();equipRifle=game.state==='playing'&&game.player.selectedWeapon!=='rifle';
@@ -97,7 +91,7 @@ ui.joinLobby=id=>{
  // arena backdrop: no AI, live player, reserved seat, or vulnerable spawn.
  const actor=createActor(0,ui.prefs.faction,ui.prefs.playerName);Object.assign(actor,SPAWNS[0]);actor.yaw=Math.atan2(-actor.x,-actor.z);
  game.actors=[actor];game.time=0;game.remaining=RULES.roundSeconds;game.state='paused';game.events=[];game.history=[];game.replay=[];game.replayShots=[];game.shots=[];game.winner=null;
- view.setupActors(game);ui.closeLobbies();ui.setOnline(true);ui.begin();ui.openSelection('team');
+ view.setupActors(game);ui.closeLobbies();ui.setOnline(true);ui.begin();ui.openSelection();
 };
 network.onRoster=()=>{sound.resetScene();view.syncActors(game);};
 network.onJoined=name=>{
@@ -139,7 +133,7 @@ document.addEventListener('keydown',e=>{
  if((e.target as HTMLElement).matches('input,textarea,select'))return;
  if(menu||ui.selectionOpen){ui.handleMenuKey(e);return;}
  if(['Space','Tab','AltLeft','AltRight','ControlLeft','ControlRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
- if(e.code==='KeyM'&&!e.repeat&&game.state!=='ended'){selectInGame('team');return;}
+ if(e.code==='KeyM'&&!e.repeat&&game.state!=='ended'){selectInGame();return;}
  if(e.code==='Tab'){ui.scoreHeld=true;return;}
  if(e.code==='Escape'){if(spectatorExit('key'))return;if(game.state==='paused')resume();else{pause();document.exitPointerLock();}return;}
  if(game.state==='killcam'&&e.code==='Space'){ui.skip();return;}

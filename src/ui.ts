@@ -15,7 +15,7 @@ export function scoreboardRows(actors:readonly Actor[],online:boolean){
  return [...actors].sort((a,b)=>Number(a.spectator)-Number(b.spectator)||b.kills-a.kills||a.deaths-b.deaths).map((a,i)=>`<tr class="${a.id===0?'player-row':''}"><td>${a.spectator?'—':i+1}</td><td><span class="flag ${a.faction}">${a.faction==='russian'?'★':''}</span><strong>${playerNameHTML(a.name)}</strong>${a.spectator?'<span class=score-spectator>Spectator</span>':''}</td><td>${a.kills}</td><td>${a.deaths}</td>${online?`<td class="score-ping">${typeof a.ping==='number'&&Number.isInteger(a.ping)&&a.ping>=0&&a.ping<=999?a.ping:'—'}</td>`:''}</tr>`).join('');
 }
 export class UI {
- menuStage:'main'|'team'|'weapon'='main';selectionOpen=false;ready=false;menuChanged=()=>{};
+ menuStage:'main'|'team'='main';selectionOpen=false;ready=false;private selectionBusy=false;
  private inGame=false;private spectating=false;private spectatorSelection=false;
  online=false;lobbyOpen=false;chatOpen=false;
  private lobbyRows:LobbyRow[]=[];private selectedLobby='';private lobbyBusy=false;
@@ -28,7 +28,7 @@ export class UI {
  private feedbackBusy=false;private leaderboardBusy=false;private leaderboardStatus='';private leaderboardData:Leaderboard|null=null;private leaderboardPeriod:LeaderboardPeriod='allTime';
  feedbackSend=async(_message:string,_email:string)=>{};leaderboardLoad=()=>{};
  prefs:Preferences={faction:'british',difficulty:'regular',playerName:DEFAULT_PLAYER_NAME,playerNameVersion:PLAYER_NAME_PREFERENCE_VERSION,sensitivity:1,volume:.6,aim:'toggle',quality:'high',invert:false};
- selectLoadout=()=>{};selectSpectator=()=>{};selectTeam=()=>{};selectWeapon=()=>{};cancelSelection=()=>{};
+ selectLoadout=()=>{};selectSpectator=()=>{};selectTeam=()=>{};cancelSelection=()=>{};
  start=()=>{};resume=()=>{};pause=()=>{};leave=()=>{};settingsChanged=()=>{};skip=()=>{};
  feed:{text:string;time:number}[]=[];hitUntil=0;damageUntil=0;damageStarted=-Infinity;damageLethal=false;killUntil=0;scoreHeld=false;modalOpen=false;lastHud=0;
  el:Record<string,HTMLElement>={};
@@ -56,14 +56,11 @@ export class UI {
    <nav class="lobby-actions" aria-label="Lobby actions"><button id="lobby-back">Back</button><button id="lobby-refresh">Refresh</button><button id="lobby-join" disabled>Join</button></nav>
   </section>
 <main id="selection-window" class="classic-window hidden" aria-label="Bolts multiplayer menu">
-   <nav class="selection-tabs" aria-label="Menu"><button id="selection-close">Back</button><button data-menu-tab="team">Team</button><button data-menu-tab="weapon">Weapon</button><button class="settings-button">Options</button><button class="controls-button">Controls</button></nav>
+   <nav class="selection-tabs" aria-label="Menu"><button id="selection-close">Back</button><button data-menu-tab="team">Team</button><button class="settings-button">Options</button><button class="controls-button">Controls</button></nav>
    <div class="selection-body">
     <section id="menu-team" class="menu-pane hidden" aria-label="Select team">
      <div class="team-choices" role="group" aria-label="Team"><button class="classic-choice" data-faction="british" aria-pressed="false">British</button><button class="classic-choice" data-faction="russian" aria-pressed="false">Russian</button><button class="classic-choice" data-faction="german" aria-pressed="false">German</button><button id="choose-spectator" class="classic-choice" aria-pressed="false">Spectator</button></div>
-    </section>
-    <section id="menu-weapon" class="menu-pane weapon-pane hidden" aria-label="Select weapon">
-     <div class="weapon-choices"><button id="choose-weapon" class="classic-choice" aria-label="Select rifle and enter game"><span id="weapon-choice-name">Lee–Enfield</span></button></div>
-     <div class="weapon-details"><canvas id="weapon-preview" aria-label="Selected rifle preview"></canvas><h2 id="weapon-title">Lee–Enfield</h2></div>
+     <div id="selection-status" class="hidden" role="status" aria-live="polite"></div>
     </section>
    </div>
   </main></div>
@@ -76,7 +73,7 @@ export class UI {
    <div class="ammo-hud"><div id="weapon-slot"></div><div class="ammo-line"><strong id="ammo">10</strong><span class="ammo-divider">/</span><span id="reserve">60</span></div><div id="round-icons"></div><div class="health-row"><span>✚</span><div class="health-track"><i id="health-fill"></i></div><b id="health">100</b></div></div>
    <div id="killcam" class="hidden"><div class="killcam-top"><span>Killcam</span><span id="killer-name"></span></div><div class="killcam-bottom"><button id="skip-killcam">Skip <kbd>Space</kbd></button></div></div>
   </div>
-  <div id="pause" class="overlay hidden"><div class="dialog pause-card"><h2 id="pause-title">Paused</h2><button id="resume" class="start-button">Resume</button><button id="open-team" class="secondary-button">Select team</button><button id="open-weapon" class="secondary-button">Select weapon</button><button id="pause-score" class="secondary-button">Scoreboard</button><button class="secondary-button settings-button">Options</button><button class="secondary-button controls-button">Controls</button><button id="leave" class="secondary-button">Main menu</button></div></div>
+  <div id="pause" class="overlay hidden"><div class="dialog pause-card"><h2 id="pause-title">Paused</h2><button id="resume" class="start-button">Resume</button><button id="open-team" class="secondary-button">Select team</button><button id="pause-score" class="secondary-button">Scoreboard</button><button class="secondary-button settings-button">Options</button><button class="secondary-button controls-button">Controls</button><button id="leave" class="secondary-button">Main menu</button></div></div>
   <div id="scoreboard" class="overlay hidden"><div class="score-card"><button id="score-close" class="icon-button" aria-label="Close scoreboard">${closeIcon}</button><div class="score-heading"><span id="score-time">05:00</span></div><h2 id="score-title">Scoreboard</h2><p id="score-winner" class="hidden"></p><table><thead><tr><th>#</th><th>Player</th><th>Kills</th><th>Deaths</th><th id="score-ping" class="hidden" aria-label="Ping in milliseconds">Ping</th></tr></thead><tbody id="score-rows"></tbody></table><div id="end-actions" class="hidden"><button id="again" class="start-button">Play again</button><button id="end-leave" class="secondary-button">Main menu</button></div></div></div>
   <div id="modal" class="overlay hidden"><div id="modal-dialog" class="dialog manual" role="dialog" aria-modal="true" aria-label="Options"><button id="modal-close" class="icon-button" aria-label="Close dialog">${closeIcon}</button><div id="options-tabs" class="modal-tabs"><button data-tab="settings" class="active">Options</button><button data-tab="controls">Controls</button><button data-tab="credits">Credits</button></div>
    <section id="tab-feedback" class="hidden" aria-labelledby="feedback-title">
@@ -113,7 +110,7 @@ export class UI {
    </div>
   </div></div><div id="toast" role="status" class="hidden"></div><div id="loading" class="overlay loading-overlay" role="status" aria-live="polite"><div class="loading-content"><div id="loading-label">Loading</div><progress id="loading-progress" max="100" value="0" aria-labelledby="loading-label"></progress></div></div><div id="load-error" class="overlay hidden"></div>`;
   for(const e of document.querySelectorAll<HTMLElement>('[id]'))this.el[e.id]=e;
-  document.querySelectorAll<HTMLButtonElement>('[data-faction]').forEach(b=>b.onclick=()=>{this.spectatorSelection=false;this.prefs.faction=b.dataset.faction as Faction;this.refreshSelection();this.setMenuStage('weapon');});
+  document.querySelectorAll<HTMLButtonElement>('[data-faction]').forEach(b=>b.onclick=()=>{if(!this.ready||this.selectionBusy)return;this.spectatorSelection=false;this.prefs.faction=b.dataset.faction as Faction;this.refreshSelection();this.selectLoadout();});
   (this.el.difficulty as HTMLSelectElement).onchange=()=>{this.prefs.difficulty=(this.el.difficulty as HTMLSelectElement).value as Difficulty;this.save();};
   this.el.start.onclick=()=>this.start();this.el.resume.onclick=()=>this.resume();this.el.leave.onclick=()=>this.leave();this.el.again.onclick=()=>this.start();this.el['end-leave'].onclick=()=>this.leave();this.el['skip-killcam'].onclick=()=>this.skip();this.el['hud-menu'].onclick=()=>this.pause();
   this.el['feedback-open'].onclick=()=>this.openModal('feedback');this.el['leaderboard-open'].onclick=()=>this.openModal('leaderboard');
@@ -124,9 +121,8 @@ export class UI {
   this.el['chat-form'].onsubmit=event=>{event.preventDefault();this.submitChat();};
   (this.el['chat-input'] as HTMLInputElement).oninput=()=>{const input=this.el['chat-input'] as HTMLInputElement,points=Array.from(input.value);if(points.length>256)input.value=points.slice(0,256).join('');};
   document.querySelectorAll<HTMLButtonElement>('[data-menu-tab]').forEach(b=>b.onclick=()=>this.setMenuStage(b.dataset.menuTab as typeof this.menuStage));
-  this.el['open-team'].onclick=()=>this.selectTeam();this.el['open-weapon'].onclick=()=>this.selectWeapon();this.el['selection-close'].onclick=()=>this.cancelSelection();
-  this.el['choose-spectator'].onclick=()=>{if(this.ready){this.spectatorSelection=true;this.refreshSelection();this.selectSpectator();}};
-  this.el['choose-weapon'].onclick=()=>{if(this.ready)this.selectLoadout();};
+  this.el['open-team'].onclick=()=>this.selectTeam();this.el['selection-close'].onclick=()=>this.cancelSelection();
+  this.el['choose-spectator'].onclick=()=>{if(this.ready&&!this.selectionBusy){this.spectatorSelection=true;this.refreshSelection();this.selectSpectator();}};
   document.querySelectorAll<HTMLElement>('.settings-button').forEach(b=>b.onclick=()=>this.openModal('settings'));
   document.querySelectorAll<HTMLElement>('.controls-button').forEach(b=>b.onclick=()=>this.openModal('controls'));
   this.el['pause-score'].onclick=()=>{this.scoreHeld=true;};this.el['score-close'].onclick=()=>{this.scoreHeld=false;};this.el['modal-close'].onclick=()=>this.closeModal();this.el.modal.onclick=e=>{if(e.target===this.el.modal)this.closeModal();};
@@ -155,7 +151,7 @@ export class UI {
    tr.onclick=()=>this.selectLobbyRow(row.id);tr.ondblclick=()=>{if(!this.lobbyBusy&&row.players<row.capacity)this.joinLobby(row.id);};
    this.el['lobby-rows'].append(tr);
   }
-  this.setLobbyStatus(status||(!rows.length?'No games': ''),false);this.menuChanged();if(opening)(this.el['lobby-rows'].querySelector<HTMLButtonElement>('tr.selected button')??this.el['lobby-refresh']).focus();
+  this.setLobbyStatus(status||(!rows.length?'No games': ''),false);if(opening)(this.el['lobby-rows'].querySelector<HTMLButtonElement>('tr.selected button')??this.el['lobby-refresh']).focus();
  }
  private selectLobbyRow(id:string){this.selectedLobby=id;for(const row of this.el['lobby-rows'].children){const active=(row as HTMLElement).dataset.lobby===id;row.classList.toggle('selected',active);row.querySelector('button')?.setAttribute('aria-pressed',String(active));}this.refreshLobbyButtons();}
  private refreshLobbyButtons(){const selected=this.lobbyRows.find(row=>row.id===this.selectedLobby);(this.el['lobby-join'] as HTMLButtonElement).disabled=this.lobbyBusy||!selected||selected.players>=selected.capacity;(this.el['lobby-refresh'] as HTMLButtonElement).disabled=this.lobbyBusy;for(const button of this.el['lobby-rows'].querySelectorAll('button'))button.disabled=this.lobbyBusy;}
@@ -189,17 +185,14 @@ export class UI {
  private updateChat(now:number){for(const line of this.el['chat-log'].children)hudClass(line,'hidden',!this.chatOpen&&now>Number((line as HTMLElement).dataset.until));}
  refreshSelection(){document.querySelectorAll<HTMLElement>('[data-faction]').forEach(b=>{const active=!this.spectatorSelection&&b.dataset.faction===this.prefs.faction;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));});
   this.el['choose-spectator'].classList.toggle('selected',this.spectatorSelection);this.el['choose-spectator'].setAttribute('aria-pressed',String(this.spectatorSelection));
-  const weapon=WEAPONS[this.prefs.faction];
-  this.el['weapon-choice-name'].textContent=weapon.name;this.el['weapon-title'].textContent=weapon.name;
-  this.el['choose-weapon'].setAttribute('aria-label',`Select ${weapon.name} and enter game`);this.el['weapon-preview'].setAttribute('aria-label',`${weapon.name} rifle preview`);
  }
+ setSelectionBusy(busy:boolean){this.selectionBusy=busy;document.querySelectorAll<HTMLButtonElement>('[data-faction],#choose-spectator').forEach(button=>{button.disabled=!this.ready||busy;});this.el['menu-team'].setAttribute('aria-busy',String(busy));this.el['selection-status'].textContent=busy?'Connecting…':'';this.el['selection-status'].classList.toggle('hidden',!busy);}
  setLoadingProgress(value:number){const progress=this.el['loading-progress'] as HTMLProgressElement;progress.value=Math.max(progress.value,Math.min(100,Math.max(0,value*100)));}
- setReady(ready:boolean){this.ready=ready;(this.el.start as HTMLButtonElement).disabled=!ready;(this.el.multiplayer as HTMLButtonElement).disabled=!ready;(this.el['choose-weapon'] as HTMLButtonElement).disabled=!ready;this.el.menu.inert=!ready;this.el.menu.setAttribute('aria-busy',String(!ready));if(ready)this.setLoadingProgress(1);this.el.loading.classList.toggle('hidden',ready);}
+ setReady(ready:boolean){this.ready=ready;(this.el.start as HTMLButtonElement).disabled=!ready;(this.el.multiplayer as HTMLButtonElement).disabled=!ready;this.setSelectionBusy(this.selectionBusy);this.el.menu.inert=!ready;this.el.menu.setAttribute('aria-busy',String(!ready));if(ready)this.setLoadingProgress(1);this.el.loading.classList.toggle('hidden',ready);}
  setMenuStage(stage:typeof this.menuStage,focus=true){this.lobbyOpen=false;this.el['lobby-window'].classList.add('hidden');this.menuStage=stage;this.el['players-online'].classList.toggle('hidden',stage!=='main');this.el.menu.classList.toggle('intro-active',stage==='main');this.el['selection-window'].classList.toggle('hidden',stage==='main');
-  for(const name of ['main','team','weapon'])this.el['menu-'+name].classList.toggle('hidden',name!==stage);
+  for(const name of ['main','team'])this.el['menu-'+name].classList.toggle('hidden',name!==stage);
   document.querySelectorAll<HTMLElement>('[data-menu-tab]').forEach(b=>{const active=b.dataset.menuTab===stage;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
-  this.menuChanged();
-  if(focus){const target=stage==='main'?this.el.multiplayer:stage==='weapon'?this.el['choose-weapon']:document.querySelector<HTMLElement>(`[data-faction="${this.prefs.faction}"]`);if(target instanceof HTMLButtonElement&&target.disabled)document.querySelector<HTMLElement>(`[data-menu-tab="${stage}"]`)?.focus();else target?.focus();}
+  if(focus){const target=stage==='main'?this.el.multiplayer:document.querySelector<HTMLElement>(`[data-faction="${this.prefs.faction}"]`);if(target instanceof HTMLButtonElement&&target.disabled)document.querySelector<HTMLElement>(`[data-menu-tab="${stage}"]`)?.focus();else target?.focus();}
  }
  handleMenuKey(event:KeyboardEvent){
   if(!this.ready||this.modalOpen||event.repeat||event.ctrlKey||event.altKey||event.metaKey)return;
@@ -209,16 +202,14 @@ export class UI {
    if((event.code==='Enter'||event.code==='NumpadEnter')&&this.el['lobby-rows'].contains(event.target as Node)){event.preventDefault();(this.el['lobby-join'] as HTMLButtonElement).click();}return;
   }
   const digit=event.code.match(/^(?:Digit|Numpad)([0-4])$/)?.[1];
-  if(event.code==='Escape'||digit==='0'){if(this.selectionOpen){event.preventDefault();this.selectionBack();}return;}
+  if(event.code==='Escape'||digit==='0'){if(this.selectionOpen){event.preventDefault();this.cancelSelection();}return;}
   if(this.menuStage==='team'&&digit==='4'){event.preventDefault();(this.el['choose-spectator'] as HTMLButtonElement).click();return;}
   if(this.menuStage==='team'&&digit&&digit!=='0'){event.preventDefault();document.querySelector<HTMLButtonElement>(`[data-faction="${(['british','russian','german'] as const)[Number(digit)-1]}"]`)?.click();return;}
-  if(this.menuStage==='weapon'&&digit==='1'){event.preventDefault();(this.el['choose-weapon'] as HTMLButtonElement).click();return;}
   if(event.code==='Enter'&&this.menuStage==='main'&&!(event.target instanceof HTMLButtonElement)){event.preventDefault();(this.el.multiplayer as HTMLButtonElement).click();}
   if(event.code==='Slash'){event.preventDefault();this.openModal('controls');}
  }
- openSelection(stage:'team'|'weapon'){this.spectatorSelection=this.spectating;this.selectionOpen=true;this.closeChat();this.closeModal();this.scoreHeld=false;this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.refreshSelection();this.setMenuStage(stage);}
+ openSelection(){this.setSelectionBusy(false);this.spectatorSelection=this.spectating;this.selectionOpen=true;this.closeChat();this.closeModal();this.scoreHeld=false;this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.refreshSelection();this.setMenuStage('team');}
  closeSelection(){this.selectionOpen=false;this.el.menu.classList.add('hidden');this.el.hud.classList.remove('hidden');this.setMenuStage('main',false);}
- selectionBack(){if(this.menuStage==='weapon')this.setMenuStage('team');else this.cancelSelection();}
  refreshSettings(){(this.el.difficulty as HTMLSelectElement).value=this.prefs.difficulty;(this.el['player-name'] as HTMLInputElement).value=this.prefs.playerName;this.el['player-name-preview'].innerHTML=playerNameHTML(this.prefs.playerName);(this.el.sensitivity as HTMLInputElement).value=String(this.prefs.sensitivity);(this.el.volume as HTMLInputElement).value=String(this.prefs.volume);this.el['sensitivity-value'].textContent=this.prefs.sensitivity.toFixed(1);this.el['volume-value'].textContent=Math.round(this.prefs.volume*100)+'%';(this.el['aim-mode'] as HTMLSelectElement).value=this.prefs.aim;(this.el.quality as HTMLSelectElement).value=this.prefs.quality;(this.el.invert as HTMLInputElement).checked=this.prefs.invert;}
  openModal(tab:string){
   this.el['difficulty-setting'].classList.toggle('hidden',!this.inGame||this.online);const selected=['controls','credits','feedback','leaderboard'].includes(tab)?tab:'settings';
@@ -259,7 +250,7 @@ export class UI {
  toast(message:string){this.el.toast.textContent=message;this.el.toast.classList.remove('hidden');setTimeout(()=>this.el.toast.classList.add('hidden'),4000);}
  showDamage(lethal=false){this.damageStarted=performance.now();this.damageLethal=lethal;this.damageUntil=this.damageStarted+(lethal?1100:620);}
  showKill(victimName:string){this.killUntil=performance.now()+3000;this.el['kill-message'].innerHTML=`You killed ${playerNameHTML(victimName)}`;this.el['kill-message'].style.opacity='1';this.el['kill-message'].classList.remove('hidden');}
- showMenu(){this.spectating=this.spectatorSelection=false;this.inGame=false;this.selectionOpen=false;this.setOnline(false);this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.feed=[];this.killUntil=0;this.setMenuStage('main');}
+ showMenu(){this.setSelectionBusy(false);this.spectating=this.spectatorSelection=false;this.inGame=false;this.selectionOpen=false;this.setOnline(false);this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.feed=[];this.killUntil=0;this.setMenuStage('main');}
  begin(){this.inGame=true;this.closeSelection();this.closeModal();this.damageStarted=-Infinity;this.damageUntil=0;this.feed=[];this.killUntil=0;this.scoreHeld=false;this.el['kill-message'].classList.add('hidden');this.el.menu.classList.add('hidden');this.el.pause.classList.add('hidden');this.el.scoreboard.classList.add('hidden');this.el.hud.classList.remove('hidden');}
  update(game:Game){
   if(!game.player)return;const replayActor=game.state==='killcam'?game.replayFrame()?.actors[game.killer]:null;const p=replayActor?{...game.actors[game.killer],...replayActor}:game.viewedActor??game.player,now=performance.now();
@@ -268,7 +259,7 @@ export class UI {
   hudClass(this.el.hud,'spectator-free',spectating&&!followed);hudClass(this.el['spectator-status'],'hidden',!spectating);
   hudClass(this.el['spectator-help'],'hidden',!spectating);hudText(this.el['spectator-help'],followed?'LMB / RMB · Player    Esc · Free fly':'WASD · Fly    Space / Ctrl · Up / down    Shift · Fast    LMB / RMB · Follow');
   markup.set(this.el['spectator-status'],JSON.stringify([spectating,followed?.name]),()=>spectating?`Spectating: ${followed?playerNameHTML(followed.name):'Free fly'}`:'');
-  hudText(this.el['open-team'],spectating?'Join game':'Select team');hudClass(this.el['open-weapon'],'hidden',spectating);
+  hudText(this.el['open-team'],spectating?'Join game':'Select team');
   this.spectating=spectating;
   hudClass(this.el.pause,'hidden',game.state!=='paused'||this.scoreHeld||this.modalOpen||this.selectionOpen);hudClass(this.el.scoreboard,'hidden',this.selectionOpen||!(this.scoreHeld||game.state==='ended'));
   hudClass(this.el.killcam,'hidden',game.state!=='killcam');hudClass(this.el.hud,'killcam-active',game.state==='killcam');const killerName=game.actors[game.killer]?.name??DEFAULT_PLAYER_NAME;markup.set(this.el['killer-name'],killerName,()=>playerNameHTML(killerName));

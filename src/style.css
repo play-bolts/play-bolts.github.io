@@ -165,7 +165,7 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 
 /* CoD1 multiplayer selection: square tabs and a double-bordered black window. */
 .classic-window { display: flex; flex-direction: column; width: min(72vw, 1100px); height: min(68vh, 650px); min-height: 385px; padding: 2px; border: 3px double #858680; background: #050606df; color: #ecece6; box-shadow: 0 0 0 1px #090a09, 0 3px 10px #0003; }
-.selection-tabs { display: grid; grid-template-columns: repeat(5, 1fr); flex-shrink: 0; gap: 2px; background: #545550; padding-bottom: 2px; }
+.selection-tabs { display: grid; grid-template-columns: repeat(4, 1fr); flex-shrink: 0; gap: 2px; background: #545550; padding-bottom: 2px; }
 .selection-tabs button { min-width: 0; min-height: 42px; padding: 5px 8px; background: #161817; color: #d8d9d3; font-size: clamp(16px, 1.45vw, 22px); white-space: nowrap; }
 .selection-tabs button.active, .selection-tabs button[aria-current=page] { color: #fff; background: #393c38; }
 .selection-tabs button:hover, .selection-tabs button:focus-visible { background: #30342f; color: #fff; }
@@ -184,21 +184,13 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 .classic-window .difficulty button.selected { color: #fff; }
 .selected-loadout { font-size: 16px; color: #aeb4a7; }
 .team-choices { width: min(280px, 100%); }
-.weapon-pane { display: grid; grid-template-columns: 43% 57%; gap: 0; }
-.weapon-choices .classic-choice { font-size: clamp(18px, 1.55vw, 24px); }
-.weapon-details { min-width: 0; padding-left: 12px; }
-#weapon-preview { display: block; width: 100%; height: clamp(125px, 19vh, 210px); margin: -12px 0 8px; }
-.weapon-details h2 { font-size: clamp(20px, 1.9vw, 28px); font-weight: normal; margin: 0 0 7px; }
+#selection-status { position: absolute; bottom: 24px; left: 26px; color: #c6c8bf; }
 .classic-window button:focus-visible { outline-offset: -1px; outline-color: #c7c9c2; }
 @media (max-width: 700px) {
  .menu { background: #0002; padding: 15px; }
  .classic-window { width: 100%; height: min(72vh, 570px); min-height: 385px; }
  .selection-tabs button { padding: 5px 2px; font-size: 15px; min-height: 35px; }
  .menu-pane { padding: 20px; }
- .weapon-pane { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
- .weapon-details { padding: 8px 0 0; }
- #weapon-preview { height: 125px; margin: 0; }
- .weapon-details h2 { margin-top: 0; font-size: 22px; }
  .classic-window .difficulty { gap: 6px 16px; }
  .classic-window .difficulty > span { width: 100%; }
 }

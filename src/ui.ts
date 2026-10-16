@@ -48,7 +48,7 @@ export class UI {
   <div id="world" aria-label="3D arena"></div><div class="film-grain"></div><div class="vignette"></div>
   <div id="menu" class="screen menu intro-active">    <section id="menu-main" class="intro-menu" aria-label="Main menu">
      <h1>BOLTS</h1>
-     <div class="main-choices"><button id="start" class="classic-choice">Single player</button><button id="multiplayer" class="classic-choice">Multiplayer</button><button id="leaderboard-open" class="classic-choice">Leaderboard</button><button id="feedback-open" class="classic-choice">Feedback</button><button class="classic-choice settings-button">Options</button><button class="classic-choice controls-button">Controls</button></div>
+     <div class="main-choices"><button id="start" class="classic-choice">Single player</button><button id="multiplayer" class="classic-choice">Multiplayer</button><button id="leaderboard-open" class="classic-choice">Leaderboard</button><button id="feedback-open" class="classic-choice">Feedback</button><button class="classic-choice settings-button">Options</button><button class="classic-choice controls-button">Controls</button><button id="credits-open" class="classic-choice">Credits</button></div>
     </section><div id="players-online" role="status" aria-live="polite">— players online</div>
   <section id="lobby-window" class="classic-window lobby-window hidden" aria-labelledby="lobby-title">
    <header class="lobby-heading"><h2 id="lobby-title">Join game</h2></header>
@@ -75,7 +75,7 @@ export class UI {
   </div>
   <div id="pause" class="overlay hidden"><div class="dialog pause-card"><h2 id="pause-title">Paused</h2><button id="resume" class="start-button">Resume</button><button id="open-team" class="secondary-button">Select team</button><button id="pause-score" class="secondary-button">Scoreboard</button><button class="secondary-button settings-button">Options</button><button class="secondary-button controls-button">Controls</button><button id="leave" class="secondary-button">Main menu</button></div></div>
   <div id="scoreboard" class="overlay hidden"><div class="score-card"><button id="score-close" class="icon-button" aria-label="Close scoreboard">${closeIcon}</button><div class="score-heading"><span id="score-time">05:00</span></div><h2 id="score-title">Scoreboard</h2><p id="score-winner" class="hidden"></p><table><thead><tr><th>#</th><th>Player</th><th>Kills</th><th>Deaths</th><th id="score-ping" class="hidden" aria-label="Ping in milliseconds">Ping</th></tr></thead><tbody id="score-rows"></tbody></table><div id="end-actions" class="hidden"><button id="again" class="start-button">Play again</button><button id="end-leave" class="secondary-button">Main menu</button></div></div></div>
-  <div id="modal" class="overlay hidden"><div id="modal-dialog" class="dialog manual" role="dialog" aria-modal="true" aria-label="Options"><button id="modal-close" class="icon-button" aria-label="Close dialog">${closeIcon}</button><div id="options-tabs" class="modal-tabs"><button data-tab="settings" class="active">Options</button><button data-tab="controls">Controls</button><button data-tab="credits">Credits</button></div>
+  <div id="modal" class="overlay hidden"><div id="modal-dialog" class="dialog manual" role="dialog" aria-modal="true" aria-label="Options"><button id="modal-close" class="icon-button" aria-label="Close dialog">${closeIcon}</button><div id="options-tabs" class="modal-tabs"><button data-tab="settings" class="active">Options</button><button data-tab="controls">Controls</button></div>
    <section id="tab-feedback" class="hidden" aria-labelledby="feedback-title">
     <h2 id="feedback-title">Feedback</h2><p id="feedback-prompt">Share your opinions, requests, and any other info that can help us improve your experience!</p>
     <form id="feedback-form" novalidate>
@@ -89,7 +89,8 @@ export class UI {
     <div id="leaderboard-panel" class="leaderboard-list" role="tabpanel" aria-labelledby="leaderboard-alltime" tabindex="0"><table aria-label="All-time kills and deaths"><thead><tr><th scope="col">#</th><th scope="col">Player</th><th scope="col">Kills</th><th scope="col">Deaths</th></tr></thead><tbody id="leaderboard-rows"></tbody></table><div id="leaderboard-status" role="status" aria-live="polite"></div></div>
     <div class="community-actions"><button id="leaderboard-refresh" type="button">Refresh</button></div>
    </section>
-   <div id="tab-credits" class="hidden asset-credits">
+   <section id="tab-credits" class="hidden asset-credits" aria-labelledby="credits-title">
+    <h2 id="credits-title">Credits</h2>
     <p>Weapon models · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
     <ul><li><a href="https://sketchfab.com/3d-models/lee-enfield-mkiii-f6a2160daf134071a84e3cae5f831875" target="_blank" rel="noopener">Lee Enfield MKIII</a> — Moony_State</li><li><a href="https://sketchfab.com/3d-models/mosin-nagant-m91-92ede39f23bd40c7982c727dfd7c4be0" target="_blank" rel="noopener">Mosin Nagant M91</a> — MaX3Dd</li><li><a href="https://sketchfab.com/3d-models/kar98k-96b7387fe49b4dd491cc8277f765527a" target="_blank" rel="noopener">Kar98k</a> — Ecler</li><li><a href="https://sketchfab.com/3d-models/stielhandgranate-german-grenade-c49ce26939d64641afac1175a8d62338" target="_blank" rel="noopener">Stielhandgranate</a> — Janovich</li></ul>
     <p>Adapted for Bolts: scale, moving parts, hand contacts and texture optimization.</p>
@@ -97,7 +98,8 @@ export class UI {
     <ul><li><a href="https://sketchfab.com/3d-models/wwii-british-soldier-9af571fa416546f08dfc2ba95e604083" target="_blank" rel="noopener">WWII British Soldier</a> — patromes</li><li><a href="https://sketchfab.com/3d-models/ww2-panzergrenadier-fbx-tpose-cc0-99ae9a9deb2c46c5956342b3bf9de7a2" target="_blank" rel="noopener">WW2 Panzergrenadier</a> — britdawgmasterfunk</li><li><a href="https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99" target="_blank" rel="noopener">WW2 Soviet Uniform</a> — tnnv</li></ul>
     <p>Adapted with continuous body skinning, neutral bind poses, material response and optimized textures.</p>
     <p>CC0: Mesh2Motion / Quaternius motion; para / MakeHuman hands; MakeHuman head; ambientCG and Poly Haven materials.</p>
-   </div>
+    <p>Title font: <a href="https://github.com/google/fonts/tree/main/ofl/alfaslabone" target="_blank" rel="noopener">Alfa Slab One</a> — JM Solé · <a href="./assets/fonts/alfa-slab-one/OFL.txt" target="_blank" rel="noopener">SIL OFL 1.1</a></p>
+   </section>
    <div id="tab-controls" class="hidden"><div class="controls-grid">${controls.map(([key,label])=>`<div><kbd>${key}</kbd><span>${label}</span></div>`).join('')}</div></div>
    <div id="tab-settings">
     <label id="difficulty-setting" class="setting select-setting hidden">Difficulty<select id="difficulty"><option value="recruit">Recruit</option><option value="regular">Regular</option><option value="veteran">Veteran</option></select></label>
@@ -113,7 +115,7 @@ export class UI {
   document.querySelectorAll<HTMLButtonElement>('[data-faction]').forEach(b=>b.onclick=()=>{if(!this.ready||this.selectionBusy)return;this.spectatorSelection=false;this.prefs.faction=b.dataset.faction as Faction;this.refreshSelection();this.selectLoadout();});
   (this.el.difficulty as HTMLSelectElement).onchange=()=>{this.prefs.difficulty=(this.el.difficulty as HTMLSelectElement).value as Difficulty;this.save();};
   this.el.start.onclick=()=>this.start();this.el.resume.onclick=()=>this.resume();this.el.leave.onclick=()=>this.leave();this.el.again.onclick=()=>this.start();this.el['end-leave'].onclick=()=>this.leave();this.el['skip-killcam'].onclick=()=>this.skip();this.el['hud-menu'].onclick=()=>this.pause();
-  this.el['feedback-open'].onclick=()=>this.openModal('feedback');this.el['leaderboard-open'].onclick=()=>this.openModal('leaderboard');
+  this.el['feedback-open'].onclick=()=>this.openModal('feedback');this.el['leaderboard-open'].onclick=()=>this.openModal('leaderboard');this.el['credits-open'].onclick=()=>this.openModal('credits');
   this.el['feedback-form'].onsubmit=event=>{event.preventDefault();void this.submitFeedback();};
   this.el['leaderboard-refresh'].onclick=()=>this.leaderboardLoad();
   document.querySelectorAll<HTMLButtonElement>('[data-period]').forEach(button=>{button.onclick=()=>this.setLeaderboardPeriod(button.dataset.period as LeaderboardPeriod);button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.code))return;event.preventDefault();const period=event.code==='Home'?'allTime':event.code==='End'?'last24Hours':this.leaderboardPeriod==='allTime'?'last24Hours':'allTime';this.setLeaderboardPeriod(period);this.el[period==='allTime'?'leaderboard-alltime':'leaderboard-recent'].focus();};});
@@ -215,7 +217,7 @@ export class UI {
   this.el['difficulty-setting'].classList.toggle('hidden',!this.inGame||this.online);const selected=['controls','credits','feedback','leaderboard'].includes(tab)?tab:'settings';
   if(!this.modalOpen)this.modalReturnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
   this.modalOpen=true;this.closeChat();for(const id of ['menu','hud','pause','scoreboard'])this.el[id].inert=true;
-  this.el.modal.classList.remove('hidden');const community=selected==='feedback'||selected==='leaderboard';this.el['modal-dialog'].classList.toggle('community-dialog',community);this.el['modal-dialog'].classList.toggle('leaderboard-dialog',selected==='leaderboard');this.el['modal-dialog'].setAttribute('aria-label',selected==='settings'?'Options':selected[0].toUpperCase()+selected.slice(1));this.el['options-tabs'].classList.toggle('hidden',community);
+  this.el.modal.classList.remove('hidden');const community=selected==='feedback'||selected==='leaderboard';this.el['modal-dialog'].classList.toggle('community-dialog',community);this.el['modal-dialog'].classList.toggle('leaderboard-dialog',selected==='leaderboard');this.el['modal-dialog'].setAttribute('aria-label',selected==='settings'?'Options':selected[0].toUpperCase()+selected.slice(1));this.el['options-tabs'].classList.toggle('hidden',selected!=='settings'&&selected!=='controls');
   document.querySelectorAll<HTMLElement>('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===selected));for(const t of ['controls','settings','credits','feedback','leaderboard'])this.el['tab-'+t].classList.toggle('hidden',t!==selected);
   if(selected==='feedback')(this.feedbackBusy?this.el['modal-close']:this.el['feedback-message']).focus();else this.el['modal-close'].focus();
   if(selected==='leaderboard')this.leaderboardLoad();

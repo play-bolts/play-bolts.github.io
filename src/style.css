@@ -1,3 +1,10 @@
+@font-face {
+ font-family: "Alfa Slab One";
+ src: url('/assets/fonts/alfa-slab-one/AlfaSlabOne-Regular.ttf') format('truetype');
+ font-weight: 400;
+ font-style: normal;
+ font-display: swap;
+}
 :root {
   font-family: "Times New Roman", Times, Georgia, serif;
   color: #e4e0cb;
@@ -207,7 +214,7 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 /* The front end is a tabletop composition; selection retains the black window. */
 .menu.intro-active { background: linear-gradient(90deg, #15170900 34%, #20231822 56%, #20231855); }
 .intro-menu { position: absolute; top: 24%; right: 13%; width: min(345px, 32vw); min-height: 380px; padding-left: 27px; border-left: 1px solid #e1e1c07d; }
-.intro-menu h1 { font-family: Impact, 'Arial Narrow', sans-serif; font-stretch: condensed; font-size: clamp(56px, 7vw, 98px); font-weight: 900; letter-spacing: -2px; color: #dddbc8; text-shadow: 0 1px #fff, 0 -1px #6a6b5b, 3px 4px 3px #0009; margin: -12px 0 38px; }
+.intro-menu h1 { width: max-content; font-family: "Alfa Slab One", Georgia, serif; font-size: clamp(56px, 6.8vw, 94px); font-weight: 400; letter-spacing: -.035em; transform: scaleX(.82); transform-origin: left center; color: #dddbc8; text-shadow: 0 1px #fff, 0 -1px #6a6b5b, 3px 4px 3px #0009; margin: -12px 0 38px; }
 .intro-menu .classic-choice { font-size: clamp(20px, 1.8vw, 28px); line-height: 1.25; margin-bottom: 5px; color: #d8dbc5; }
 .intro-menu .classic-choice:hover { color: #fff5c8; background: none; }
 .intro-menu .difficulty { gap: 15px; justify-content: start; flex-wrap: wrap; margin: 29px 0 12px; font-size: 15px; }
@@ -222,8 +229,8 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 .ammo-line { border: 1px solid #d2d3bd99; border-radius: 5px; padding: 4px 13px 3px; display: inline-flex; min-width: 110px; }
 .ammo-line strong { font-size: 27px; }.ammo-line > span:not(.bullet-symbol) { font-size: 22px; }
 .dialog { background: #080a08eb; border: 3px double #858680; }
-@media(max-width:700px){.intro-menu { right: 8%; top: 23%; width: 50vw; min-height: 0; padding-left: 20px; }.intro-menu h1 { font-size: 68px; margin-bottom: 25px; }.intro-menu .classic-choice { font-size: 23px; }.intro-menu .difficulty { gap: 10px; }.intro-menu .difficulty button { font-size: 14px; } #weapon-slot > span:last-child { display:none; }}
-@media(max-height:600px){.intro-menu { top: 16%; min-height:0; }.intro-menu h1 { font-size: 60px; margin-bottom: 15px; }.intro-menu .classic-choice { min-height: 25px; padding-top:3px;padding-bottom:3px; }.intro-menu .difficulty { margin-top:14px; }}
+@media(max-width:700px){.intro-menu { right: 8%; top: 23%; width: 50vw; min-height: 0; padding-left: 20px; }.intro-menu h1 { font-size: clamp(40px, 9.7vw, 68px); margin-bottom: 25px; }.intro-menu .classic-choice { font-size: 23px; }.intro-menu .difficulty { gap: 10px; }.intro-menu .difficulty button { font-size: 14px; } #weapon-slot > span:last-child { display:none; }}
+@media(max-height:600px){.intro-menu { top: 16%; min-height:0; }.intro-menu h1 { font-size: clamp(40px, 9.7vw, 60px); margin-bottom: 15px; }.intro-menu .classic-choice { min-height: 25px; padding-top:3px;padding-bottom:3px; }.intro-menu .difficulty { margin-top:14px; }}
 
 /* Startup stays above the dimmed menu until assets and the first frame are ready. */
 .loading-overlay { z-index: 20; background: #000b; }

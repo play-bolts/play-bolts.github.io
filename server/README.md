@@ -71,6 +71,7 @@ Connection metadata stores keyed HMAC-SHA256 values for the observed IP and user
 | `combat_events` | One kill record linking the killer, victim, weapon/headshot and separate `player_kill` / `player_death` events. |
 | `leaderboard_names` | Canonical name primary key, plain display name and transactional all-time kills/deaths; ranking index orders kills, deaths and name. |
 | `leaderboard_events` | Combat-time name and timestamp for each human kill/death role, unique per combat/role. Name/time and time/name indexes support rolling 24-hour totals. |
+| `leaderboard_seeds` | Operator-created contribution ledger keyed by seed ID and canonical name. Tracks synthetic all-time launch scores independently of real combat and identities; created by the seed utility, not the gameplay migration. |
 | `feedback_requests` | Private required message, optional email, keyed network pseudonym and submission time. Indexed by network/time for a persistent hourly limit. |
 | `feedback_events` | Private append-only submitted event referencing its feedback request; committed with the request and containing no message/email copy. |
 | `schema_migrations` | Applied schema version metadata. |
@@ -86,6 +87,28 @@ Feedback accepts 1–2000 trimmed Unicode characters and an optional validated e
 Spectator admission is recorded in `player_enter.data.spectator`; later mode changes use `loadout_change` data containing `faction` and `spectator`. These transitions do not create combat records or synthetic deaths, and require no database schema migration.
 
 Database rows currently have **no automatic expiry**. The S3 backup lifecycle is separate: expiring a backup does not delete live chat or event rows. Establish an application-data retention policy before adding a purge job; preserve or delete related rows transactionally rather than orphaning event, chat and combat references.
+
+## Operator analytics and leaderboard seeds
+
+Read unique non-bot browser identities with multiplayer connections overlapping the past N hours:
+
+```sh
+python3 scripts/user-analytics.py --aws --hours 24 --json
+python3 scripts/user-analytics.py --db server/data/bolts.sqlite --hours 6
+```
+
+The production command uses existing AWS credentials and SSM to run a read-only SQLite query as `bolts`; only aggregate JSON returns. Reconnects deduplicate by UUID and connections carried into the time window count. `Unknown Soldier` and spectators count, while bots and leaderboard seeds do not. Known QA identities can be excluded with repeatable `--exclude-player-id` or `--exclude-file` options. This measures browser identities, not verified distinct people; unclassified QA clients can count, and local-only play/page visits are absent. See [the analytics guide](../research/user-analytics.md) for time boundaries, historical reports and limitations.
+
+The launch seed contains **bIG Dick Billy** (287 kills / 91 deaths), **GigaPatton** (263 / 76), and **Adolf Superfan** (241 / 88). Preview or apply it on an authorized database host:
+
+```sh
+python3 scripts/seed-leaderboard.py --db /var/lib/bolts/bolts.sqlite
+python3 scripts/seed-leaderboard.py --db /var/lib/bolts/bolts.sqlite --apply --backup /private/operator-directory/new-pre-seed.sqlite
+```
+
+The backup parent must already exist. Apply validates the migrated schema, takes a mode-0600 SQLite online backup to a new file, then transactionally updates `leaderboard_names` and its separate `leaderboard_seeds` ledger. Re-running reconciles only the audited seed contribution and preserves earned scores; it does not add another copy. No player credentials, connections, combat records or activity events are fabricated. The rolling 24-hour scores remain event-derived, so seed names initially have zero recent kills/deaths. The utility requires Python 3.9+, creates no scheduled job, and needs no backend rebuild or restart. Production's initial private backup and reviewed utility are stored under `/var/lib/bolts-ops/`; local SSM operation IDs are recorded in ignored `infra/.state/leaderboard-seed-*-command.json`.
+
+Run `python3 -m unittest discover -s tests -p 'test_*.py'` for analytics, seed transaction/backup and origin-configuration checks.
 
 ## Configuration
 

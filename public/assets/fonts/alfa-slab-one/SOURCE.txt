@@ -1,0 +1,13 @@
+Alfa Slab One Regular
+Designer: JM Solé
+Copyright 2016 The Alfa Slab One Project Authors
+License: SIL Open Font License 1.1 (see OFL.txt)
+
+Original, unmodified font downloaded on 2026-10-16 from Google Fonts:
+https://raw.githubusercontent.com/google/fonts/main/ofl/alfaslabone/AlfaSlabOne-Regular.ttf
+https://raw.githubusercontent.com/google/fonts/main/ofl/alfaslabone/OFL.txt
+https://github.com/google/fonts/tree/main/ofl/alfaslabone
+
+Bolts uses this font for its own title, with CSS horizontal scaling and shadows.
+The font binary is unmodified. This is an independently licensed display font;
+it is not the original Call of Duty typeface or logo.

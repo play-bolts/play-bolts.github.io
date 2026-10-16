@@ -1,0 +1,38 @@
+name: Publish reviewed Bolts community update
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: source-import
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Verify and apply reviewed source files
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import hashlib, pathlib, tarfile
+          package=pathlib.Path('bolts-community-update.tar.gz')
+          assert hashlib.sha256(package.read_bytes()).hexdigest() == '402bb6d1fec43aab60fa9d1d60d51f353dd6b8128ae5c8e825996078c7521ef4'
+          expected={'README.md': '6661ce888833a79537cb73711278fd1c47a4baed7c26bf3dcf30874519916630', 'infra/DEPLOYED.md': '761eae679eb1ed8936e7ad49cd651885a4924435b4021c3e1b50fdfe2d04f21f', 'infra/install-release.sh': '536f212f7ce6c6016ea11a98801d06f1480d1d149d50fbacf36fb860757f52f3', 'scripts/test-multiplayer-clients.ts': '08bf5b8462f06d8d18d0793a507ff715f1892ce983c47e2e32aec1db3917b1cb', 'server/PROTOCOL.md': '5b7273b4daea0b98888ed5de8d219ea2ddd85ab8747fe61e3b51e54cca55eed8', 'server/README.md': 'f194b6e54a59d7c59e3f004614d6dacb24db71113ca4b90e7ce0844af9dc8c15', 'server/schema.sql': 'ddcb4257d408e6b66b1969dc9fdb2888e9a544c27a6e53e76e06729b7536e369', 'server/src/app.rs': 'df15090fbc6ef6328b0fd66085aaf2bdddcd654e8bf340988a9b783d173ba375', 'server/src/bots.rs': None, 'server/src/community_api_tests.rs': None, 'server/src/community_db_tests.rs': None, 'server/src/db.rs': '4cb40b7c26b583f1c1b2ce803d47c4c58bdf1463fec8cad624fc6bed48ca2aaa', 'server/src/hub.rs': 'f44b3435257c8f5eb954d3a1318fd9fe68b3300d15d8d74f8d00a8bea72914dd', 'server/src/hub_tests.rs': '59dacda4dc78f5e39585e060356eb93a37dbaa7ccdf9bb4069bde571d4dfb3ba', 'server/src/lib.rs': '6e2a1a8d3f081c6d755f0ebb86bf611e05a7c5401b3e02ff8b844b5e78aa23cb', 'server/src/sim.rs': '6ea128564c90a5abc6e6ea995ad18b833568a89dad9aaf05d11f6508318af368', 'src/community.ts': None, 'src/introScene.ts': 'e7b297044e639e3a3f32ef828f9917a7db24903df518c72b9a2151879e764408', 'src/main.ts': '6504f312e98a4209b14efb1b0bde43e00d8522b68e99897ed96d51b9d61d8510', 'src/network.ts': 'bab3d9c55d3bbf3373f3175bbc826164050ddfe05151638e64a646477d550419', 'src/style.css': 'dabe4c06be6fc4005f6e6926d42a0b291d04f13e02732f5d4cb50cf3c0efc266', 'src/ui.ts': 'd34f5d4733d4ad00e79615ad38d6421fed1a4bd2158b17e6071d0162803c8a77', 'tests/community.test.ts': None}
+          for name,digest in expected.items():
+              path=pathlib.Path(name)
+              assert not path.is_symlink()
+              assert (hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None) == digest, name
+          with tarfile.open(package) as archive:
+              members=archive.getmembers()
+              assert sorted(m.name for m in members) == sorted(expected)
+              assert all(m.isfile() and not m.issym() and not m.islnk() for m in members)
+              archive.extractall('.',filter='data')
+          PYTHON
+          git rm bolts-community-update.tar.gz
+          git add README.md infra/DEPLOYED.md infra/install-release.sh scripts/test-multiplayer-clients.ts server src tests
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Add rifle tabletop menu, feedback, leaderboards and multiplayer bots'
+          git push origin HEAD:main

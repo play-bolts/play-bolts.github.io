@@ -3,6 +3,7 @@ dist/
 .DS_Store
 __pycache__/
 artifacts/
+temp/
 .tools/
 server/target/
 server/data/

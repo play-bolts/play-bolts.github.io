@@ -3,7 +3,7 @@ import {sampleFirstPersonWeaponAnimation} from './firstPersonWeaponAnimation';
 import * as THREE from 'three';
 import {ARENA,BOXES,WEAPONS,RULES,MAP_SCALE,FACTIONS,clamp,lerp,type Faction} from './config';
 import {ModelPool} from './modelPool';
-import {prepareScenes} from './scenePreparation';
+import {prepareScenes,yieldLoadingPaint} from './scenePreparation';
 import type {Actor,Game,Shot} from './engine';
 import {batchArenaMeshes,reconcileActorModels,soldierContributesToView,type ActorModelEntry} from './renderOptimization';
 import {makeRifle,getRifleVisuals,HIP_WEAPON_FOV,ADS_WEAPON_FOV} from './rifle';
@@ -69,7 +69,7 @@ export class View {
   this.setFaction('british');this.resize();window.addEventListener('resize',()=>this.resize());
   this.renderer.domElement.addEventListener('webglcontextrestored',()=>{this.invalidateIntro();this.worldSun.shadow.needsUpdate=this.weaponSun.shadow.needsUpdate=true;});
  }
- setQuality(q:string){this.quality=q;this.renderer.setPixelRatio(q==='high'?Math.min(devicePixelRatio,1.75):1);this.renderer.shadowMap.enabled=q!=='low';const size=q==='high'?2048:1024;if(this.weaponSun.shadow.mapSize.x!==size){this.weaponSun.shadow.mapSize.set(size,size);this.weaponSun.shadow.map?.dispose();this.weaponSun.shadow.map=null;}this.worldSun.shadow.needsUpdate=true;this.intro.invalidateShadows();this.resize();}
+ setQuality(q:string,touch=false){this.quality=q;this.renderer.setPixelRatio(q==='high'?Math.min(devicePixelRatio,touch?1:1.75):1);this.renderer.shadowMap.enabled=q!=='low';const size=q==='high'?2048:1024;if(this.weaponSun.shadow.mapSize.x!==size){this.weaponSun.shadow.mapSize.set(size,size);this.weaponSun.shadow.map?.dispose();this.weaponSun.shadow.map=null;}this.worldSun.shadow.needsUpdate=true;this.intro.invalidateShadows();this.resize();}
  private updateCameraProjection(){
   const tangent=Math.tan(this.camera.fov*Math.PI/360);
   this.camera.near=Math.min(.05,.95*LEAN_CAMERA_RADIUS/Math.sqrt(1+tangent*tangent*(1+this.camera.aspect*this.camera.aspect)));
@@ -124,22 +124,27 @@ export class View {
  /** Startup intentionally spends construction/upload/compilation time here,
   * before controls become ready. Reserves are reused by normal actor creation;
   * at most one idle soldier per faction and three viewmodel pairs are retained. */
- prepare():Promise<void>{
-  return this.preparation??=this.prepareModels();
+ prepare(onProgress?:(value:number)=>void):Promise<void>{
+  return this.preparation??=this.prepareModels(onProgress);
  }
- private async prepareModels(){
+ private async prepareModels(onProgress?:(value:number)=>void){
   const reserves:THREE.Group[]=[],attached:THREE.Object3D[]=[],warmEffects:THREE.Group[]=[];
   try{
+   onProgress?.(0);
    for(const faction of FACTIONS){
+    await yieldLoadingPaint();
     const model=this.soldierPool.acquire(faction);reserves.push(model);this.scene.add(model);
     const pair=this.firstPersonModel(faction);
     for(const object of [pair.rifle,pair.grenade])if(object.parent!==this.weapon){this.weapon.add(object);attached.push(object);}
+    onProgress?.(.25*reserves.length/(FACTIONS.length+1));
    }
+   await yieldLoadingPaint();
    const shot:Shot={time:0,actor:0,origin:{x:0,y:1,z:0},end:{x:0,y:1,z:-4},hit:null,headshot:false,kind:'shot'};
    const muzzle=this.burstPool().acquireMuzzle();updateMuzzleFlash(muzzle,.025);
    const dust=this.burstPool().acquireImpact(shot),blood=this.burstPool().acquireImpact({...shot,hit:1});
    updateImpactEffect(dust,.025);updateImpactEffect(blood,.025);warmEffects.push(muzzle,dust,blood);this.scene.add(...warmEffects);
-   await prepareScenes(this.renderer,[{scene:this.scene,camera:this.camera},{scene:this.weaponScene,camera:this.weaponCamera},{scene:this.intro.scene,camera:this.intro.camera}]);
+   onProgress?.(.25);
+   await prepareScenes(this.renderer,[{scene:this.scene,camera:this.camera},{scene:this.weaponScene,camera:this.weaponCamera},{scene:this.intro.scene,camera:this.intro.camera}],value=>onProgress?.(.25+.75*value));
   }finally{
    for(const effect of warmEffects)this.burstPool().release(effect);
    for(const object of attached)object.removeFromParent();

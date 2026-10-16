@@ -13,3 +13,15 @@ test('low DPI/manual quality and hidden or paused tabs retain native configured 
  controller.setBase(1.75);for(let i=0;i<100;i++)controller.sample(40,true);assert.ok(controller.ratio<1.75);assert.equal(controller.sample(40,false),1.75);
  for(const value of [NaN,Infinity,0,-1,1000])assert.equal(controller.sample(value,true),null);assert.equal(controller.ratio,1.75);
 });
+test('mobile resolution reduces sustained slow frames to the configured floor and recovers gradually',()=>{
+ const controller=new AdaptiveResolution();controller.setBase(1,.75);
+ for(let i=0;i<500;i++)controller.sample(33.33,true);assert.equal(controller.ratio,.75);
+ for(let i=0;i<100;i++)controller.sample(16.67,true);assert.equal(controller.ratio,.75,'recovery waits for sustained headroom');
+ for(let i=0;i<2500;i++)controller.sample(16.67,true);assert.equal(controller.ratio,1);
+});
+test('mobile resolution returns to its base when inactive and does not change desktop limits',()=>{
+ const controller=new AdaptiveResolution();controller.setBase(1,.75);
+ for(let i=0;i<500;i++)controller.sample(40,true);assert.equal(controller.ratio,.75);assert.equal(controller.sample(40,false),1);
+ controller.setBase(1.75);for(let i=0;i<500;i++)controller.sample(40,true);assert.equal(controller.ratio,1.5,'desktop configuration restores the existing floor');
+ controller.setBase(.5,.75);for(let i=0;i<500;i++)controller.sample(40,true);assert.equal(controller.ratio,.5,'a floor above the base cannot increase rendering resolution');
+});

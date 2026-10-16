@@ -168,6 +168,8 @@ pub struct Hub {
     pub failed: bool,
     rate: HashMap<String, VecDeque<Instant>>,
     name_index: usize,
+    pub internal_token: Option<String>,
+    pub managed_lobby: Option<String>,
 }
 pub type HResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 impl Hub {
@@ -181,6 +183,8 @@ impl Hub {
             failed: false,
             rate: HashMap::new(),
             name_index: 0,
+            internal_token: None,
+            managed_lobby: None,
         })
     }
     pub fn fingerprint(&self, value: &str) -> String {
@@ -294,7 +298,7 @@ impl Hub {
         Ok(())
     }
     fn create_room(&mut self) -> HResult<String> {
-        if self.rooms.len() >= self.config.max_rooms {
+        if self.managed_lobby.is_some() || self.rooms.len() >= self.config.max_rooms {
             return Err("server_busy".into());
         }
         const GENERALS: [&str; 6] = [
@@ -327,7 +331,9 @@ impl Hub {
                 break name;
             }
         };
-        let id = db::id();
+        self.create_named_room(db::id(), name)
+    }
+    fn create_named_room(&mut self, id: String, name: String) -> HResult<String> {
         let game = db::id();
         let seed = u32::from_le_bytes(uuid::Uuid::new_v4().as_bytes()[..4].try_into().unwrap());
         let sim = Simulation::new(seed);
@@ -350,6 +356,23 @@ impl Hub {
             },
         );
         Ok(id)
+    }
+    /// A managed process owns exactly one GameLift session, including its rounds.
+    pub fn activate_managed(&mut self, id: &str, name: &str) -> HResult<()> {
+        if self.managed_lobby.as_deref() == Some(id) {
+            return Ok(());
+        }
+        if self.managed_lobby.is_some() || !self.rooms.is_empty() || id.is_empty() || id.len() > 512
+        {
+            return Err("invalid managed session".into());
+        }
+        self.create_named_room(id.to_owned(), sanitize_name(name))?;
+        self.managed_lobby = Some(id.to_owned());
+        self.config.max_rooms = 1;
+        Ok(())
+    }
+    pub fn managed_status(&self) -> Value {
+        json!({"ok": !self.failed, "active": self.managed_lobby.as_ref().is_some_and(|id| self.rooms.contains_key(id)), "players": self.online_count()})
     }
     pub fn lobbies(&mut self) -> HResult<Value> {
         if !self

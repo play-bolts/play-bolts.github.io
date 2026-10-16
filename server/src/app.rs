@@ -51,6 +51,11 @@ pub fn router(state: Shared) -> Router {
             post(feedback).layer(DefaultBodyLimit::max(12_288)),
         )
         .route("/api/ws", get(upgrade))
+        .route("/api/ping", get(probe))
+        .route(
+            "/internal/cluster",
+            post(crate::cluster::handle).layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
+        )
         .layer(DefaultBodyLimit::max(4096))
         .layer(
             CorsLayer::new()
@@ -367,6 +372,55 @@ async fn upgrade(
         .on_upgrade(move |socket| async move {
             let _slot = slot;
             serve_socket(socket, state, ip, ua).await;
+        })
+}
+
+// A probe reserves no account or lobby seat and never creates a game.
+async fn probe(
+    State(state): State<Shared>,
+    ConnectInfo(address): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
+    let Ok(slot) = CONNECTION_SLOTS.try_acquire() else {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    };
+    let mut h = state.lock().await;
+    let key = format!("probe:{}", peer(&h, address, &headers));
+    if !h.allowed_origin(origin(&headers)) || !h.allow(key, 60, 60) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    drop(h);
+    ws.max_message_size(256)
+        .max_frame_size(256)
+        .on_upgrade(move |mut socket| async move {
+            let _slot = slot;
+            let _ = tokio::time::timeout(Duration::from_secs(4), async {
+                for _ in 0..3 {
+                    let Some(Ok(Message::Text(text))) = socket.recv().await else {
+                        break;
+                    };
+                    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+                        break;
+                    };
+                    if value["type"] != "ping" || !value["nonce"].is_string() {
+                        break;
+                    }
+                    if socket
+                        .send(Message::Text(
+                            json!({"type":"pong","nonce":value["nonce"]})
+                                .to_string()
+                                .into(),
+                        ))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            })
+            .await;
+            let _ = socket.close().await;
         })
 }
 

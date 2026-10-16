@@ -6,8 +6,9 @@ import {advanceLean} from './lean';
 import {DEFAULT_PLAYER_NAME,sanitizePlayerName} from './names';
 import {LocalPredictionView} from './localPredictionView';
 import {sampleNetworkColliders} from './networkCollision';
+import {gameEndpoint,locationLabel,probeLobby,type Lobby,type LobbyLocation} from './lobbies';
+export type {Lobby} from './lobbies';
 
-export interface Lobby {id:string;name:string;players:number;bots?:number;capacity:number;phase:'playing'|'ended';ping?:number}
 export type WireActor=Omit<Actor,'ai'>&{ack:number;hipSpread:number;bot?:boolean;spawnGeneration?:number};
 export interface WireEvent extends Omit<Event,'shot'> {seq?:number;shot?:(Shot&{seq?:number})}
 export interface WireSnapshot {type:'snapshot';inputTiming?:'tick-v1';tick:number;time:number;remaining:number;roundNumber:number;ended:boolean;winner:number|null;actors:WireActor[];events:WireEvent[]}
@@ -33,7 +34,10 @@ export class NetworkClient {
  online=false;connected=false;ping=0;lobbyId='';lobbyName='';
  private origin:string;private fetcher:typeof fetch;private socketFactory:(url:string)=>SocketLike;private storage?:Pick<Storage,'getItem'|'setItem'|'removeItem'>;private now:()=>number;
  private socket:SocketLike|null=null;private token='';private actorId=-1;private ids:number[]=[];private seq=0;private pending:PendingInput[]=[];private snapshots:WireSnapshot[]=[];private predictedEffects=new Set<string>();
- private lastSnapshotAt=0;private latestTime=0;private lastMessageAt=0;private lastPingAt=0;private roundNumber=-1;private actions={fire:false,reload:false,melee:false};private desiredStance:Stance='stand';private desiredWeapon:WeaponSlot='rifle';private desiredADS=false;
+ private directory=new Map<string,Lobby>();private gameUrl='';private admission='';private managed=false;private joinRequest='';private joinAbort:AbortController|null=null;
+ private directoryLocations:LobbyLocation[]=[];
+ get locations():readonly LobbyLocation[]{return this.directoryLocations;}
+ private lastSnapshotAt=0;private latestTime=0;private lastMessageAt=0;private lastPingAt=0;private roundNumber=-1;private actions={fire:false,singleFire:false,reload:false,melee:false};private desiredStance:Stance='stand';private desiredWeapon:WeaponSlot='rifle';private desiredADS=false;
  private presentationTime=0;private presentationAt=0;private clockReady=false;
  private tickInputs=false;private latestTick=0;private predictionTick=0;private playerGeneration:number|undefined;private roundTrip=0;private openedAt=0;
  private predictionView=new LocalPredictionView();private renderedPosition:Vec|null=null;
@@ -48,7 +52,23 @@ export class NetworkClient {
   if(origin.protocol!=='https:'&&!(origin.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(origin.hostname)))throw new Error('Multiplayer requires a secure connection.');
   return new URL(path,origin).href;
  }
- async lobbies():Promise<Lobby[]>{const began=this.now(),response=await this.fetcher(this.endpoint('/api/lobbies'),{cache:'no-store',signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error('Unable to load servers.');const body=await response.json();if(!Array.isArray(body.lobbies))throw new Error('Invalid server list.');const ping=Math.max(1,Math.round(this.now()-began));return body.lobbies.filter((l:Lobby)=>typeof l.id==='string'&&typeof l.name==='string'&&Number.isFinite(l.players)&&l.capacity===6).map((l:Lobby)=>({...l,ping}));}
+ async lobbies():Promise<Lobby[]>{
+  const response=await this.fetcher(this.endpoint('/api/lobbies'),{cache:'no-store',signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error('Unable to load servers.');const body=await response.json();if(!Array.isArray(body.lobbies))throw new Error('Invalid server list.');
+  const rows:Lobby[]=body.lobbies.filter((l:any)=>l&&typeof l.id==='string'&&!l.id.startsWith('new:')&&typeof l.name==='string'&&Number.isInteger(l.players)&&l.players>=0&&l.capacity===6&&['playing','ended','starting'].includes(l.phase)).map((l:any)=>({id:l.id,name:l.name,players:l.players,bots:l.bots,capacity:6,phase:l.phase,location:typeof l.location==='string'?l.location:undefined,pingUrl:typeof l.pingUrl==='string'?l.pingUrl:undefined,managed:l.managed===true}));
+  this.directoryLocations=body.version===2&&Array.isArray(body.locations)?[...new Set<LobbyLocation>(body.locations.filter((id:unknown):id is LobbyLocation=>typeof id==='string'&&!!locationLabel(id)))]:[];
+  this.directory=new Map(rows.map(row=>[row.id,row]));return rows;
+ }
+ async measureLobbies(rows:readonly Lobby[],signal?:AbortSignal):Promise<Lobby[]>{
+  const endpoints=new Map<string,Promise<number|undefined>>();
+  return Promise.all(rows.map(async row=>{
+   let ping:number|undefined;
+   if(row.phase!=='starting'&&(!row.managed||row.pingUrl))try{
+    const url=gameEndpoint(row.pingUrl??this.endpoint('/api/ping'),this.origin);url.protocol=url.protocol==='https:'?'wss:':url.protocol==='http:'?'ws:':url.protocol;
+    if(!endpoints.has(url.href))endpoints.set(url.href,probeLobby(url.href,this.socketFactory,this.now,signal));ping=await endpoints.get(url.href);
+   }catch{}
+   return {...row,ping};
+  }));
+ }
  private async authenticate(){
   if(this.token)return;const generation=this.generation;
   let stored:string|null=null;try{stored=this.storage?.getItem(TOKEN_KEY)??null;}catch{}
@@ -59,24 +79,40 @@ export class NetworkClient {
   if(!response.ok)throw new Error('Unable to connect.');const body=await response.json();if(typeof body.token!=='string'||body.token.length<20)throw new Error('Invalid session.');if(generation!==this.generation)return;this.token=body.token;try{this.storage?.setItem(TOKEN_KEY,this.token);}catch{}
  }
  async join(lobbyId:string|undefined,name:string,faction:Faction,spectator=false){
+  const byLocation=!!lobbyId?.startsWith('new:');
+  if(byLocation&&!this.directoryLocations.some(id=>`new:${id}`===lobbyId))throw new Error('This location is unavailable. Refresh the server list.');
   this.disconnect();this.online=true;this.profile={name:sanitizePlayerName(name),faction,spectator};this.lobbyId=lobbyId??'';this.reconnectAttempt=0;this.onStatus('Connecting…');const generation=this.generation;
-  try{await this.authenticate();if(!this.online||generation!==this.generation)return;await this.openSocket();}catch(error){if(generation!==this.generation)return;this.disconnect();throw error;}
+  this.managed=byLocation||!!(lobbyId&&this.directory.get(lobbyId)?.managed);this.joinRequest=globalThis.crypto.randomUUID();
+  try{await this.authenticate();if(!this.online||generation!==this.generation)return;if(this.managed)await this.reserveGame(generation);if(!this.online||generation!==this.generation)return;await this.openSocket();}catch(error){if(generation!==this.generation)return;this.disconnect();throw error;}
+ }
+ private async reserveGame(generation:number){
+  const abort=new AbortController();this.joinAbort=abort;const deadline=this.now()+600000;
+  while(this.online&&generation===this.generation){
+   const response=await this.fetcher(this.endpoint('/api/join'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:this.token,lobbyId:this.lobbyId,requestId:this.joinRequest}),signal:AbortSignal.any([abort.signal,AbortSignal.timeout(12000)])});
+   const result=await response.json().catch(()=>({}));if(generation!==this.generation)return;
+   if(response.status===202){this.onStatus('Starting server…');if(this.now()>=deadline)throw new Error('Server startup timed out. Please try again.');await new Promise<void>((resolve,reject)=>{const cancel=()=>{clearTimeout(timer);reject(new Error('Connection cancelled.'));};const timer=setTimeout(()=>{abort.signal.removeEventListener('abort',cancel);resolve();},2000);abort.signal.addEventListener('abort',cancel,{once:true});});continue;}
+   if(response.status===401){this.token='';try{this.storage?.removeItem(TOKEN_KEY);}catch{}}
+   if(!response.ok)throw new Error(typeof result.message==='string'?result.message:'Unable to join this game.');
+   if(typeof result.websocketUrl!=='string'||typeof result.ticket!=='string'||result.ticket.length<32||result.ticket.length>2048||typeof result.lobbyId!=='string')throw new Error('Invalid game reservation.');
+   const url=gameEndpoint(result.websocketUrl,this.origin);if(url.protocol!=='wss:'&&url.protocol!=='ws:')throw new Error('Invalid game reservation.');
+   this.gameUrl=url.href;this.admission=result.ticket;this.lobbyId=result.lobbyId;this.onStatus('Connecting…');return;
+  }
  }
  private openSocket():Promise<void>{
   const previous=this.socket;if(previous){previous.onclose=null;previous.onmessage=null;previous.onerror=null;previous.onopen=null;previous.close();}
-  const generation=this.generation,url=new URL(this.endpoint('/api/ws'));url.protocol=url.protocol==='https:'?'wss:':'ws:';
+  const generation=this.generation,url=new URL(this.gameUrl||this.endpoint('/api/ws'));if(url.protocol==='https:'||url.protocol==='http:')url.protocol=url.protocol==='https:'?'wss:':'ws:';
   const socket=this.socketFactory(url.href);this.socket=socket;
   this.connectionPromise=new Promise((resolve,reject)=>{
    let joined=false,settled=false;const timeout=setTimeout(()=>{if(settled)return;settled=true;reject(new Error('Connection timed out.'));socket.close();},10000);
    const fail=(message:string)=>{if(!settled){settled=true;clearTimeout(timeout);reject(new Error(message));}};this.cancelOpening=()=>fail('Connection cancelled.');
-   socket.onopen=()=>{if(generation===this.generation){this.openedAt=this.now();this.send({type:'hello',version:1,token:this.token});}};
+   socket.onopen=()=>{if(generation===this.generation){this.openedAt=this.now();this.send({type:'hello',version:1,token:this.managed?this.admission:this.token});}};
    socket.onmessage=event=>{
     if(generation!==this.generation)return;let message:any;try{message=JSON.parse(String(event.data));}catch{return;}
     this.lastMessageAt=this.now();
     if(message.type==='welcome'){this.roundTrip=Math.max(0,this.now()-this.openedAt);this.send({type:'join',...(this.lobbyId?{lobbyId:this.lobbyId}:{}),name:this.profile.name,faction:this.profile.faction,...(this.profile.spectator?{spectator:true}:{})});return;}
     if(message.type==='joined'){
      if(!Number.isSafeInteger(message.actorId)||typeof message.lobbyId!=='string'||typeof message.lobbyName!=='string'){fail('Invalid server response.');socket.close();return;}
-     this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.lobbyName=message.lobbyName;this.connected=true;this.reconnecting=false;this.reconnectAttempt=0;this.seq=0;this.pending=[];this.snapshots=[];this.ids=[];this.predictedEffects.clear();this.actions={fire:false,reload:false,melee:false};this.replaying=false;
+     this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.lobbyName=message.lobbyName;this.connected=true;this.reconnecting=false;this.reconnectAttempt=0;this.seq=0;this.pending=[];this.snapshots=[];this.ids=[];this.predictedEffects.clear();this.actions={fire:false,singleFire:false,reload:false,melee:false};this.replaying=false;
      this.tickInputs=false;this.predictionTick=0;this.playerGeneration=undefined;this.clockReady=false;
      if(!this.receiveSnapshot(message.snapshot)){fail('Invalid game state.');socket.close();return;}
      joined=true;settled=true;clearTimeout(timeout);this.onStatus('');this.onJoined(this.lobbyName);if(this.profile.name!==this.game.player.name)this.send({type:'profile',name:this.profile.name});resolve();return;
@@ -92,7 +128,7 @@ export class NetworkClient {
    };
    socket.onerror=()=>{if(!joined)fail('Unable to connect.');};
    socket.onclose=event=>{
-    clearTimeout(timeout);if(generation!==this.generation||!this.online)return;if(event?.code===4001){fail('Connected in another tab.');this.fatal('Connected in another tab.');return;}this.connected=false;this.pending=[];this.actions={fire:false,reload:false,melee:false};
+    clearTimeout(timeout);if(generation!==this.generation||!this.online)return;if(event?.code===4001){fail('Connected in another tab.');this.fatal('Connected in another tab.');return;}this.connected=false;this.pending=[];this.actions={fire:false,singleFire:false,reload:false,melee:false};
     for(const actor of this.game.actors)actor.ping=null;
     if(!joined){fail('Connection closed.');return;}this.scheduleReconnect();
    };
@@ -102,28 +138,33 @@ export class NetworkClient {
   if(!this.online||this.reconnectTimer)return;this.reconnecting=true;this.onStatus('Reconnecting…');
   if(this.reconnectAttempt>=5){this.fatal('Connection lost.');return;}
   const generation=this.generation,delay=Math.min(4000,500*2**this.reconnectAttempt++);
-  this.reconnectTimer=setTimeout(()=>{this.reconnectTimer=null;if(generation!==this.generation||!this.online)return;void this.openSocket().catch(()=>this.scheduleReconnect());},delay);
+  this.reconnectTimer=setTimeout(()=>{this.reconnectTimer=null;if(generation!==this.generation||!this.online)return;void (async()=>{if(this.managed)await this.reserveGame(generation);if(generation===this.generation&&this.online)await this.openSocket();})().catch(()=>{if(generation===this.generation)this.scheduleReconnect();});},delay);
  }
  private fatal(message:string){this.disconnect();this.onFailure(message);}
  disconnect(){
+  this.joinAbort?.abort();this.joinAbort=null;this.gameUrl='';this.admission='';this.managed=false;
   this.generation++;this.cancelOpening?.();this.cancelOpening=null;this.online=false;this.connected=false;this.reconnecting=false;if(this.reconnectTimer)clearTimeout(this.reconnectTimer);this.reconnectTimer=null;if(this.profileTimer)clearTimeout(this.profileTimer);this.profileTimer=null;
   const socket=this.socket;this.socket=null;if(socket){socket.onclose=null;socket.onmessage=null;socket.onerror=null;socket.onopen=null;if(socket.readyState===1)try{socket.send(JSON.stringify({type:'leave'}));}catch{}socket.close();}
-  this.pending=[];this.snapshots=[];this.predictedEffects.clear();this.actions={fire:false,reload:false,melee:false};this.ids=[];this.actorId=-1;this.replaying=false;this.uiPaused=false;this.pingSent.clear();this.clockReady=false;for(const actor of this.game.actors)actor.ping=null;
+  this.pending=[];this.snapshots=[];this.predictedEffects.clear();this.actions={fire:false,singleFire:false,reload:false,melee:false};this.ids=[];this.actorId=-1;this.replaying=false;this.uiPaused=false;this.pingSent.clear();this.clockReady=false;for(const actor of this.game.actors)actor.ping=null;
   this.tickInputs=false;this.predictionTick=0;this.renderedPosition=null;this.playerGeneration=undefined;
  }
  private send(message:unknown){if(this.socket?.readyState===1){this.socket.send(JSON.stringify(message));return true;}return false;}
  setName(name:string){const safe=sanitizePlayerName(name);if(this.profile.name===safe)return;this.profile.name=safe;if(this.profileTimer)clearTimeout(this.profileTimer);if(this.online)this.profileTimer=setTimeout(()=>{this.profileTimer=null;if(this.connected)this.send({type:'profile',name:this.profile.name});},450);}
  setFaction(faction:Faction){this.profile.faction=faction;this.profile.spectator=false;if(this.online)this.send({type:'loadout',faction});}
- spectate(){this.profile.spectator=true;this.desiredADS=false;this.actions={fire:false,reload:false,melee:false};this.pending=[];if(this.online)this.send({type:'spectate'});}
+ spectate(){this.profile.spectator=true;this.desiredADS=false;this.actions={fire:false,singleFire:false,reload:false,melee:false};this.pending=[];if(this.online)this.send({type:'spectate'});}
  chat(text:string){const clean=Array.from(text.trim()).slice(0,256).join('');if(clean&&this.connected)this.send({type:'chat',text:clean});}
  /** Drop unsent combat intent when focus moves to chat. Already acknowledged
   * actions remain authoritative; opening a text field never undoes a shot. */
- clearInput(){this.actions={fire:false,reload:false,melee:false};this.setADS(false);const p=this.game.player;if(p){this.desiredStance=p.stance;this.desiredWeapon=p.selectedWeapon;}}
- setPaused(paused:boolean){this.uiPaused=paused;if(paused){this.desiredADS=false;this.actions={fire:false,reload:false,melee:false};if(this.game.player)this.game.player.ads=false;}this.applyState();}
+ clearInput(){this.actions={fire:false,singleFire:false,reload:false,melee:false};this.setADS(false);const p=this.game.player;if(p){this.desiredStance=p.stance;this.desiredWeapon=p.selectedWeapon;}}
+ /** A normal release stops repeats but preserves the initial tap until sent.
+  * Cancellation and lifecycle resets discard that tap too. */
+ clearFire(cancelSingle=false){this.actions.fire=false;this.actions.melee=false;if(cancelSingle)this.actions.singleFire=false;}
+ setPaused(paused:boolean){this.uiPaused=paused;if(paused){this.desiredADS=false;this.actions={fire:false,singleFire:false,reload:false,melee:false};if(this.game.player)this.game.player.ads=false;}this.applyState();}
  toggleStance(stance:Stance){if(this.canInput())this.desiredStance=this.desiredStance===stance?'stand':stance;}
  selectWeapon(weapon:WeaponSlot){if(this.canInput())this.desiredWeapon=weapon;}
  setADS(ads:boolean){this.desiredADS=ads&&this.canInput()&&this.game.canADS();if(this.game.player)this.game.player.ads=this.desiredADS;}
  fire(melee=false){if(this.canInput())this.actions[melee?'melee':'fire']=true;}
+ fireOnce(){if(this.canInput())this.actions.singleFire=true;}
  reload(){if(this.canInput())this.actions.reload=true;}
  private canInput(){return this.connected&&!this.uiPaused&&!this.replaying&&this.game.state==='playing'&&this.game.player?.alive&&!this.game.player.spectator&&!this.profile.spectator;}
  get waitingForRespawn(){return this.replaying&&!this.game.player.alive&&this.game.replayTime>=this.game.replayEnd+.65;}
@@ -191,8 +232,8 @@ export class NetworkClient {
    if(this.predictionTick>=limit){p.moving=0;this.predictionView.step(p,p);return;}
    this.predictionTick++;this.game.time=this.predictionTime;
   }
-  const command:NetworkInput={type:'input',seq:++this.seq,...(this.tickInputs?{tick:this.predictionTick,generation:this.playerGeneration}:{}),...movement,yaw:p.yaw,pitch:p.pitch,ads:active&&this.desiredADS,stance:this.desiredStance,weapon:this.desiredWeapon,fire:active&&this.actions.fire,reload:active&&this.actions.reload,melee:active&&this.actions.melee,shotTime:Math.max(0,this.remoteTime)};
-  this.actions={fire:false,reload:false,melee:false};
+  const command:NetworkInput={type:'input',seq:++this.seq,...(this.tickInputs?{tick:this.predictionTick,generation:this.playerGeneration}:{}),...movement,yaw:p.yaw,pitch:p.pitch,ads:active&&this.desiredADS,stance:this.desiredStance,weapon:this.desiredWeapon,fire:active&&(this.actions.fire||this.actions.singleFire),reload:active&&this.actions.reload,melee:active&&this.actions.melee,shotTime:Math.max(0,this.remoteTime)};
+  this.actions={fire:false,singleFire:false,reload:false,melee:false};
   if(command.jump&&command.stance!=='stand')this.desiredStance='stand';
   if(this.send(command)){this.pending.push({input:command,time:this.game.time});if(this.pending.length>120)this.pending.shift();}
   const before={x:p.x,y:p.y,z:p.z};
@@ -256,7 +297,7 @@ export class NetworkClient {
   this.latestTime=s.time;this.latestTick=s.tick;this.lastSnapshotAt=this.now();this.roundNumber=s.roundNumber;
   if(newRound)this.snapshots=[];this.snapshots.push(s);if(this.snapshots.length>12)this.snapshots.shift();
   if(reset){
-   this.pending=[];this.actions={fire:false,reload:false,melee:false};this.desiredStance=self.stance;this.desiredWeapon=self.selectedWeapon;this.desiredADS=false;this.predictedEffects.clear();
+   this.pending=[];this.actions={fire:false,singleFire:false,reload:false,melee:false};this.desiredStance=self.stance;this.desiredWeapon=self.selectedWeapon;this.desiredADS=false;this.predictedEffects.clear();
    this.predictionTick=s.tick+(s.ended?0:Math.min(MAX_PREDICTION_TICKS-1,Math.ceil(this.roundTrip/(STEP*1000))+INPUT_BUFFER_TICKS));
   }
   this.predictionTick=Math.max(this.predictionTick,s.tick);

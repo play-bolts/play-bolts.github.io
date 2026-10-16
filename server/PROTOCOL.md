@@ -14,6 +14,17 @@ HTTP endpoints (JSON):
 
 All public community endpoints enforce the same exact browser-origin allowlist as session/lobby requests; disallowed origins receive 403. Feedback and email remain private in SQLite, with only a server-keyed network pseudonym retained for rate limiting. API responses never expose that metadata.
 
+### GameLift directory extension
+
+The managed directory keeps the combat WebSocket protocol at version 1 and extends discovery/admission:
+
+- `GET /api/lobbies` -> `{version:2,locations:["ca","ny","sp","par"],lobbies:[{id,name,location,players,capacity:6,phase:"playing"|"starting",managed:true,pingUrl?}]}`. Every viewer receives the same global list. Only actual active/activating GameLift sessions appear; terminated sessions disappear, and `lobbies` can be empty. `locations` remains available for the location picker. Listing never allocates a game. `players` counts GameLift human/spectator reservations, including admission/reconnect grace, rather than AI actors.
+- `POST /api/join` body `{token,lobbyId}` uses the permanent browser token only at the central directory. An actual lobby ID selects that game. `lobbyId:"new:ca"` (or `ny`, `sp`, `par`) reuses a reservation, fills an open game in that location, or places a new game if all are full or none exist. These routing keys are never lobby rows. Concurrent callers share one pending placement per location. HTTP 202 `{status:"starting"}` means poll with the same request after two seconds; HTTP 200 `{lobbyId,websocketUrl,ticket}` supplies a real session ID and temporary admission. An exact lobby that fills returns 409; location-based admission tries remaining capacity automatically. Other errors include invalid location (400), expired identity (401), rate limit (429), and temporary service/startup failure (503).
+- Connect directly to `websocketUrl` and send the returned `ticket` in the initial `hello.token`, followed by the real `lobbyId` in `join`. Never send the permanent account token to a regional server. The ticket expires after five minutes and binds the global player UUID, game session and reserved player session. Reconnection obtains a fresh ticket from the directory.
+- `pingUrl` is a direct regional WebSocket echo endpoint. Send `{type:"ping",nonce:string}` and receive `{type:"pong",nonce}`; up to three bounded echoes per connection, no identity or player-seat allocation. The browser displays its own median RTT, not a directory-supplied ping. An unavailable endpoint displays `—`.
+
+Empty games close after five minutes and leave the directory on refresh; infrastructure scale-to-zero follows separately. The managed `/api/status` total includes GameLift reservations/grace. See [regional hosting and rollout](README.md#gamelift-regional-hosting) for capacity limits, locality and shutdown behavior.
+
 With one or two connected humans, a lobby adds two authoritative AI actors as space allows. At three connected humans or zero humans it removes them. Human arrivals and reconnects have priority over AI; spectators count toward the threshold, disconnected seats do not. AI have regular physics/combat, delayed line-of-sight perception and imperfect aiming. Their persisted identities are marked as bots and cannot authenticate or appear in public leaderboards.
 
 Client messages:

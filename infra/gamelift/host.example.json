@@ -1,0 +1,14 @@
+{
+  "region": "us-east-1",
+  "fleet": "",
+  "fleetRole": "arn:aws:iam::ACCOUNT_ID:role/bolts-gamelift-game-role",
+  "secretParameter": "/bolts/gamelift/cluster-secret",
+  "api": "https://bolts-api.christopherkrapu.com",
+  "origins": ["https://play-bolts.github.io", "http://127.0.0.1:5173", "http://localhost:5173"],
+  "locations": [
+    {"id": "ca", "name": "California", "aws": "us-west-1", "queue": "bolts-gamelift-ca"},
+    {"id": "ny", "name": "New York", "aws": "us-east-1-nyc-2", "queue": "bolts-gamelift-ny"},
+    {"id": "sp", "name": "São Paulo", "aws": "sa-east-1", "queue": "bolts-gamelift-sp"},
+    {"id": "par", "name": "Paris", "aws": "eu-west-3", "queue": "bolts-gamelift-par"}
+  ]
+}

@@ -9,6 +9,10 @@ case "$release" in (*[!a-f0-9]*|'') echo 'Invalid release identifier' >&2; exit 
 test "$#" -eq 3
 test -f "$source_dir/server/Cargo.lock"
 test -f /var/lib/bolts-bootstrap.ready
+if [ -f /etc/systemd/system/bolts.service.d/gamelift.conf ]; then
+  echo 'This host uses GameLift. Use infra/gamelift/install-directory.sh with both Linux executables.' >&2
+  exit 2
+fi
 
 build_home=/opt/bolts-build
 if [ ! -x "$build_home/.cargo/bin/rustc" ]; then

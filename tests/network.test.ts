@@ -103,6 +103,38 @@ test('chat focus clears queued combat and sends neutral input until text entry c
   assert.equal(resumed.fire,false);assert.equal(resumed.reload,false);assert.equal(resumed.melee,false);assert.equal(game.events.filter(event=>['shot','reload','switch'].includes(event.type)).length,0);
  }finally{client.disconnect();}
 });
+test('touch fire release clears delayed attacks while preserving other desired controls',async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  const frame=snapshot(2,2/60);frame.inputTiming='tick-v1';for(const actor of frame.actors)actor.spawnGeneration=1;assert.equal(client.receiveSnapshot(frame),true);
+  // Exhaust the current prediction horizon: an update here cannot consume
+  // queued actions until the clock advances or another snapshot arrives.
+  for(let i=0;i<20;i++)client.update(1/60,idle);
+  const sent=socket.messages.length;
+  client.setADS(true);client.toggleStance('crouch');client.selectWeapon('grenade');client.reload();client.fire();client.fire(true);
+  client.update(1/60,idle);assert.equal(socket.messages.length,sent,'fire remains unsent at the horizon');
+  client.clearFire();setNow(17);client.update(1/60,idle);
+  const command=socket.messages.findLast(m=>m.type==='input');
+  assert.equal(socket.messages.length,sent+1);assert.equal(command.fire,false);assert.equal(command.melee,false);
+  assert.equal(command.ads,true);assert.equal(command.stance,'crouch');assert.equal(command.weapon,'grenade');assert.equal(command.reload,true);
+  assert.equal(game.events.filter(event=>event.type==='shot').length,0);
+  setNow(34);client.update(1/60,idle);const next=socket.messages.findLast(m=>m.type==='input');assert.equal(next.fire,false);assert.equal(next.melee,false);
+ }finally{client.disconnect();}
+});
+for(const cancellation of ['release','cancel','clearInput','pause']as const)test(`a quick touch tap at the prediction horizon handles ${cancellation} without repeat fire`,async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  const frame=snapshot(2,2/60);frame.inputTiming='tick-v1';for(const actor of frame.actors)actor.spawnGeneration=1;assert.equal(client.receiveSnapshot(frame),true);
+  for(let i=0;i<20;i++)client.update(1/60,idle);
+  const sent=socket.messages.length;
+  client.fireOnce();client.fire();client.update(1/60,idle);assert.equal(socket.messages.length,sent,'the tap is still queued');
+  if(cancellation==='clearInput')client.clearInput();else if(cancellation==='pause'){client.setPaused(true);client.setPaused(false);}else client.clearFire(cancellation==='cancel');
+  setNow(17);client.update(1/60,idle);
+  const command=socket.messages.findLast(m=>m.type==='input');assert.equal(socket.messages.length,sent+1);assert.equal(command.fire,cancellation==='release');
+  assert.equal(game.events.filter(event=>event.type==='shot').length,cancellation==='release'?1:0);
+  setNow(34);client.update(1/60,idle);const next=socket.messages.findLast(m=>m.type==='input');assert.equal(next.fire,false);assert.equal(next.melee,false);
+ }finally{client.disconnect();}
+});
 test('scoreboard ping follows each server actor without interpolation or trusting local heartbeat timing',async()=>{
  const {client,game,setNow,socket}=await fixture();
  try{

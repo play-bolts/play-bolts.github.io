@@ -14,7 +14,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .init();
     let config = Config::from_env()?;
     let bind: SocketAddr = config.bind.parse()?;
-    let hub = Arc::new(Mutex::new(Hub::new(config)?));
+    let mut initial = Hub::new(config)?;
+    if let Ok(token) = std::env::var("BOLTS_INTERNAL_TOKEN") {
+        if token.len() < 32 || !bind.ip().is_loopback() {
+            return Err(
+                "Internal cluster API requires a loopback bind and a 32-character token".into(),
+            );
+        }
+        initial.internal_token = Some(token);
+    }
+    let hub = Arc::new(Mutex::new(initial));
     let runner = hub.clone();
     let fatal = Arc::new(tokio::sync::Notify::new());
     let tick_fatal = fatal.clone();

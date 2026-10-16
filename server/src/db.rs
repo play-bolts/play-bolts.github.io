@@ -70,14 +70,14 @@ fn canonical_name(name: &str) -> Option<(String, String)> {
         Some((key, display))
     }
 }
-fn register_name(conn: &Connection, name: &str, at: i64) -> rusqlite::Result<Option<String>> {
+pub(crate) fn register_name(conn: &Connection, name: &str, at: i64) -> rusqlite::Result<Option<String>> {
     let Some((key, display)) = canonical_name(name) else {
         return Ok(None);
     };
     conn.execute("INSERT INTO leaderboard_names(name_key,display_name,first_seen,last_seen) VALUES(?1,?2,?3,?3) ON CONFLICT(name_key) DO UPDATE SET last_seen=max(last_seen,excluded.last_seen)", params![key,display,at])?;
     Ok(Some(key))
 }
-fn record_score(
+pub(crate) fn record_score(
     conn: &Connection,
     combat: &str,
     player: &str,

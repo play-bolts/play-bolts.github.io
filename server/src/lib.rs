@@ -1,5 +1,6 @@
 pub mod app;
 pub mod db;
+mod cluster;
 pub mod hub;
 pub mod hitboxes;
 mod hitbox_motion;

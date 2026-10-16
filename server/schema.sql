@@ -8,7 +8,10 @@ CREATE TABLE IF NOT EXISTS connections(id TEXT PRIMARY KEY, player_id TEXT NOT N
 CREATE TABLE IF NOT EXISTS lobbies(id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, closed_at INTEGER, close_reason TEXT);
 CREATE TABLE IF NOT EXISTS matches(id TEXT PRIMARY KEY, lobby_id TEXT NOT NULL REFERENCES lobbies(id), round_number INTEGER NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, end_reason TEXT, winner_player_id TEXT REFERENCES players(id), UNIQUE(lobby_id,round_number));
 CREATE TABLE IF NOT EXISTS memberships(id TEXT PRIMARY KEY, lobby_id TEXT NOT NULL REFERENCES lobbies(id), player_id TEXT NOT NULL REFERENCES players(id), actor_id INTEGER NOT NULL, name_at_join TEXT NOT NULL, faction TEXT NOT NULL, joined_at INTEGER NOT NULL, left_at INTEGER, leave_reason TEXT);
-CREATE UNIQUE INDEX IF NOT EXISTS one_live_membership ON memberships(player_id) WHERE left_at IS NULL;
+-- Regional disconnect grace periods can overlap while a player changes servers.
+-- The local Hub still owns one membership per player in each server process.
+DROP INDEX IF EXISTS one_live_membership;
+CREATE UNIQUE INDEX IF NOT EXISTS one_live_membership_per_lobby ON memberships(player_id,lobby_id) WHERE left_at IS NULL;
 CREATE TABLE IF NOT EXISTS match_players(match_id TEXT NOT NULL REFERENCES matches(id), player_id TEXT NOT NULL REFERENCES players(id), name TEXT NOT NULL, faction TEXT NOT NULL, joined_at INTEGER NOT NULL, kills INTEGER NOT NULL DEFAULT 0, deaths INTEGER NOT NULL DEFAULT 0, shots INTEGER NOT NULL DEFAULT 0, hits INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(match_id,player_id));
 CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, schema_version INTEGER NOT NULL DEFAULT 1, event_type TEXT NOT NULL CHECK(event_type IN('server_start','server_stop','player_enter','player_leave','player_reconnect','profile_change','loadout_change','chat','player_kill','player_death','round_end')), at INTEGER NOT NULL, lobby_id TEXT REFERENCES lobbies(id), match_id TEXT REFERENCES matches(id), connection_id TEXT REFERENCES connections(id), actor_player_id TEXT REFERENCES players(id), target_player_id TEXT REFERENCES players(id), data TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(data)));
 CREATE INDEX IF NOT EXISTS events_lobby_time ON events(lobby_id,at,seq);

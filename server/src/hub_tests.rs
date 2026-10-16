@@ -95,6 +95,21 @@ fn count(hub: &Hub, sql: &str) -> i64 {
     hub.db.conn.query_row(sql, [], |row| row.get(0)).unwrap()
 }
 
+#[test]
+fn managed_process_owns_one_session_and_stays_closed_when_empty() {
+    let mut f = Fixture::new(8);
+    f.hub.config.empty_seconds = 0.0;
+    f.hub.activate_managed("test:ca", "California").unwrap();
+    f.hub.activate_managed("test:ca", "California").unwrap();
+    assert!(f.hub.activate_managed("test:ny", "New York").is_err());
+    assert_eq!(f.hub.managed_status()["active"], true);
+    assert_eq!(count(&f.hub, "SELECT count(*) FROM lobbies"), 1);
+    f.hub.tick().unwrap();
+    assert_eq!(f.hub.managed_status()["active"], false);
+    assert!(f.hub.lobbies().is_err());
+    assert_eq!(count(&f.hub, "SELECT count(*) FROM lobbies"), 1);
+}
+
 fn bot_count(joined: &Value) -> usize {
     joined["snapshot"]["actors"]
         .as_array()

@@ -72,6 +72,36 @@ test('a new flank cue replaces cover that only protected against the frontal thr
  }
 });
 
+test('an active peek faces its planned firing lane without an incidental search scan',()=>{
+ for(const difficulty of skilled){
+  const {game,bot,cover}=fixture(difficulty);
+  Object.assign(bot,cover.peek!);
+  Object.assign(bot.ai.survival,{phase:'peek',phaseUntil:game.time+3,peekArrived:true,scanAt:0,planAt:Infinity});
+  rememberThreat(bot.ai.survival,2,{x:bot.x-5,y:1.65,z:bot.z-5},game.time+.01,.55);
+  const action=updateSurvival(bot,game.time,dt,difficulty,false,true);
+  assert.equal(bot.ai.survival.phase,'peek');
+  assert.equal(bot.ai.survival.scanPoint,null,'a temporary loss of sight must not turn a peek into a flank scan');
+  assert.deepEqual(action.lookAt,cover.watch,'face the remembered lane that made this peek useful');
+  assert.equal(action.canFire,true,'normal recognition still decides whether the bot can actually shoot');
+ }
+});
+
+test('healthy bots sustain a short engagement and investigate after repeatedly empty peeks',()=>{
+ for(const difficulty of skilled){
+  const {game,bot,cover}=fixture(difficulty),state=bot.ai.survival;
+  Object.assign(state,{cover:null,phase:'none',planAt:0});
+  bot.ai.engage=1;bot.lastShotTime=game.time;
+  updateSurvival(bot,game.time,dt,difficulty,true,true);
+  assert.equal(state.cover,null,'a shot alone must not force an unpressured bot to disengage');
+  Object.assign(state,{cover,phase:'hold',failedPeeks:2,phaseUntil:game.time+1});
+  bot.ai.path=[];
+  updateSurvival(bot,game.time,dt,difficulty,false,true);
+  assert.equal(state.cover,null,'an empty lane should lead to investigation rather than repeating the same peek');
+  assert.ok(state.planAt>=game.time+3);
+  assert.deepEqual(state.avoid,cover.hide);
+ }
+});
+
 test('rear gunfire turns attention gradually without acquiring or firing on an unseen player',()=>{
  for(const difficulty of skilled){
   const {game,bot,target,tick}=fixture(difficulty);

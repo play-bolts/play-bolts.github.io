@@ -32,6 +32,14 @@ test('a bot already in useful cover can hold it instead of being sent to another
  assert.equal(coverExposure(origin,[threat(0,2)],1.91),.25,'standing would expose the head');
 });
 
+test('cover watches the remembered opponent used for its peek, not a later unrelated cue',()=>{
+ const origin={x:-8,y:0,z:2},primary=threat(0,2),secondary={...threat(-8,8,2),time:primary.time+1,confidence:.1};
+ const cover=selectTacticalCover(origin,[secondary,primary],{role:0,retreat:false});assert.ok(cover);
+ assert.deepEqual(cover.watch,primary.point,'the peek and watch direction share the selected primary threat');
+ primary.point.x=12;secondary.point.z=-14;
+ assert.deepEqual(cover.watch,{x:0,y:1.65,z:2},'later memories cannot mutate the committed watch snapshot');
+});
+
 test('a final fifteen-centimetre move into shelter retains its waypoint',()=>{
  const box=BOXES[0],hide={x:box.x,y:0,z:box.z+box.d/2+.58},origin={...hide,x:hide.x+.15},memories=[threat(0,-15)];
  assert.ok(coverExposure(origin,memories,1.3)>0,'the nearby origin is still exposed');

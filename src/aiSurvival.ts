@@ -21,8 +21,8 @@ export function rememberThreat(state:SurvivalState,id:number,point:Vec,time:numb
  if(state.threats.length>3)state.threats.length=3;
 }
 const profiles={
- regular:{plan:1.25,hold:.85,peek:2.3,scan:4.2,scanLength:.8,health:65,exposure:2.8,relocate:9},
- veteran:{plan:.9,hold:.65,peek:2.1,scan:2.8,scanLength:1,health:80,exposure:1.9,relocate:7},
+ regular:{plan:1.25,hold:.85,peek:3.3,scan:4.2,scanLength:.8,health:65,exposure:4.5,relocate:9},
+ veteran:{plan:.9,hold:.65,peek:3,scan:2.8,scanLength:1,health:80,exposure:3.8,relocate:7},
 };
 function resetCover(a:Actor){const state=a.ai.survival;if(state.cover)a.ai.path=[];state.cover=null;state.phase='none';state.failedPeeks=0;}
 function holdCover(a:Actor,time:number,duration:number){const state=a.ai.survival;state.phase='hold';state.phaseUntil=time+duration;state.lastDamage=a.lastHurtTime;a.ai.path=[];}
@@ -38,6 +38,11 @@ export function updateSurvival(a:Actor,time:number,_dt:number,difficulty:Skilled
  if(lowAmmo&&state.reloadWaitSince===Infinity)state.reloadWaitSince=time;
  if(!lowAmmo)state.reloadWaitSince=Infinity;
  if(!state.threats.length||a.ammo===0&&a.reserve===0){resetCover(a);state.scanPoint=null;state.scanUntil=0;}
+ // An empty firing lane calls for investigation, not another identical peek.
+ // Finish the withdrawal first; pressure can still keep the bot sheltered.
+ if(state.cover&&state.phase==='hold'&&state.failedPeeks>=2&&!urgent&&!lowAmmo){
+  state.avoid={...state.cover.hide};resetCover(a);state.planAt=time+3;a.ai.engage=0;
+ }
  if(decision&&state.threats.length&&!(a.ammo===0&&a.reserve===0)){
   let replace=false;
   if(state.cover){
@@ -45,7 +50,7 @@ export function updateSurvival(a:Actor,time:number,_dt:number,difficulty:Skilled
    replace=coverExposure(state.cover.hide,state.threats,height)>.24||state.failedPeeks>=2;
    if(!urgent&&state.phase==='hold'&&time-state.coverSince>profile.relocate){state.avoid={...state.cover.hide};replace=true;}
   }
-  const need=urgent||lowAmmo||a.hp<profile.health||a.ai.engage>profile.exposure||time-a.lastShotTime<1.1||!hasSight&&!!a.ai.known&&a.ai.path.length===0;
+  const need=urgent||lowAmmo||a.hp<profile.health||hasSight&&a.ai.engage>profile.exposure;
   if(time>=state.planAt&&(!state.cover&&need||replace)){
    state.planAt=time+profile.plan+(a.id%3)*.09;
    const plan=selectTacticalCover(a,state.threats,{role:a.ai.role,retreat:urgent||a.hp<profile.health,avoid:state.avoid});
@@ -78,7 +83,7 @@ export function updateSurvival(a:Actor,time:number,_dt:number,difficulty:Skilled
  // A new rear cue can interrupt tunnel vision under pressure. Otherwise scan
  // during recovery or search, never fire while the rifle is looking elsewhere.
  if(time>=state.scanUntil)state.scanPoint=null;
- if(decision&&time>=state.scanAt&&(state.phase==='hold'||!hasSight||hurt||suppressed)){
+ if(decision&&time>=state.scanAt&&(state.phase==='hold'||!state.cover&&!hasSight||hurt||suppressed)){
   const rear=state.threats.filter(threat=>{
    const bearing=Math.atan2(threat.point.x-a.x,threat.point.z-a.z);
    return Math.abs(Math.atan2(Math.sin(bearing-a.yaw),Math.cos(bearing-a.yaw)))>1.05;
@@ -94,5 +99,5 @@ export function updateSurvival(a:Actor,time:number,_dt:number,difficulty:Skilled
  // Give the bot time to reach shelter before starting a vulnerable reload, but
  // do not deadlock it empty-handed if no reachable protection can be found.
  const reload=lowAmmo&&a.reload<=0&&(holding||!state.threats.length||!state.cover||time-state.reloadWaitSince>3.5)&&(!hasSight||holding||empty);
- return{canFire:!state.scanPoint&&(!state.cover||state.phase==='peek')&&(!empty||a.reserve===0),fastMove:travelling,lookAt:state.scanPoint??(!hasSight&&state.cover?state.threats[0]?.point??null:null),hold:holding,reload};
+ return{canFire:!state.scanPoint&&(!state.cover||state.phase==='peek')&&(!empty||a.reserve===0),fastMove:travelling,lookAt:state.scanPoint??(!hasSight&&state.cover?state.cover.watch:null),hold:holding,reload};
 }

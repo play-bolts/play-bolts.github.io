@@ -3,7 +3,7 @@ import {findPath} from './navigation';
 
 /** Only observed/heard memories enter the planner; it never reads actors. */
 export interface TacticalThreat {id:number;point:Vec;time:number;confidence:number}
-export interface TacticalCover {hide:Vec;peek:Vec|null;stance:'crouch'|'stand';path:{x:number;z:number}[]}
+export interface TacticalCover {hide:Vec;peek:Vec|null;watch:Vec;stance:'crouch'|'stand';path:{x:number;z:number}[]}
 type Point={x:number;z:number};
 type Options={role:number;retreat:boolean;avoid?:Vec|null;occupied?:readonly Vec[]};
 const BODY_RADIUS=.28,PATH_RADIUS=.31,MAX_PATHS=3;
@@ -131,7 +131,7 @@ export function selectTacticalCover(origin:Vec,memories:readonly TacticalThreat[
   if(length>Math.max(5,distance*2.3+1))continue;
   const peek=peekFrom(hide,stance,threats,options.occupied);
   const score=candidate.score+length*.35+routeRisk*.5+(peek?0:options.retreat?1:5);
-  if(score<bestScore){best={hide,peek,stance,path};bestScore=score;}
+  if(score<bestScore){best={hide,peek,watch:{...primary.point},stance,path};bestScore=score;}
  }
  return best;
 }

@@ -96,7 +96,9 @@ test('all rifles use classic region damage and actual head hits always kill',()=
   Object.assign(t,{alive:true,x:p.x,y:0,z:p.z+4,spawnSafe:0,hp:100});g.fire();
   assert.equal(t.alive,false);assert.equal(g.shots.at(-1)?.headshot,true);assert.equal(t.deathHeadshot,true);
  }
- const g=solo(),p=g.player,t=g.actors[1];Object.assign(t,{alive:true,x:p.x,y:0,z:p.z+4,spawnSafe:0});
+ // Fix the target pose so a randomly spawned forearm cannot occlude the
+ // abdomen ray. Region damage should not depend on the wall-clock spawn seed.
+ const g=solo(),p=g.player,t=g.actors[1];Object.assign(t,{alive:true,x:p.x,y:0,z:p.z+4,yaw:0,pitch:0,spawnSafe:0});g.seed=42;
  p.ads=true;p.pitch=Math.atan2(HEIGHTS.stand*.52-HEIGHTS.stand,4);g.fire();assert.equal(t.hp,4,'an abdomen hit is survivable');
 });
 

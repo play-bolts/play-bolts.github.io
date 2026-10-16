@@ -126,7 +126,13 @@ export class NetworkClient {
  fire(melee=false){if(this.canInput())this.actions[melee?'melee':'fire']=true;}
  reload(){if(this.canInput())this.actions.reload=true;}
  private canInput(){return this.connected&&!this.uiPaused&&!this.replaying&&this.game.state==='playing'&&this.game.player?.alive&&!this.game.player.spectator&&!this.profile.spectator;}
- skipReplay(){if(this.replaying){this.replaying=false;this.game.replay=[];this.game.replayShots=[];this.applyState();}}
+ get waitingForRespawn(){return this.replaying&&!this.game.player.alive&&this.game.replayTime>=this.game.replayEnd+.65;}
+ skipReplay(){
+  if(!this.replaying)return;
+  // Skipping seeks to the end; only an authoritative new life may restore
+  // the local gameplay camera. Short recordings can end before respawn.
+  this.game.replayTime=this.game.replayEnd+.65;this.game.replayShots=[];this.applyState();
+ }
  private applyState(){if(!this.online||!this.game.player)return;const latest=this.snapshots.at(-1);this.game.state=latest?.ended?'ended':this.uiPaused?'paused':this.replaying?'killcam':'playing';}
  /** Wall-clock presentation is separate from the fixed input/prediction ticks.
   * Arrival jitter may slow the estimate slightly, but can never rewind a live
@@ -168,7 +174,7 @@ export class NetworkClient {
   if(this.connected&&now-this.lastPingAt>3000){this.lastPingAt=now;this.pingSent.set(now,now);this.send({type:'ping',nonce:now});if(this.pingSent.size>4)this.pingSent.delete(this.pingSent.keys().next().value!);}
   const latest=this.snapshots.at(-1);if(!latest)return;
   this.advancePresentation(now);
-  if(this.replaying&&!this.uiPaused){this.game.replayTime+=dt;if(this.game.replayTime>this.game.replayEnd+.65)this.skipReplay();}
+  if(this.replaying&&!this.uiPaused)this.game.replayTime=Math.min(this.game.replayEnd+.65,this.game.replayTime+dt);
   if(!this.connected){this.predictionView.step(this.game.player,this.game.player);this.interpolate();return;}
   const active=enabled&&this.canInput(),p=this.game.player,movement=active?input:EMPTY_INPUT;
   if(this.tickInputs){
@@ -280,8 +286,14 @@ export class NetworkClient {
    if(shot){game.shots.push(shot);if(game.shots.length>200)game.shots.shift();}
    const effectKey=`${event.type}:${source.seq??source.shot?.seq??-1}`,predicted=actor===0&&this.predictedEffects.delete(effectKey);
    if(!predicted&&!(actor===0&&event.type==='step'))game.events.push(event);
-   if(event.type==='kill'&&victim===0&&!self.spectator){game.killer=actor;game.replay=game.history.map(f=>({time:f.time,actors:f.actors.map(a=>({...a,pose:a.pose?{...a.pose}:undefined}))}));game.replayEnd=s.time;game.replayTime=Math.max(game.replay[0]?.time??0,s.time-3.3);game.replayShots=game.shots.filter(shot=>shot.time>=game.replayTime&&shot.time<=s.time);this.replaying=game.replay.length>1;this.desiredADS=false;}
+   if(event.type==='kill'&&victim===0&&!self.alive&&!self.spectator&&!s.ended){game.killer=actor;game.replay=game.history.map(f=>({time:f.time,actors:f.actors.map(a=>({...a,pose:a.pose?{...a.pose}:undefined}))}));game.replayEnd=s.time;game.replayTime=Math.max(game.replay[0]?.time??0,s.time-3.3);game.replayShots=game.shots.filter(shot=>shot.time>=game.replayTime&&shot.time<=s.time);this.replaying=true;this.desiredADS=false;}
    if(event.type==='spawn'&&actor===0){this.desiredStance=self.stance;this.desiredWeapon=self.selectedWeapon;this.desiredADS=false;this.replaying=false;}
+  }
+  if(self.alive||self.spectator||s.ended){this.replaying=false;game.replay=[];game.replayShots=[];}
+  else if(!this.replaying){
+   // Reconnects and roster changes may leave no usable recording. Keep a
+   // labelled death view instead of presenting a dead actor as playable.
+   this.replaying=true;game.killer=0;game.replay=[frame];game.replayShots=[];game.replayEnd=s.time;game.replayTime=s.time+.65;
   }
   if(this.predictedEffects.size>120)this.predictedEffects.clear();
   if(self.spectator){this.replaying=false;if(rosterChanged)game.spectator.remap(oldIds,this.ids,game.actors);game.spectator.sync(game.actors);}

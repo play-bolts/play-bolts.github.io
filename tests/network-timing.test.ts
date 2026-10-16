@@ -126,3 +126,47 @@ test('legacy acknowledgements are not used to discard commands for future simula
   assert.ok(distance(game.player,before)<1e-9,'the snapshot tick, not a last-received sequence, defines the replay boundary');
  }finally{client.disconnect();}
 });
+
+for(const skip of [false,true])test(`${skip?'skipped':'finished'} short killcam stays in the death view until an authoritative respawn`,async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  const self=actor(),peer=actor(7);peer.x=-13.5;
+  setNow(50);client.receiveSnapshot(snapshot(3,[self,peer]));
+  Object.assign(self,{alive:false,hp:0,deadAt:.1,deaths:1});const death=snapshot(6,[self,peer]);death.events=[{type:'shot',actor:7,shot:{time:.075,actor:7,origin:{x:peer.x,y:1.65,z:peer.z},end:{x:self.x,y:1.65,z:self.z},kind:'shot',hit:42,headshot:true}},{type:'kill',actor:7,victim:42}];
+  setNow(100);client.receiveSnapshot(death);assert.equal(game.state,'killcam');assert.equal(game.killer,1);
+  const recording=structuredClone(game.replay);assert.equal(game.replayShots.length,1);
+  if(skip){client.skipReplay();assert.equal(game.replayShots.length,0,'seeking past the replay must not play all skipped shots at once');}
+  for(let n=1;n<=175;n++){
+   setNow(100+n*MS);
+   if(n%3===0)client.receiveSnapshot(snapshot(6+n,[self,{...peer,z:peer.z+n*.01}]));
+   client.fire();client.update(STEP,{...idle,forward:1,jump:true});client.present(.5);
+   assert.equal(game.state,'killcam','never expose a dead player as normal gameplay');assert.equal(game.player.alive,false);assert.equal(client.localPosition,null);
+   const input=socket.messages.findLast(m=>m.type==='input');assert.equal(input.forward,0);assert.equal(input.jump,false);assert.equal(input.fire,false);
+  }
+  assert.equal(client.waitingForRespawn,true);assert.equal(game.replayTime,game.replayEnd+.65);assert.deepEqual(game.replay,recording,'the held camera remains on the recorded killer');
+  const spawned={...actor(),spawnGeneration:2,z:5,deaths:1},respawn=snapshot(186,[spawned,peer]);
+  if(skip)respawn.events=[{type:'spawn',actor:42}];
+  setNow(3100);client.receiveSnapshot(respawn);
+  assert.equal(game.state,'playing');assert.equal(client.waitingForRespawn,false);assert.equal(game.replay.length,0);assert.equal(game.player.z,5);
+  setNow(3100+MS);client.update(STEP,{...idle,forward:1});assert.ok(game.player.z>5,'movement resumes immediately with the authoritative life');
+  assert.equal(socket.messages.findLast(m=>m.type==='input').generation,2);
+ }finally{client.disconnect();}
+});
+test('missing death history and roster changes keep a waiting view, and spectator entry clears it',async()=>{
+ const {client,game,setNow}=await fixture();
+ try{
+  const self={...actor(),alive:false,hp:0,deadAt:.1};
+  setNow(100);client.receiveSnapshot(snapshot(6,[self]));assert.equal(game.state,'killcam');assert.equal(client.waitingForRespawn,true);assert.equal(game.replayFrame()!.actors[0].alive,false);
+  setNow(150);client.receiveSnapshot(snapshot(9,[self,actor(7)]));assert.equal(game.state,'killcam');assert.equal(client.waitingForRespawn,true);
+  setNow(200);client.receiveSnapshot(snapshot(12,[{...self,spectator:true,spawnGeneration:2},actor(7)]));assert.equal(game.state,'playing');assert.equal(client.waitingForRespawn,false);assert.equal(game.replay.length,0);
+ }finally{client.disconnect();}
+});
+test('respawning while paused clears the old replay before resuming gameplay',async()=>{
+ const {client,game,setNow}=await fixture();
+ try{
+  setNow(100);client.receiveSnapshot(snapshot(6,[{...actor(),alive:false,hp:0,deadAt:.1}]));
+  client.setPaused(true);assert.equal(game.state,'paused');
+  setNow(3100);client.receiveSnapshot(snapshot(186,[{...actor(),spawnGeneration:2}]));assert.equal(game.state,'paused');assert.equal(client.waitingForRespawn,false);
+  client.setPaused(false);assert.equal(game.state,'playing');assert.equal(game.player.alive,true);
+ }finally{client.disconnect();}
+});

@@ -251,12 +251,11 @@ export class View {
   }
   if(replay){for(const s of game.replayShots)if(s.time>this.lastReplayShot&&s.time<=game.replayTime){this.effect(s,s.actor===game.killer,game.replayTime-s.time);}this.lastReplayShot=game.replayTime;}else this.lastReplayShot=-1;
   const visualTime=replay?game.replayTime:game.time;
-  updateMuzzleFlash(this.muzzle,inMenu||ended||viewedId===null||!this.rifle?.visible?Infinity:(spectating?remoteTime:visualTime)-this.weaponShotStart,this.flash,Math.round(this.weaponShotStart*10000));
+  updateMuzzleFlash(this.muzzle,inMenu||ended||viewedId===null||!actors[viewedId]?.alive||!this.rifle?.visible?Infinity:(spectating?remoteTime:visualTime)-this.weaponShotStart,this.flash,Math.round(this.weaponShotStart*10000));
   for(let i=this.effects.length-1;i>=0;i--){const e=this.effects[i],elapsed=visualTime-e.started;e.life=e.total-elapsed;if(elapsed<0||e.life<=0){this.burstPool().release(e.mesh);this.effects.splice(i,1);continue;}if(e.kind==='muzzle'){if(e.anchor&&elapsed<MUZZLE_FLASH_SECONDS)placeMuzzleFlash(e.mesh,e.anchor);updateMuzzleFlash(e.mesh,elapsed,undefined,e.seed);}else updateImpactEffect(e.mesh,elapsed);}
   this.renderer.autoClear=true;if(inMenu&&intro){this.renderer.render(this.intro.scene,this.intro.camera);this.introFrameReady=true;}else this.renderer.render(this.scene,this.camera);
-  // A corpse keeps its recorded reload/switch pose for the world model. Once
-  // the round ends, omit its first-person hands/weapon instead of displaying
-  // that interrupted action forever. Killcam still shows the killer's weapon.
-  if(!inMenu&&viewedId!==null&&actors[viewedId]&&(!ended||actors[viewedId].alive)){this.renderer.autoClear=false;this.renderer.clearDepth();this.renderer.render(this.weaponScene,this.weaponCamera);this.renderer.autoClear=true;}
+  // A corpse keeps its world pose, but a waiting/dead view has no first-person
+  // weapon. A living killer's recorded weapon remains visible during replay.
+  if(!inMenu&&viewedId!==null&&actors[viewedId]?.alive){this.renderer.autoClear=false;this.renderer.clearDepth();this.renderer.render(this.weaponScene,this.weaponCamera);this.renderer.autoClear=true;}
  }
 }

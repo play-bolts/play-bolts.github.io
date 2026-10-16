@@ -71,7 +71,7 @@ export class UI {
    <div class="compass-wrap"><div class="compass"><div id="compass-rose"><span class="north">N</span><span class="east">E</span><span class="south">S</span><span class="west">W</span><i class="needle"></i></div><i class="compass-pointer"></i></div></div>
    <div id="spectator-status" class="hidden" role="status"></div><div id="spectator-help" class="hidden"></div><div id="status-message"></div><div id="kill-message" class="hidden" role="status"></div>
    <div class="ammo-hud"><div id="weapon-slot"></div><div class="ammo-line"><strong id="ammo">10</strong><span class="ammo-divider">/</span><span id="reserve">60</span></div><div id="round-icons"></div><div class="health-row"><span>✚</span><div class="health-track"><i id="health-fill"></i></div><b id="health">100</b></div></div>
-   <div id="killcam" class="hidden"><div class="killcam-top"><span>Killcam</span><span id="killer-name"></span></div><div class="killcam-bottom"><button id="skip-killcam">Skip <kbd>Space</kbd></button></div></div>
+   <div id="killcam" class="hidden"><div class="killcam-top"><span>Killcam</span><span id="killer-name"></span></div><div class="killcam-bottom"><button id="skip-killcam">Skip <kbd>Space</kbd></button><span id="respawn-wait" class="hidden" role="status">Waiting to respawn…</span></div></div>
   </div>
   <div id="pause" class="overlay hidden"><div class="dialog pause-card"><h2 id="pause-title">Paused</h2><button id="resume" class="start-button">Resume</button><button id="open-team" class="secondary-button">Select team</button><button id="pause-score" class="secondary-button">Scoreboard</button><button class="secondary-button settings-button">Options</button><button class="secondary-button controls-button">Controls</button><button id="leave" class="secondary-button">Main menu</button></div></div>
   <div id="scoreboard" class="overlay hidden"><div class="score-card"><button id="score-close" class="icon-button" aria-label="Close scoreboard">${closeIcon}</button><div class="score-heading"><span id="score-time">05:00</span></div><h2 id="score-title">Scoreboard</h2><p id="score-winner" class="hidden"></p><table><thead><tr><th>#</th><th>Player</th><th>Kills</th><th>Deaths</th><th id="score-ping" class="hidden" aria-label="Ping in milliseconds">Ping</th></tr></thead><tbody id="score-rows"></tbody></table><div id="end-actions" class="hidden"><button id="again" class="start-button">Play again</button><button id="end-leave" class="secondary-button">Main menu</button></div></div></div>
@@ -252,7 +252,7 @@ export class UI {
  showKill(victimName:string){this.killUntil=performance.now()+3000;this.el['kill-message'].innerHTML=`You killed ${playerNameHTML(victimName)}`;this.el['kill-message'].style.opacity='1';this.el['kill-message'].classList.remove('hidden');}
  showMenu(){this.setSelectionBusy(false);this.spectating=this.spectatorSelection=false;this.inGame=false;this.selectionOpen=false;this.setOnline(false);this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.feed=[];this.killUntil=0;this.setMenuStage('main');}
  begin(){this.inGame=true;this.closeSelection();this.closeModal();this.damageStarted=-Infinity;this.damageUntil=0;this.feed=[];this.killUntil=0;this.scoreHeld=false;this.el['kill-message'].classList.add('hidden');this.el.menu.classList.add('hidden');this.el.pause.classList.add('hidden');this.el.scoreboard.classList.add('hidden');this.el.hud.classList.remove('hidden');}
- update(game:Game){
+ update(game:Game,waitingForRespawn=false){
   if(!game.player)return;const replayActor=game.state==='killcam'?game.replayFrame()?.actors[game.killer]:null;const p=replayActor?{...game.actors[game.killer],...replayActor}:game.viewedActor??game.player,now=performance.now();
   const markup=this.hudMarkup;
   const spectating=game.player.spectator,followed=spectating?game.spectator.target(game.actors):null;
@@ -263,6 +263,7 @@ export class UI {
   this.spectating=spectating;
   hudClass(this.el.pause,'hidden',game.state!=='paused'||this.scoreHeld||this.modalOpen||this.selectionOpen);hudClass(this.el.scoreboard,'hidden',this.selectionOpen||!(this.scoreHeld||game.state==='ended'));
   hudClass(this.el.killcam,'hidden',game.state!=='killcam');hudClass(this.el.hud,'killcam-active',game.state==='killcam');const killerName=game.actors[game.killer]?.name??DEFAULT_PLAYER_NAME;markup.set(this.el['killer-name'],killerName,()=>playerNameHTML(killerName));
+  hudClass(this.el['skip-killcam'],'hidden',waitingForRespawn);hudClass(this.el['respawn-wait'],'hidden',!waitingForRespawn);
   hudClass(this.el.crosshair,'hidden',spectating||p.ads||!game.player.grounded||game.state!=='playing'||p.reload>0||game.isSwitching(game.player)||p.selectedWeapon==='grenade');
   // Follow the physical spread state, with presentation-only reticle scaling.
   hudStyle(this.el.crosshair,'--spread',`${crosshairDisplayGapPixels(game.playerHipSpread,window.innerHeight)}px`);

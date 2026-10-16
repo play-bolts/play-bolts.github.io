@@ -121,7 +121,8 @@ async function fight(shooter:User,target:User){
  await until(()=>users.every(u=>actorOn(u,target.name).deaths===deaths+1&&!actorOn(u,target.name).alive&&actorOn(u,shooter.name).kills===kills+1),'all adapters agree on death and scores');
  check(`${target.name} death, killer score and killcam are authoritative`,()=>{for(const u of users){assert.equal(actorOn(u,target.name).hp,0);assert.ok(events(u).some(e=>e.type==='kill'&&e.actor===shooter.actorId&&e.victim===target.actorId));}assert.equal(target.game.state,'killcam');});
  target.network.skipReplay();
- await until(()=>users.every(u=>actorOn(u,target.name).alive&&actorOn(u,target.name).hp===100),'all adapters observe automatic respawn',6000);
+ check(`${target.name} waits in the killcam after skipping`,()=>{assert.equal(target.game.state,'killcam');assert.equal(target.network.waitingForRespawn,true);assert.equal(target.game.player.alive,false);});
+ await until(()=>{if(!target.authority.alive)assert.equal(target.game.state,'killcam','a dead client never returns to normal gameplay before respawn');return users.every(u=>actorOn(u,target.name).alive&&actorOn(u,target.name).hp===100);},'all adapters observe automatic respawn',6000);
  check(`${target.name} respawns with 150 rounds and retained scores`,()=>{for(const u of users){const actor=actorOn(u,target.name);assert.equal(actor.ammo+actor.reserve,150);assert.equal(actor.deaths,deaths+1);assert.equal(actorOn(u,shooter.name).kills,kills+1);}});
 }
 

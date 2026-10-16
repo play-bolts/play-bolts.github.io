@@ -60,7 +60,7 @@ test('server-confirmed actions deduplicate predicted effects and own kills, deat
   s.events=[{type:'shot',actor:42,seq,shot:{seq,time:.02,actor:42,origin:{x:12,y:1.65,z:0},end:{x:12,y:1.65,z:4},kind:'shot',hit:7,headshot:true}},{type:'kill',actor:42,victim:7,weapon:'rifle',headshot:true}];
   client.receiveSnapshot(s);assert.equal(game.events.filter(e=>e.type==='shot').length,0);assert.equal(game.events.find(e=>e.type==='kill')?.victim,1);assert.equal(game.player.kills,1);assert.equal(game.actors[1].deaths,1);assert.equal(game.shots[0].hit,1);
   const death=snapshot(3,.1);death.actors[1].alive=false;death.actors[1].hp=0;death.actors[1].deaths=1;death.events=[{type:'kill',actor:7,victim:42,weapon:'rifle',headshot:true}];client.receiveSnapshot(death);
-  assert.equal(game.state,'killcam');assert.equal(game.killer,1);assert.ok(game.replay.length>=2);client.skipReplay();assert.equal(game.state,'playing');assert.equal(game.player.alive,false,'skip does not grant a client-side respawn');
+  assert.equal(game.state,'killcam');assert.equal(game.killer,1);assert.ok(game.replay.length>=2);client.skipReplay();assert.equal(game.state,'killcam');assert.equal(client.waitingForRespawn,true);assert.equal(game.player.alive,false,'skip does not grant a client-side respawn');
  }finally{client.disconnect();}
 });
 test('grenade fire predicts only a short melee pose and authoritative damage arrives separately',async()=>{

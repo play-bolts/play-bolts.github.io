@@ -89,6 +89,14 @@ test('ending during killcam hides the dead player weapon without changing an int
  }
 });
 
+test('a waiting death view without a killer recording never displays the dead player weapon',t=>{
+ const game=new Game();game.start('british','recruit');game.time=10;game.actors=game.actors.slice(0,3);
+ game.damage(game.player,game.actors[1],100);game.killer=0;game.replayTime=game.replayEnd+.65;
+ const view=fakeView(game),drawn:THREE.Scene[]=[];t.mock.method(view.renderer,'render',(scene:THREE.Scene)=>drawn.push(scene));
+ view.render(game,1/60,false);
+ assert.deepEqual(drawn,[view.scene]);assert.equal(view.muzzle.visible,false);assert.equal(view.flash.intensity,0);
+});
+
 test('hit effects pause with simulation time and replay seeks reconstruct without stale duplicates',()=>{
  const game=new Game();game.start('british','recruit');game.time=10;game.actors=game.actors.slice(0,3);
  const view=fakeView(game),shot:Shot={time:9.8,actor:1,origin:{x:0,y:1,z:0},end:{x:0,y:1,z:4},hit:2,headshot:false,kind:'shot'};

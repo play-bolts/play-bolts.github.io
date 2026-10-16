@@ -193,7 +193,7 @@ export class NetworkClient {
   if(!this.validSnapshot(snapshot))return false;const s=snapshot,last=this.snapshots.at(-1);if(last&&(s.tick<=last.tick||s.time<last.time))return false;
   const game=this.game,newIds=[this.actorId,...s.actors.filter(a=>a.id!==this.actorId).map(a=>a.id).sort((a,b)=>a-b)],rosterChanged=newIds.join(',')!==this.ids.join(',')||s.actors.some(a=>{const index=this.ids.indexOf(a.id);return index>=0&&game.actors[index]?.faction!==a.faction;});
   const oldIds=this.ids;const newRound=this.roundNumber!==s.roundNumber,oldPlayer=game.player,oldYaw=oldPlayer?.yaw,oldPitch=oldPlayer?.pitch,wasAlive=oldPlayer?.alive??false,wasSpectator=oldPlayer?.spectator??false;
-  if(rosterChanged){this.ids=newIds;game.actors=newIds.map((id,index)=>{const a=s.actors.find(p=>p.id===id)!;return Object.assign(createActor(index,a.faction,a.name),a,{id:index,pose:a.pose?{...a.pose}:undefined});});game.history=[];game.shots=[];game.events=[];this.replaying=false;game.replay=[];game.replayShots=[];}
+  if(rosterChanged){this.ids=newIds;game.actors=newIds.map((id,index)=>{const a=s.actors.find(p=>p.id===id)!;return Object.assign(createActor(index,a.faction,a.name),a,{id:index,renderIdentity:`${this.lobbyId}:${id}`,pose:a.pose?{...a.pose}:undefined});});game.history=[];game.shots=[];game.events=[];this.replaying=false;game.replay=[];game.replayShots=[];}
   const self=s.actors.find(a=>a.id===this.actorId)!;this.seq=Math.max(this.seq,self.ack);
   if(self.spectator&&!wasSpectator)game.spectator.enter(oldPlayer??self);
   if(!self.spectator&&wasSpectator)game.spectator.reset();

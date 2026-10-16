@@ -62,6 +62,8 @@ const STOCK_ROTATION:Vector=[.7,-.25,0];
 const LEFT:Vector=[0,-.026,-.680];
 const GRENADE_RIGHT:Vector=[.050,-.074,-.185];
 const LOAD_ROTATION:Vector=[1.901071,.921525,-.202327];
+const RELOAD_REFERENCE=sampleSourceMotion('Pistol_Reload',0);
+const BOLT_HAND_AXIS=new THREE.Vector3(0,1,0).applyAxisAngle(new THREE.Vector3(0,0,1),-.75);
 const smooth=(x:number)=>{const t=Math.max(0,Math.min(1,x));return t*t*(3-2*t);};
 function keys(t:number,points:Key[]):Vector {
   if(t<=points[0][0]) return [...points[0][1]];
@@ -81,12 +83,20 @@ function mixRotation(a:Vector,b:Vector,t:number):Vector {
 function boltHandRotation(lift:number,stockRotation:Vector=STOCK_ROTATION):Vector {
   // Pronation follows the bolt about the wrist's longitudinal axis. Turning
   // the entire hand about weapon Z previously pointed its wrist straight up.
-  const axis=new THREE.Vector3(0,1,0).applyAxisAngle(new THREE.Vector3(0,0,1),-.75);
-  const q=new THREE.Quaternion().setFromEuler(new THREE.Euler(...stockRotation)).multiply(new THREE.Quaternion().setFromAxisAngle(axis,lift*.55));
+  const q=new THREE.Quaternion().setFromEuler(new THREE.Euler(...stockRotation)).multiply(new THREE.Quaternion().setFromAxisAngle(BOLT_HAND_AXIS,lift*.55));
   const e=new THREE.Euler().setFromQuaternion(q);return [e.x,e.y,e.z];
 }
+const reachCurves=new Map<string,THREE.CatmullRomCurve3>();
 function reachCurve(t:number,points:Vector[]):Vector {
-  const curve=new THREE.CatmullRomCurve3(points.map(point=>new THREE.Vector3(...point)),false,'centripetal');
+  // Reload reach control points stay fixed while the action is open. Keep the
+  // exact curve and its 200-segment arc-length table instead of rebuilding it
+  // for every hand/frame. Numeric keys also respect edited profile overrides.
+  const key=points.map(point=>point.join(',')).join(';');let curve=reachCurves.get(key);
+  if(!curve){
+    curve=new THREE.CatmullRomCurve3(points.map(point=>new THREE.Vector3(...point)),false,'centripetal');
+    if(reachCurves.size>=32)reachCurves.delete(reachCurves.keys().next().value!);
+    reachCurves.set(key,curve);
+  }
   return curve.getPointAt(smooth(t)).toArray() as Vector;
 }
 /** Centre of the authored bolt knob, transformed by the same bolt pose that
@@ -229,7 +239,7 @@ export function sampleWeaponAnimation(faction:Faction,action:WeaponAction,progre
   pose.rightElbow=pose.rightElbow.map((v,i)=>v+seatOffset.getComponent(i)*pose.thumbContact) as Vector;
   // Adapt only the source's support/reach mechanics. Its left-hand pistol
   // magazine path is not used for this rifle's right-hand bolt/charger path.
-  const reference=sampleSourceMotion('Pistol_Reload',0),source=sampleSourceMotion('Pistol_Reload',t);
+  const reference=RELOAD_REFERENCE,source=sampleSourceMotion('Pistol_Reload',t);
   const envelope=Math.sin(Math.PI*t)**2;
   const fetch=Math.max(0,Math.min(1,(reference.leftWrist[1]-source.leftWrist[1])/.28))*envelope;
   pose.position[1]-=fetch*.018;pose.position[2]+=fetch*.025;

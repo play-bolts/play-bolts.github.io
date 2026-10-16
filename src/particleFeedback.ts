@@ -58,10 +58,23 @@ const transform=new THREE.Object3D();
 export function updateParticleCloud(cloud:THREE.InstancedMesh,age:number){
  const particles=cloud.userData.particles as FeedbackParticle[],alpha=cloud.geometry.getAttribute('particleAlpha') as THREE.InstancedBufferAttribute;let visible=false;
  for(let i=0;i<particles.length;i++){
-  const p=particles[i],sample=sampleFeedbackParticle(p,age);visible||=sample.visible;
-  transform.position.set(...sample.position);transform.scale.set(sample.size,sample.size*p.stretch,sample.size);transform.updateMatrix();cloud.setMatrixAt(i,transform.matrix);alpha.setX(i,sample.opacity);
+  const p=particles[i],t=age-p.delay,active=Number.isFinite(t)&&t>=0&&t<p.life;visible||=active;
+  let size=0,opacity=0;
+  if(active){const travel=p.drag>0?(1-Math.exp(-p.drag*t))/p.drag:t,progress=t/p.life;
+   transform.position.set(p.position[0]+p.velocity[0]*travel,p.position[1]+p.velocity[1]*travel-.5*p.gravity*t*t,p.position[2]+p.velocity[2]*travel);
+   size=p.size*(1+p.growth*progress);opacity=p.opacity*Math.pow(1-progress,p.kind==='mist'?.85:1.4)*Math.min(1,t/.012+.3);
+  }else transform.position.set(...p.position);
+  transform.scale.set(size,size*p.stretch,size);transform.updateMatrix();cloud.setMatrixAt(i,transform.matrix);alpha.setX(i,opacity);
  }
  cloud.instanceMatrix.needsUpdate=true;alpha.needsUpdate=true;cloud.visible=visible;return visible;
+}
+
+/** Refill an existing burst without allocating new GPU geometry or shaders. */
+export function resetParticleCloud(cloud:THREE.InstancedMesh,particles:FeedbackParticle[]){
+ if(particles.length!==cloud.count)throw new Error('Particle pool capacity mismatch');
+ const geometry=cloud.geometry,color=geometry.getAttribute('particleColor'),direction=geometry.getAttribute('particleDirection'),style=geometry.getAttribute('particleStyle'),tint=new THREE.Color();
+ for(let i=0;i<particles.length;i++){const p=particles[i];tint.setHex(p.color);color.setXYZ(i,tint.r,tint.g,tint.b);direction.setXYZ(i,...p.velocity);style.setXY(i,p.kind==='mist'?0:p.kind==='drop'?1:2,p.seed);}
+ color.needsUpdate=direction.needsUpdate=style.needsUpdate=true;cloud.userData.particles=particles;updateParticleCloud(cloud,-1);
 }
 
 export function seededFeedback(seed:number){let state=seed>>>0;return()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296;};}

@@ -61,8 +61,8 @@ test('melee hits get blood without muzzle flashes and effect allocation stays bo
  const first=view.effects[0].mesh,cloud=first.children[0] as THREE.InstancedMesh,geometry=cloud.geometry;let disposed=0,instancesDisposed=0;geometry.addEventListener('dispose',()=>disposed++);cloud.addEventListener('dispose',()=>instancesDisposed++);
  view.effect({...shot,kind:'melee',hit:null},false);assert.equal(view.effects.length,1,'missed bashes do not invent a blood hit');
  for(let i=0;i<70;i++)view.effect({...shot,time:10+i*.01},false);
- assert.equal(view.effects.length,MAX_WORLD_EFFECTS);assert.equal(first.parent,null);assert.equal(disposed,1,'evicted GPU resources are disposed once');assert.equal(instancesDisposed,1,'per-instance GPU matrices are released too');assert.equal(view.scene.children.length,MAX_WORLD_EFFECTS);
- view.clearEffects();assert.equal(view.effects.length,0);assert.equal(view.scene.children.length,0);
+ assert.equal(view.effects.length,MAX_WORLD_EFFECTS);assert.equal(disposed,0,'evicted GPU resources are recycled during combat');assert.equal(instancesDisposed,0,'instance buffers remain reusable');assert.equal(view.scene.children.length,MAX_WORLD_EFFECTS);
+ view.clearEffects();assert.equal(view.effects.length,0);assert.equal(view.scene.children.length,0);(view as any).effectPool.clear();assert.equal(disposed,1,'retained GPU resources are released exactly once on pool teardown');assert.equal(instancesDisposed,1);
 });
 
 test('every rifle world flash follows the animated muzzle position and firing orientation',()=>{

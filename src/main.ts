@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import './style.css';
-import {DefaultLoadingManager} from 'three';
+import {DefaultLoadingManager,WebGLRenderer} from 'three';
 import {UI} from './ui';
 import {Game,createActor,type Input} from './engine';
 import {View} from './renderer';
@@ -18,19 +18,23 @@ import {MenuPreview} from './menuPreview';
 import {NetworkClient,type Lobby} from './network';
 import {readLaunchAction} from './launch';
 import {CommunityClient} from './community';
+import {AdaptiveResolution} from './adaptiveResolution';
 const ui=new UI(),game=new Game(),sound=new Sound(),network=new NetworkClient(game),community=new CommunityClient();
 let launchAction=readLaunchAction(location.search);
 // Keep progress tied to completed asset requests, reserving the last step for
 // scene construction and the first rendered frame.
 DefaultLoadingManager.onProgress=(_url,loaded,total)=>ui.setLoadingProgress(.85*loaded/total);
-try{await Promise.all([loadHandAssets(),preloadHumanHead(),preloadSoldierMaterials(),preloadSurfaceAssets(),preloadModelDetails(),preloadImportedWeapons()]);ui.setLoadingProgress(.9);}catch(error){ui.el.loading.classList.add('hidden');ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].innerHTML='<div class="dialog"><h2>Unable to load models</h2><button onclick="location.reload()">Retry</button></div>';throw error;}finally{DefaultLoadingManager.onProgress=()=>{};}
+let graphics:WebGLRenderer;
+try{graphics=new WebGLRenderer({antialias:true,powerPreference:'high-performance'});}catch(error){ui.el.loading.classList.add('hidden');ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].textContent='WebGL 2 required';throw error;}
+try{await Promise.all([loadHandAssets(),preloadHumanHead(),preloadSoldierMaterials(),preloadSurfaceAssets(graphics),preloadModelDetails(),preloadImportedWeapons()]);ui.setLoadingProgress(.9);}catch(error){ui.el.loading.classList.add('hidden');ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].innerHTML='<div class="dialog"><h2>Unable to load models</h2><button onclick="location.reload()">Retry</button></div>';throw error;}finally{DefaultLoadingManager.onProgress=()=>{};}
 let view:View;
-try{view=new View(ui.el.world);ui.setLoadingProgress(.95);}catch(error){ui.el.loading.classList.add('hidden');ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].innerHTML='<div class="dialog"><h2>WebGL 2 required</h2><button class="start-button" onclick="location.reload()">Reload</button></div>';throw error;}
+try{view=new View(ui.el.world,graphics);view.setQuality(ui.prefs.quality);ui.setLoadingProgress(.95);await view.prepare();}catch(error){ui.el.loading.classList.add('hidden');ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].innerHTML='<div class="dialog"><h2>Unable to initialize graphics</h2><button class="start-button" onclick="location.reload()">Reload</button></div>';throw error;}
 let menuPreview:MenuPreview|null=null;
 try{menuPreview=new MenuPreview(ui.el['weapon-preview'] as HTMLCanvasElement);}
 catch(error){menuPreview?.dispose();menuPreview=null;ui.el['weapon-preview'].classList.add('hidden');console.warn('Menu preview unavailable',error);}
 const keys=new Set<string>();let menu=true,previous=performance.now(),accumulator=0,resumeState:'playing'|'killcam'='playing',dragMode=false,dragging=false,previousX=0,previousY=0,jump=false,endingReleased=false,lastReplaySound=-1;
 let appliedQuality:string|undefined;
+const resolution=new AdaptiveResolution();
 let qaLean:number|null=null,joining=false,equipRifle=false,onlineEntered=false,lobbyFetchBusy=false,lobbyFetchTime=0;
 let lobbyRequest=0,onlineSelection=false;let requestedLobby:string|undefined;let lobbyRows:Lobby[]=[];
 let communityStatusBusy=false,communityStatusTime=-Infinity,leaderboardBusy=false;
@@ -43,7 +47,7 @@ ui.leaderboardLoad=()=>{
  if(leaderboardBusy)return;leaderboardBusy=true;ui.setLeaderboardStatus('Loading…',true);
  void community.leaderboard().then(data=>ui.setLeaderboard(data)).catch(()=>ui.setLeaderboardStatus('Unable to load leaderboard.')).finally(()=>{leaderboardBusy=false;});
 };
-function syncSettings(){game.difficulty=ui.prefs.difficulty;sound.setVolume(ui.prefs.volume);if(appliedQuality!==ui.prefs.quality){view.setQuality(ui.prefs.quality);appliedQuality=ui.prefs.quality;}game.setPlayerName(ui.prefs.playerName);network.setName(ui.prefs.playerName);if(menu)view.setFaction(ui.prefs.faction);if(ui.selectionOpen&&ui.menuStage==='weapon')menuPreview?.show(ui.prefs.faction);}
+function syncSettings(){game.difficulty=ui.prefs.difficulty;sound.setVolume(ui.prefs.volume);if(appliedQuality!==ui.prefs.quality){view.setQuality(ui.prefs.quality);resolution.setBase(view.renderer.getPixelRatio());appliedQuality=ui.prefs.quality;}game.setPlayerName(ui.prefs.playerName);network.setName(ui.prefs.playerName);if(menu)view.setFaction(ui.prefs.faction);if(ui.selectionOpen&&ui.menuStage==='weapon')menuPreview?.show(ui.prefs.faction);}
 ui.menuChanged=()=>{if(ui.menuStage==='weapon')menuPreview?.show(ui.prefs.faction);};
 ui.settingsChanged=syncSettings;syncSettings();
 function capture(){const canvas=view.renderer.domElement;try{const promise=canvas.requestPointerLock();if(promise)promise.catch(()=>{dragMode=true;ui.toast('Drag or arrow keys to look.');});}catch{dragMode=true;ui.toast('Drag or arrow keys to look.');}}
@@ -71,7 +75,7 @@ ui.selectLoadout=()=>{
  if(onlineSelection){joinOnline();return;}
  if(network.online){network.setFaction(ui.prefs.faction);ui.save();ui.closeSelection();joining=false;resume();return;}
  const changed=game.changePlayerFaction(ui.prefs.faction);
- if(changed){view.setupActors(game);resumeState='playing';}
+ if(changed){view.syncActors(game);resumeState='playing';}
  ui.save();ui.closeSelection();joining=false;resume();equipRifle=game.state==='playing'&&game.player.selectedWeapon!=='rifle';
 };
 function fire(melee=false){if(network.online)network.fire(melee);else game.fire(game.player,melee);}
@@ -95,7 +99,7 @@ ui.joinLobby=id=>{
  game.actors=[actor];game.time=0;game.remaining=RULES.roundSeconds;game.state='paused';game.events=[];game.history=[];game.replay=[];game.replayShots=[];game.shots=[];game.winner=null;
  view.setupActors(game);ui.closeLobbies();ui.setOnline(true);ui.begin();ui.openSelection('team');
 };
-network.onRoster=()=>{sound.resetScene();view.setupActors(game);};
+network.onRoster=()=>{sound.resetScene();view.syncActors(game);};
 network.onJoined=name=>{
  ui.setOnline(true,name);ui.setNetworkStatus('');if(onlineEntered)return;
  onlineEntered=true;onlineSelection=false;menu=false;joining=false;resumeState='playing';keys.clear();jump=false;endingReleased=false;accumulator=0;equipRifle=false;ui.closeLobbies();ui.begin();network.setPaused(false);capture();
@@ -147,6 +151,7 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('keyup',e=>{ui.releaseChatKey(e.code);keys.delete(e.code);if(e.code==='Tab'){ui.scoreHeld=false;e.preventDefault();}});
 function updateAudioScene(){
+ sound.beginSceneUpdate();
  const viewed=game.state==='killcam'?game.actors[game.killer]:game.viewedActor;
  const replay=game.state==='killcam'?game.replayFrame()?.actors[game.killer]:null;
  const listener=replay?{...viewed!,...replay}:viewed;
@@ -156,6 +161,7 @@ function updateAudioScene(){
   sound.updateEmitter({actor:actor.id,position:game.eye(actor),local:actor.id===viewed?.id,faction:actor.faction});
   if(!actor.alive||!actor.reload||game.state==='menu'||game.state==='ended')sound.cancelReload(actor.id);
  }
+ sound.endSceneUpdate();
 }
 function processEvents(){
  updateAudioScene();const viewed=game.viewedActor;
@@ -171,7 +177,8 @@ function processEvents(){
  game.events=[];
 }
 function frame(now:number){
- const dt=Math.min((now-previous)/1000,.075);previous=now;
+ const frameMs=now-previous,dt=Math.min(frameMs/1000,.075);previous=now;
+ const ratio=resolution.sample(frameMs,!document.hidden&&!menu&&!ui.selectionOpen&&!ui.modalOpen&&game.state==='playing');if(ratio!==null){view.renderer.setPixelRatio(ratio);view.resize();}
  if(!menu){
   const input:Input={forward:Number(keys.has('KeyW'))-Number(keys.has('KeyS')),right:Number(keys.has('KeyD'))-Number(keys.has('KeyA')),jump,walk:keys.has('AltLeft')||keys.has('AltRight'),lean:import.meta.env.DEV&&qaLean!==null?qaLean:Number(keys.has('KeyE'))-Number(keys.has('KeyQ'))};
   if(equipRifle&&game.state==='playing'&&!game.isSwitching()){game.selectWeapon('rifle');equipRifle=false;}

@@ -5,6 +5,7 @@ import {damageFlashOpacity} from './damageFeedback';
 import type {Actor,Game} from './engine';
 import {FEEDBACK_MESSAGE_LIMIT,FEEDBACK_EMAIL_LIMIT,validateFeedback,type Leaderboard,type LeaderboardPeriod} from './community';
 import {DEFAULT_PLAYER_NAME,PLAYER_NAME_PREFERENCE_VERSION,MAX_NAME_RAW_LENGTH,playerNameHTML,sanitizePlayerName,restorePlayerNamePreference} from './names';
+import {HudMarkup,hudClass,hudStyle,hudText} from './hudUpdates';
 const closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg>';
 const controls=[['W A S D','Move'],['Mouse','Look'],['LMB','Fire / grenade bash'],['RMB','Iron sights'],['1 / 2','Rifle / grenade'],['Wheel','Switch weapon'],['R','Reload'],['Space','Jump / stand'],['C','Crouch'],['Ctrl','Prone'],['Q / E','Lean'],['Shift','Melee'],['Alt','Walk'],['Tab','Scoreboard'],['T / Enter','Chat'],['M','Change team'],['Esc','Menu / leave follow'],['LMB / RMB','Spectator: next / previous'],['Space / Ctrl','Spectator: up / down'],['Shift','Spectator: faster']];
 export interface Preferences {faction:Faction;difficulty:Difficulty;playerName:string;playerNameVersion:number;sensitivity:number;volume:number;aim:'toggle'|'hold';quality:string;invert:boolean}
@@ -20,6 +21,7 @@ export class UI {
  private lobbyRows:LobbyRow[]=[];private selectedLobby='';private lobbyBusy=false;
  private chatIds=new Set<string>();
  private chatKeys=new Set<string>();
+ private hudMarkup=new HudMarkup();
  multiplayer=()=>{};refreshLobbies=()=>{};joinLobby=(_id:string)=>{};lobbyBack=()=>this.closeLobbies();
  chatSend=(_text:string)=>{};chatOpened=()=>{};chatClosed=()=>{};
  private modalReturnFocus:HTMLElement|null=null;
@@ -184,7 +186,7 @@ export class UI {
   if(line.name){const name=document.createElement('span');name.className='chat-name';name.innerHTML=playerNameHTML(line.name);item.append(name,document.createTextNode(': '));}
   item.append(document.createTextNode(Array.from(line.message).slice(0,256).join('')));this.el['chat-log'].append(item);while(this.el['chat-log'].children.length>8)this.el['chat-log'].firstElementChild?.remove();this.updateChat(performance.now());
  }
- private updateChat(now:number){for(const line of this.el['chat-log'].children)(line as HTMLElement).classList.toggle('hidden',!this.chatOpen&&now>Number((line as HTMLElement).dataset.until));}
+ private updateChat(now:number){for(const line of this.el['chat-log'].children)hudClass(line,'hidden',!this.chatOpen&&now>Number((line as HTMLElement).dataset.until));}
  refreshSelection(){document.querySelectorAll<HTMLElement>('[data-faction]').forEach(b=>{const active=!this.spectatorSelection&&b.dataset.faction===this.prefs.faction;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));});
   this.el['choose-spectator'].classList.toggle('selected',this.spectatorSelection);this.el['choose-spectator'].setAttribute('aria-pressed',String(this.spectatorSelection));
   const weapon=WEAPONS[this.prefs.faction];
@@ -261,32 +263,36 @@ export class UI {
  begin(){this.inGame=true;this.closeSelection();this.closeModal();this.damageStarted=-Infinity;this.damageUntil=0;this.feed=[];this.killUntil=0;this.scoreHeld=false;this.el['kill-message'].classList.add('hidden');this.el.menu.classList.add('hidden');this.el.pause.classList.add('hidden');this.el.scoreboard.classList.add('hidden');this.el.hud.classList.remove('hidden');}
  update(game:Game){
   if(!game.player)return;const replayActor=game.state==='killcam'?game.replayFrame()?.actors[game.killer]:null;const p=replayActor?{...game.actors[game.killer],...replayActor}:game.viewedActor??game.player,now=performance.now();
+  const markup=this.hudMarkup;
   const spectating=game.player.spectator,followed=spectating?game.spectator.target(game.actors):null;
-  this.el.hud.classList.toggle('spectator-free',spectating&&!followed);this.el['spectator-status'].classList.toggle('hidden',!spectating);
-  this.el['spectator-help'].classList.toggle('hidden',!spectating);this.el['spectator-help'].textContent=followed?'LMB / RMB · Player    Esc · Free fly':'WASD · Fly    Space / Ctrl · Up / down    Shift · Fast    LMB / RMB · Follow';
-  this.el['spectator-status'].innerHTML=spectating?`Spectating: ${followed?playerNameHTML(followed.name):'Free fly'}`:'';
-  this.el['open-team'].textContent=spectating?'Join game':'Select team';this.el['open-weapon'].classList.toggle('hidden',spectating);
+  hudClass(this.el.hud,'spectator-free',spectating&&!followed);hudClass(this.el['spectator-status'],'hidden',!spectating);
+  hudClass(this.el['spectator-help'],'hidden',!spectating);hudText(this.el['spectator-help'],followed?'LMB / RMB · Player    Esc · Free fly':'WASD · Fly    Space / Ctrl · Up / down    Shift · Fast    LMB / RMB · Follow');
+  markup.set(this.el['spectator-status'],JSON.stringify([spectating,followed?.name]),()=>spectating?`Spectating: ${followed?playerNameHTML(followed.name):'Free fly'}`:'');
+  hudText(this.el['open-team'],spectating?'Join game':'Select team');hudClass(this.el['open-weapon'],'hidden',spectating);
   this.spectating=spectating;
-  this.el.pause.classList.toggle('hidden',game.state!=='paused'||this.scoreHeld||this.modalOpen||this.selectionOpen);this.el.scoreboard.classList.toggle('hidden',this.selectionOpen||!(this.scoreHeld||game.state==='ended'));
-  this.el.killcam.classList.toggle('hidden',game.state!=='killcam');this.el.hud.classList.toggle('killcam-active',game.state==='killcam');this.el['killer-name'].innerHTML=playerNameHTML(game.actors[game.killer]?.name??DEFAULT_PLAYER_NAME);
-  this.el.crosshair.classList.toggle('hidden',spectating||p.ads||!game.player.grounded||game.state!=='playing'||p.reload>0||game.isSwitching(game.player)||p.selectedWeapon==='grenade');
+  hudClass(this.el.pause,'hidden',game.state!=='paused'||this.scoreHeld||this.modalOpen||this.selectionOpen);hudClass(this.el.scoreboard,'hidden',this.selectionOpen||!(this.scoreHeld||game.state==='ended'));
+  hudClass(this.el.killcam,'hidden',game.state!=='killcam');hudClass(this.el.hud,'killcam-active',game.state==='killcam');const killerName=game.actors[game.killer]?.name??DEFAULT_PLAYER_NAME;markup.set(this.el['killer-name'],killerName,()=>playerNameHTML(killerName));
+  hudClass(this.el.crosshair,'hidden',spectating||p.ads||!game.player.grounded||game.state!=='playing'||p.reload>0||game.isSwitching(game.player)||p.selectedWeapon==='grenade');
   // Follow the physical spread state, with presentation-only reticle scaling.
-  this.el.crosshair.style.setProperty('--spread',`${crosshairDisplayGapPixels(game.playerHipSpread,window.innerHeight)}px`);
-  this.el['damage-flash'].style.opacity=String(spectating?0:damageFlashOpacity(now-this.damageStarted,this.damageLethal));
-  this.el['hit-confirm'].classList.toggle('hidden',spectating||now>this.hitUntil);
-  this.el['kill-message'].classList.toggle('hidden',spectating||now>=this.killUntil||game.state!=='playing');this.el['kill-message'].style.opacity=String(Math.min(1,Math.max(0,(this.killUntil-now)/600)));
-  this.el['spawn-protection'].classList.toggle('hidden',spectating||p.spawnSafe<=0||game.state!=='playing');
-  this.el['compass-rose'].style.transform=`rotate(${(spectating&&!followed?game.spectator.yaw:p.yaw)*180/Math.PI}deg)`;
-  this.el['status-message'].textContent=spectating?'':p.selectedWeapon==='grenade'||p.reload>0?'':p.ammo===0&&p.reserve===0?'Out of ammunition':p.cooldown>.3?'':p.ammo<=2?'R · Reload':'';
+  hudStyle(this.el.crosshair,'--spread',`${crosshairDisplayGapPixels(game.playerHipSpread,window.innerHeight)}px`);
+  hudStyle(this.el['damage-flash'],'opacity',String(spectating?0:damageFlashOpacity(now-this.damageStarted,this.damageLethal)));
+  hudClass(this.el['hit-confirm'],'hidden',spectating||now>this.hitUntil);
+  hudClass(this.el['kill-message'],'hidden',spectating||now>=this.killUntil||game.state!=='playing');hudStyle(this.el['kill-message'],'opacity',String(Math.min(1,Math.max(0,(this.killUntil-now)/600))));
+  hudClass(this.el['spawn-protection'],'hidden',spectating||p.spawnSafe<=0||game.state!=='playing');
+  hudStyle(this.el['compass-rose'],'transform',`rotate(${(spectating&&!followed?game.spectator.yaw:p.yaw)*180/Math.PI}deg)`);
+  hudText(this.el['status-message'],spectating?'':p.selectedWeapon==='grenade'||p.reload>0?'':p.ammo===0&&p.reserve===0?'Out of ammunition':p.cooldown>.3?'':p.ammo<=2?'R · Reload':'');
   if(now-this.lastHud<100)return;this.lastHud=now;this.updateChat(now);
   const clock=`${Math.floor(game.remaining/60).toString().padStart(2,'0')}:${Math.floor(game.remaining%60).toString().padStart(2,'0')}`;
-  this.el['match-clock'].textContent=clock;this.el['score-time'].textContent=clock;this.el.ammo.textContent=String(p.ammo);this.el.reserve.textContent=p.selectedWeapon==='grenade'?'':String(p.reserve);this.el.ammo.parentElement?.classList.toggle('hidden',p.selectedWeapon==='grenade');this.el.health.textContent=String(p.hp);this.el['health-fill'].style.width=p.hp+'%';this.el['health-fill'].style.background=p.hp<35?'#b34c3c':'#93a872';
-  this.el['round-icons'].classList.toggle('hidden',p.selectedWeapon==='grenade');this.el['round-icons'].innerHTML=Array.from({length:WEAPONS[p.faction].capacity},(_,i)=>`<i class="${i<p.ammo?'loaded':''}"></i>`).join('');
-  this.el['weapon-slot'].innerHTML=`<span>${p.selectedWeapon==='grenade'?'2':'1'}</span>${weaponIcon(p.faction,p.selectedWeapon)}<span>${p.selectedWeapon==='grenade'?'Stielhandgranate':WEAPONS[p.faction].name}</span>`;
-  this.feed=this.feed.filter(f=>now-f.time<6500);this.el.killfeed.innerHTML=this.feed.map(f=>`<div>${f.text}</div>`).join('');
+  hudText(this.el['match-clock'],clock);hudText(this.el['score-time'],clock);hudText(this.el.ammo,String(p.ammo));hudText(this.el.reserve,p.selectedWeapon==='grenade'?'':String(p.reserve));if(this.el.ammo.parentElement)hudClass(this.el.ammo.parentElement,'hidden',p.selectedWeapon==='grenade');hudText(this.el.health,String(p.hp));hudStyle(this.el['health-fill'],'width',p.hp+'%');hudStyle(this.el['health-fill'],'background',p.hp<35?'rgb(179, 76, 60)':'rgb(147, 168, 114)');
+  const rounds=this.el['round-icons'],capacity=WEAPONS[p.faction].capacity;
+  hudClass(rounds,'hidden',p.selectedWeapon==='grenade');markup.set(rounds,String(capacity),()=>'<i></i>'.repeat(capacity));
+  for(let i=0;i<rounds.children.length;i++)hudClass(rounds.children[i],'loaded',i<p.ammo);
+  markup.set(this.el['weapon-slot'],`${p.faction}:${p.selectedWeapon}`,()=>`<span>${p.selectedWeapon==='grenade'?'2':'1'}</span>${weaponIcon(p.faction,p.selectedWeapon)}<span>${p.selectedWeapon==='grenade'?'Stielhandgranate':WEAPONS[p.faction].name}</span>`);
+  for(let i=this.feed.length-1;i>=0;i--)if(now-this.feed[i].time>=6500)this.feed.splice(i,1);
+  const feedKey=JSON.stringify(this.feed.map(f=>[f.time,f.text]));markup.set(this.el.killfeed,feedKey,()=>this.feed.map(f=>`<div>${f.text}</div>`).join(''));
   if(this.scoreHeld||game.state==='ended'){
-   this.el['score-rows'].innerHTML=scoreboardRows(game.actors,this.online);
-   const ended=game.state==='ended';this.el['score-close'].classList.toggle('hidden',ended);this.el['end-actions'].classList.toggle('hidden',!ended);this.el.again.classList.toggle('hidden',this.online);this.el['score-title'].textContent=ended?(game.winner?.id===0?'Victory':'Round complete'):'Scoreboard';this.el['score-winner'].classList.toggle('hidden',!ended);this.el['score-winner'].innerHTML=ended&&game.winner?`${playerNameHTML(game.winner.name)} wins`:'';
+   const scoreKey=JSON.stringify([this.online,game.actors.map(a=>[a.id,a.spectator,a.faction,a.name,a.kills,a.deaths,this.online?a.ping:null])]);markup.set(this.el['score-rows'],scoreKey,()=>scoreboardRows(game.actors,this.online));
+   const ended=game.state==='ended';hudClass(this.el['score-close'],'hidden',ended);hudClass(this.el['end-actions'],'hidden',!ended);hudClass(this.el.again,'hidden',this.online);hudText(this.el['score-title'],ended?(game.winner?.id===0?'Victory':'Round complete'):'Scoreboard');hudClass(this.el['score-winner'],'hidden',!ended);markup.set(this.el['score-winner'],JSON.stringify([ended,game.winner?.name]),()=>ended&&game.winner?`${playerNameHTML(game.winner.name)} wins`:'');
   }
  }
 }

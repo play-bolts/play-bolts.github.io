@@ -1,0 +1,128 @@
+{
+  "encoder": "toktx v4.4.2",
+  "license": "CC0-1.0",
+  "original_provenance": "provenance.json",
+  "options": [
+    "--t2",
+    "--encode",
+    "uastc",
+    "--uastc_quality",
+    "3",
+    "--zcmp",
+    "18",
+    "--threads",
+    "4",
+    "--genmipmap",
+    "--filter",
+    "box",
+    "--lower_left_maps_to_s0t0"
+  ],
+  "quality_note": "UASTC quality 3, no lossy RDO, source resolution retained; normal/hand/weapon textures unchanged.",
+  "maps": [
+    {
+      "path": "stone/basecolor.ktx2",
+      "source": "stone/basecolor.jpg",
+      "source_sha256": "4571ff357e041bacb75ab06ad1958e74a0b396e0f3d8b9dc9d4717f704996304",
+      "sha256": "20d9de9b9a76023b9f6e15607deb1931257af771d7a982f67929a91ac0dc88f5",
+      "bytes": 4590544,
+      "dimensions": [
+        2048,
+        2048
+      ],
+      "levels": 12,
+      "transfer": "srgb",
+      "orientation": "ru",
+      "decoded_rgb_psnr_db": 46.618,
+      "rgba8_gpu_bytes": 22369620,
+      "astc4x4_or_bc7_gpu_bytes": 5592432
+    },
+    {
+      "path": "stone/roughness.ktx2",
+      "source": "stone/roughness.jpg",
+      "source_sha256": "cc6f9dcf548074bb96680188f2714f66f43b94963c1d16292b2d477a92427eb2",
+      "sha256": "263d262ebfe78d395dd8a3399ff4b9eb29b83fbcd40b500bc205e3fb3a4c73ad",
+      "bytes": 976140,
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "levels": 11,
+      "transfer": "linear",
+      "orientation": "ru",
+      "decoded_rgb_psnr_db": 52.674,
+      "rgba8_gpu_bytes": 5592404,
+      "astc4x4_or_bc7_gpu_bytes": 1398128
+    },
+    {
+      "path": "dirt/basecolor.ktx2",
+      "source": "dirt/basecolor.jpg",
+      "source_sha256": "126d3e4886cc94b494ba609ddc323a77ff0362a1b156c3750d5d2a0a0ead02b8",
+      "sha256": "b6881c7a17f81a12dce1f2a33722295a3246dbd24796c1723b45576718ce9f84",
+      "bytes": 4439667,
+      "dimensions": [
+        2048,
+        2048
+      ],
+      "levels": 12,
+      "transfer": "srgb",
+      "orientation": "ru",
+      "decoded_rgb_psnr_db": 48.374,
+      "rgba8_gpu_bytes": 22369620,
+      "astc4x4_or_bc7_gpu_bytes": 5592432
+    },
+    {
+      "path": "dirt/roughness.ktx2",
+      "source": "dirt/roughness.jpg",
+      "source_sha256": "eff62d5ae7bf0c46b84173bc46f07528dd164aa39f5d550c93a805b36f54b704",
+      "sha256": "9a2090fb569321085fe47632e5522ca33994a21188cbe23ede2e332ff030983b",
+      "bytes": 632888,
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "levels": 11,
+      "transfer": "linear",
+      "orientation": "ru",
+      "decoded_rgb_psnr_db": 62.633,
+      "rgba8_gpu_bytes": 5592404,
+      "astc4x4_or_bc7_gpu_bytes": 1398128
+    },
+    {
+      "path": "walnut/basecolor.ktx2",
+      "source": "walnut/basecolor.jpg",
+      "source_sha256": "e0fe7e76c288dae50a95a27ff7d3ab6040d3f0439f3eb6d61a3f53af84e132d7",
+      "sha256": "a7375e22a9b5a7b82703fb552614d09d2591a8c53a0a0b40d16e23106ecc9657",
+      "bytes": 4372573,
+      "dimensions": [
+        2048,
+        2048
+      ],
+      "levels": 12,
+      "transfer": "srgb",
+      "orientation": "ru",
+      "decoded_rgb_psnr_db": 49.625,
+      "rgba8_gpu_bytes": 22369620,
+      "astc4x4_or_bc7_gpu_bytes": 5592432
+    },
+    {
+      "path": "walnut/roughness.ktx2",
+      "source": "walnut/roughness.jpg",
+      "source_sha256": "a105351706d9d9e74a315309004bb38447eccf0ef13223be18f16530d2777d44",
+      "sha256": "753e455355ea85b74da3d648063705fb71ad819a96c7cdc0cb9043bd2dc49471",
+      "bytes": 953686,
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "levels": 11,
+      "transfer": "linear",
+      "orientation": "ru",
+      "decoded_rgb_psnr_db": 51.087,
+      "rgba8_gpu_bytes": 5592404,
+      "astc4x4_or_bc7_gpu_bytes": 1398128
+    }
+  ],
+  "total_bytes": 15965498,
+  "rgba8_gpu_bytes": 83886072,
+  "astc4x4_or_bc7_gpu_bytes": 20971680
+}

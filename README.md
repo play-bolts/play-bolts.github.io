@@ -37,6 +37,12 @@ npm run preview
 
 The production build in `dist/` includes the complete game, JavaScript, CSS, models and textures. Development tools such as the model inspector and QA controls are excluded. No external fonts or separate game installation are required.
 
+## Performance
+
+Rendering reuses actor models and effect buffers, batches compatible scenery, skips invisible posing, updates unchanged HUD elements less often, and draws the static menu on demand. Models, textures and shaders warm up before play; rifle audio warms in a worker after audio initialization. Gameplay rules, controls, hitboxes, AI decisions and multiplayer authority are unchanged.
+
+High-quality environment compression saves about **60 MiB of GPU texture storage** on supported hardware, with roughly **7 MB more initial downloads** plus the local transcoder. High-quality rendering on high-DPI screens can temporarily reduce pixel ratio from **1.75 to 1.5** under sustained load; HUD text stays at native resolution. WebGPU was evaluated separately and is not enabled in the game. See [implementation, benchmarks and verification](research/performance.md) and [texture/WebGPU findings](research/performance-webgpu.md).
+
 ## Deploy to GitHub Pages
 
 The repository's [Pages workflow](.github/workflows/pages.yml) publishes the complete `dist/` directory to **https://play-bolts.github.io/**. It runs on pushes to `main` and can also be started manually from the repository's Actions tab. The build job uses Node.js 22, runs `npm ci`, `npm test` and `npm run build`, then uploads the Pages artifact; the deployment job publishes that artifact. Set the repository's **Settings → Pages → Source** to **GitHub Actions**.

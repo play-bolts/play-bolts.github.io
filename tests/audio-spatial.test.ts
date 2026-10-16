@@ -16,13 +16,15 @@ class Filter extends Node {frequency=new Param();Q=new Param();type='';}
 class Panner extends Node {positionX=new Param();positionY=new Param();positionZ=new Param();panningModel='';distanceModel='';refDistance=0;maxDistance=0;rolloffFactor=0;}
 class Context {
  currentTime=10;sampleRate=48000;sources:Source[]=[];panners:Panner[]=[];filters:Filter[]=[];gains:Gain[]=[];
+ destination=new Node();buffers:ReturnType<Context['createBuffer']>[]=[];
  listener={positionX:new Param(),positionY:new Param(),positionZ:new Param(),forwardX:new Param(),forwardY:new Param(),forwardZ:new Param(),upX:new Param(),upY:new Param(),upZ:new Param()};
  createBufferSource(){const node=new Source();this.sources.push(node);return node;}
  createOscillator(){return this.createBufferSource();}
  createGain(){const node=new Gain();this.gains.push(node);return node;}
  createBiquadFilter(){const node=new Filter();this.filters.push(node);return node;}
  createPanner(){const node=new Panner();this.panners.push(node);return node;}
- createBuffer(_channels:number,length:number,rate:number){const samples=new Float32Array(length);return{duration:length/rate,getChannelData:()=>samples};}
+ createBuffer(_channels:number,length:number,rate:number):{duration:number;getChannelData:()=>Float32Array}{const samples=new Float32Array(length),buffer={duration:length/rate,getChannelData:()=>samples};this.buffers.push(buffer);return buffer;}
+ createDynamicsCompressor(){return Object.assign(new Node(),{threshold:new Param(),knee:new Param(),ratio:new Param(),attack:new Param(),release:new Param()});}
 }
 function setup(){const sound=new Sound(),ctx=new Context(),master=new Gain();sound.ctx=ctx as unknown as AudioContext;sound.master=master as unknown as GainNode;sound.noise=ctx.createBuffer(1,96000,48000) as unknown as AudioBuffer;return{sound,ctx,master};}
 const remote:SoundEmitter={actor:2,position:{x:-3,y:2,z:0},local:false,faction:'german'};
@@ -73,4 +75,37 @@ test('voice count remains bounded under excessive repeated events',()=>{
  const {sound,ctx}=setup();for(let i=0;i<180;i++)sound.melee(remote);
  assert.equal(ctx.sources.filter(s=>!s.disconnected).length,96);
  sound.resetScene();assert.equal(ctx.sources.filter(s=>!s.disconnected).length,0);
+});
+
+test('batched scene transforms route queued sounds once using the final actor position',()=>{
+ const {sound,ctx}=setup();sound.updateListener({x:0,y:2,z:0},0);sound.reload(remote);
+ const old=ctx.panners.map(p=>p.positionX.value);
+ sound.beginSceneUpdate();sound.updateListener({x:10,y:2,z:0},0);sound.updateEmitter({...remote,position:{x:4,y:2,z:8}});
+ assert.deepEqual(ctx.panners.map(p=>p.positionX.value),old,'no intermediate update with stale actor positions');
+ sound.endSceneUpdate();assert.ok(ctx.panners.every(p=>p.positionX.value===4&&p.positionZ.value===8));
+ sound.cancelReload(remote.actor);assert.ok(ctx.sources.every(source=>source.disconnected),'batching preserves scheduled reload cancellation');
+});
+
+test('initialization warms all rifle variants asynchronously and warm shots allocate no new buffers',()=>{
+ const contextDescriptor=Object.getOwnPropertyDescriptor(globalThis,'AudioContext'),workerDescriptor=Object.getOwnPropertyDescriptor(globalThis,'Worker');
+ const workers:WorkerStub[]=[];
+ class WorkerStub {
+  onmessage:((event:{data:unknown})=>void)|null=null;onerror:(()=>void)|null=null;rate=0;terminated=false;
+  constructor(public url:URL,public options:{type:string}){workers.push(this);}
+  postMessage(rate:number){this.rate=rate;}terminate(){this.terminated=true;}
+ }
+ Object.defineProperty(globalThis,'AudioContext',{configurable:true,value:Context});Object.defineProperty(globalThis,'Worker',{configurable:true,value:WorkerStub});
+ const random=Math.random;
+ try{
+  const sound=new Sound();sound.init();const ctx=sound.ctx as unknown as Context,worker=workers[0];
+  assert.equal(workers.length,1);assert.equal(worker.options.type,'module');assert.match(worker.url.pathname,/rifleAudio\.worker\.ts$/);assert.equal(worker.rate,48000);assert.equal(ctx.buffers.length,1,'init only creates its noise buffer; rifle synthesis is off-thread');
+  const factions=['british','russian','german'] as const;
+  for(const faction of factions)for(let variant=0;variant<3;variant++)worker.onmessage!({data:{faction,variant,samples:new Float32Array([variant/10,.5,-.5,0])}});
+  worker.onmessage!({data:{done:true}});assert.equal(worker.terminated,true);assert.equal(ctx.buffers.length,10);
+  for(const faction of factions)for(let variant=0;variant<3;variant++){
+   Math.random=()=>variant/3+.01;sound.shot({...remote,faction});const buffer=ctx.sources.at(-1)!.buffer as ReturnType<Context['createBuffer']>;
+   assert.deepEqual([...buffer.getChannelData()],[Math.fround(variant/10),.5,-.5,0]);
+  }
+  assert.equal(ctx.buffers.length,10,'shooting uses all nine warmed buffers');sound.resetScene();
+ }finally{Math.random=random;if(contextDescriptor)Object.defineProperty(globalThis,'AudioContext',contextDescriptor);else delete(globalThis as any).AudioContext;if(workerDescriptor)Object.defineProperty(globalThis,'Worker',workerDescriptor);else delete(globalThis as any).Worker;}
 });

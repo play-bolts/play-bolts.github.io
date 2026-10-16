@@ -586,7 +586,7 @@ export function applySoldierPose(model:THREE.Group,pose:SoldierPose) {
 /** Public renderer entry point. Transition state is reset on respawn, replay
  * rewind, or clock discontinuity; stance smoothing uses elapsed simulation
  * time, so pausing or changing frame rate cannot move the character. */
-export function updateSoldier(model:THREE.Group,actor:SoldierActor,dt:number,simTime:number) {
+export function updateSoldier(model:THREE.Group,actor:SoldierActor,dt:number,simTime:number,applyPose=true) {
   const rig=model.userData.soldierRig as SoldierRig|undefined;if(!rig)return;
   let state=model.userData.soldierState as RigState|undefined;
   const reset=!state||simTime<state.time-1e-6||simTime-state.time>1||(!state.alive&&actor.alive);
@@ -618,8 +618,13 @@ export function updateSoldier(model:THREE.Group,actor:SoldierActor,dt:number,sim
   const dx=actor.x-s.x,dz=actor.z-s.z,moved=Math.hypot(dx,dz);
   if(moved>.0001&&elapsedTime>0){s.forward=lerp(s.forward,(dx*Math.sin(actor.yaw)+dz*Math.cos(actor.yaw))/moved,weight);s.sideways=lerp(s.sideways,(dx*Math.cos(actor.yaw)-dz*Math.sin(actor.yaw))/moved,weight);}
   model.visible=true;model.position.set(actor.x,actor.y,actor.z);model.rotation.set(0,actor.yaw,0);model.scale.set(1,1,1);
-  const pose=sampleSoldierPose({...actor,deadAt:actor.deadAt??s.deathAt,lastHurtTime:actor.lastHurtTime??s.hurtAt},rig.faction,simTime,!actor.alive&&s.deathBlend?s.deathBlend:actor.pose??s);
-  applySoldierPose(model,pose);
+  // Hidden models still advance phase, blends and death history. Only the
+  // expensive IK, hand skinning and cloth posing wait until they contribute
+  // pixels or shadows again; re-entry therefore uses the exact current clock.
+  if(applyPose){
+    const pose=sampleSoldierPose({...actor,deadAt:actor.deadAt??s.deathAt,lastHurtTime:actor.lastHurtTime??s.hurtAt},rig.faction,simTime,!actor.alive&&s.deathBlend?s.deathBlend:actor.pose??s);
+    applySoldierPose(model,pose);
+  }
   s.time=simTime;s.alive=actor.alive;s.hp=actor.hp??100;s.x=actor.x;s.z=actor.z;
   void dt; // Simulation time, rather than wall-clock dt, is authoritative.
 }

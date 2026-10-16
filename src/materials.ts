@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {loadCompressedSurfaces} from './compressedSurfaces';
 
 export type SurfaceKind = 'stone' | 'dirt' | 'canvas' | 'walnut' | 'steel';
 
@@ -69,11 +70,26 @@ function getSource(kind: SurfaceKind, map: MapKind) {
   return source;
 }
 
-/** Resolve once all local material images have decoded; a no-op in Node. */
-export async function preloadSurfaceAssets() {
+let preload: Promise<void> | undefined;
+/** Resolve once local textures have decoded. An optional renderer enables KTX2. */
+export async function preloadSurfaceAssets(renderer?: THREE.WebGLRenderer) {
   if (!canLoadTextures()) return;
-  await Promise.all((Object.keys(defaults) as SurfaceKind[]).flatMap(kind =>
-    mapsBySurface[kind].map(map => getSource(kind, map).ready)));
+  preload ??= (async () => {
+    // Materials are normally created after preload. The no-renderer inspector
+    // and callers that already constructed materials preserve their JPEG views.
+    if (renderer && sources.size === 0) {
+      try {
+        const compressed = await loadCompressedSurfaces(renderer);
+        for (const [key, texture] of compressed) {
+          if (sources.has(key)) texture.dispose();
+          else sources.set(key, {texture, copies: new Set(), ready: Promise.resolve()});
+        }
+      } catch { console.warn('Compressed texture loader unavailable; using original surfaces.'); }
+    }
+    await Promise.all((Object.keys(defaults) as SurfaceKind[]).flatMap(kind =>
+      mapsBySurface[kind].map(map => getSource(kind, map).ready)));
+  })();
+  await preload;
 }
 
 function surfaceTexture(kind: SurfaceKind, map: MapKind, options: SurfaceOptions) {

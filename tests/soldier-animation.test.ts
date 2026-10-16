@@ -243,3 +243,23 @@ test('cloth bridges remain connected and overlap both limb segments through deep
     }
   }
 });
+
+
+test('culled rigs advance exact stance, gait, death and rewind state without doing pose work',()=>{
+ const full=testRig().model,culled=testRig().model;
+ for(let i=0;i<=180;i++){
+  const time=i/60;
+  const a=actor({x:Math.min(time,1.8)*2,z:.2*time,moving:time<1.8?3.5:0,stance:time>.4?'crouch':'stand',ads:time>1,alive:time<1.9||time>2.6,deadAt:1.9,reload:time>1&&time<1.9?2-time:0,reloadTotal:3,deathYaw:.8});
+  updateSoldier(full,a,1/60,time);updateSoldier(culled,a,1/60,time,false);
+  assert.deepEqual(culled.userData.soldierState,full.userData.soldierState,'invisible time is integrated, never replayed as one stale jump');
+  assert.equal(culled.userData.animationPose,undefined,'no IK/hand/cloth pose was sampled');
+ }
+ const visible=actor({x:3.6,z:.6,moving:0,stance:'crouch',ads:true});
+ updateSoldier(full,visible,1/60,3);updateSoldier(culled,visible,1/60,3);
+ assert.deepEqual(culled.userData.animationPose,full.userData.animationPose);
+ const matrices=(model:THREE.Group)=>{model.updateMatrixWorld(true);const values:number[]=[];model.traverse(object=>values.push(...object.matrixWorld.elements));return values;};
+ assert.deepEqual(matrices(culled),matrices(full),'first visible frame has exactly the continuously animated bone matrices');
+ updateSoldier(full,visible,1/60,.6);updateSoldier(culled,visible,1/60,.6,false);
+ updateSoldier(full,visible,1/60,.7);updateSoldier(culled,visible,1/60,.7);
+ assert.deepEqual(matrices(culled),matrices(full),'a hidden killcam rewind resets both clocks identically');
+});

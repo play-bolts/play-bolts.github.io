@@ -15,6 +15,8 @@ export interface AIBrain {
 }
 function createBrain(id:number):AIBrain{return{target:null,known:null,seen:-100,reaction:0,decision:0,path:[],mode:'patrol',role:(id%3)-1,stuck:0,heard:-100,strafe:id%2?1:-1,engage:0,sight:false,observed:null,observations:[],observationClock:0,settled:0,shotWait:0,biasX:0,biasY:0,driftX:0,driftY:0,driftGoalX:0,driftGoalY:0,driftClock:0};}
 export interface Actor extends Vec {
+ /** Stable renderer key across network roster reindexing; never used for gameplay. */
+ renderIdentity?:string;
  id:number;name:string;faction:Faction;yaw:number;pitch:number;stance:Stance;eyeHeight:number;hp:number;ammo:number;reserve:number;kills:number;deaths:number;shots:number;hits:number;
  spectator:boolean;alive:boolean;cooldown:number;reload:number;reloadTotal:number;vy:number;grounded:boolean;leftGroundAt:number;jumpStarted:number;landedAt:number;landingSpeed:number;moving:number;ads:boolean;lean:number;recoil:number;spawnSafe:number;deadAt:number;lastShotTime:number;lastHurtTime:number;lastMeleeTime:number;
  selectedWeapon:WeaponSlot;switchFrom:WeaponSlot;switchStarted:number;switchDuration:number;deathYaw:number;deathHeadshot:boolean;

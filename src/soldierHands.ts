@@ -31,9 +31,9 @@ export function makeSoldierHand(side:'left'|'right'):SoldierHand|undefined {
  const wanted=handContactLocal(hand);let palm:SoldierHand['palm']|undefined,distance=Infinity;
  hand.traverse(object=>{
   if(!(object instanceof THREE.SkinnedMesh))return;
-  object.skeleton.update();const positions=object.geometry.getAttribute('position');
+  object.skeleton.update();const positions=object.geometry.getAttribute('position'),point=new THREE.Vector3();
   for(let index=0;index<positions.count;index++){
-   const point=new THREE.Vector3().fromBufferAttribute(positions,index);object.applyBoneTransform(index,point);object.localToWorld(point);hand.worldToLocal(point);
+   point.fromBufferAttribute(positions,index);object.applyBoneTransform(index,point);object.localToWorld(point);hand.worldToLocal(point);
    const candidate=point.distanceToSquared(wanted);
    if(candidate<distance){distance=candidate;palm={mesh:object,index};}
   }
@@ -51,6 +51,7 @@ export function poseSoldierHand(binding:SoldierHand,side:'left'|'right',weapon:W
 
 /** Actual skinned contact in the neutral wrist frame, including the loading
  * thumb. The coupled arm fit consumes this point after posing the fingers. */
+const skinPosition=new THREE.Vector3(),skinInfluence=new THREE.Vector3(),skinMatrix=new THREE.Matrix4();
 export function soldierHandContact(binding:SoldierHand,thumb=0):THREE.Vector3 {
  binding.frame.updateWorldMatrix(true,true);
  // SkinnedMesh refreshes bindMatrixInverse in updateMatrixWorld, not in
@@ -59,14 +60,14 @@ export function soldierHandContact(binding:SoldierHand,thumb=0):THREE.Vector3 {
  binding.frame.updateMatrixWorld(true);
  const pointAt=(selected:SoldierHand['palm'])=>{
   const mesh=selected.mesh;mesh.skeleton.update();
-  const position=new THREE.Vector3().fromBufferAttribute(mesh.geometry.getAttribute('position'),selected.index).applyMatrix4(mesh.bindMatrix);
+  const position=skinPosition.fromBufferAttribute(mesh.geometry.getAttribute('position'),selected.index).applyMatrix4(mesh.bindMatrix);
   const indices=mesh.geometry.getAttribute('skinIndex'),weights=mesh.geometry.getAttribute('skinWeight'),point=new THREE.Vector3();
   for(let i=0;i<4;i++){
    const weight=weights.getComponent(selected.index,i);if(weight===0)continue;
-   const bone=indices.getComponent(selected.index,i),matrix=new THREE.Matrix4().multiplyMatrices(mesh.skeleton.bones[bone].matrixWorld,mesh.skeleton.boneInverses[bone]);
-   point.addScaledVector(position.clone().applyMatrix4(matrix),weight);
+   const bone=indices.getComponent(selected.index,i),matrix=skinMatrix.multiplyMatrices(mesh.skeleton.bones[bone].matrixWorld,mesh.skeleton.boneInverses[bone]);
+   point.addScaledVector(skinInfluence.copy(position).applyMatrix4(matrix),weight);
   }
-  return binding.frame.parent?binding.frame.parent.worldToLocal(point):point.applyMatrix4(binding.frame.matrixWorld.clone().invert()).applyQuaternion(binding.frame.quaternion);
+  return binding.frame.parent?binding.frame.parent.worldToLocal(point):point.applyMatrix4(skinMatrix.copy(binding.frame.matrixWorld).invert()).applyQuaternion(binding.frame.quaternion);
  };
  const palm=pointAt(binding.palm),marker=binding.hand.userData.thumbContact as SoldierHand['palm']|undefined;
  return marker&&thumb>0?palm.lerp(pointAt(marker),thumb):palm;

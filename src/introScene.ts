@@ -7,12 +7,13 @@ import {makeSurfaceMaterial} from './materials';
 export class IntroScene {
  readonly scene=new THREE.Scene();
  readonly camera=new THREE.OrthographicCamera(-1.8,1.8,1.18,-1.18,.01,20);
+ private readonly shadowLights:THREE.DirectionalLight[]=[];
  private readonly rifles:{group:THREE.Group;width:number;depth:number;floor:number}[]=[];
  constructor(){
   this.scene.background=new THREE.Color(0x17100b);
   this.scene.add(new THREE.HemisphereLight(0xe7ddce,0x22160e,.85));
   const light=new THREE.DirectionalLight(0xffe6c4,3.3);
-  light.position.set(-3,5,-1);light.castShadow=true;light.shadow.mapSize.set(2048,2048);
+  light.position.set(-3,5,-1);light.castShadow=true;light.shadow.autoUpdate=false;light.shadow.needsUpdate=true;this.shadowLights.push(light);light.shadow.mapSize.set(2048,2048);
   Object.assign(light.shadow.camera,{left:-4,right:4,top:3,bottom:-3,near:.1,far:12});
   light.shadow.normalBias=.002;light.shadow.bias=-.00008;light.shadow.radius=3;
   const fill=new THREE.DirectionalLight(0xbac7d6,.55);fill.position.set(3,2,4);
@@ -39,7 +40,9 @@ export class IntroScene {
   this.camera.position.set(0,6,.25);this.camera.up.set(0,0,-1);this.camera.lookAt(0,0,0);
   this.resize(16/9);
  }
+ invalidateShadows(){for(const light of this.shadowLights)light.shadow.needsUpdate=true;}
  resize(aspect:number){
+  this.invalidateShadows();
   const halfH=1.18,halfW=halfH*Math.max(.4,aspect),width=halfW*2;
   this.camera.left=-halfW;this.camera.right=halfW;this.camera.top=halfH;this.camera.bottom=-halfH;this.camera.updateProjectionMatrix();
   // Keep all three complete silhouettes in the left side at any desktop size.

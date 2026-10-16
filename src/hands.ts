@@ -110,32 +110,44 @@ export function handContactLocal(hand:THREE.Group,thumbWeight=0){
 }
 
 const turn=new THREE.Quaternion(),axis=new THREE.Vector3(1,0,0);
+const INDEX_CURL=[.30,.5,.38],GRASP_CURL=[.72,1.02,.75],SUPPORT_CURL=[.54,.85,.7],PRESS_CURL=[.90,1.35,.95],THUMB_CURL=[.18,.32,.38],THUMB_PRESS=[-.15,.08,.12];
+const STOCK_CURL={index:INDEX_CURL,pinky:[.15,.30,.20],ring:[.50,.50,.30],middle:[.65,.52,.38]};
+type BonePoseInfo={sourceName:string;name:string;kind:'finger'|'thumb'|'other';segment:number;index:boolean;digit:'index'|'middle'|'ring'|'pinky';stock:readonly number[]};
+const bonePoseInfo=new WeakMap<THREE.Bone,BonePoseInfo>();
+function describeBone(bone:THREE.Bone){
+ let info=bonePoseInfo.get(bone);if(info?.sourceName===bone.name)return info;
+ const name=bone.name.replace(/[._]/g,''),index=name.startsWith('findex');
+ info={sourceName:bone.name,name,kind:name.startsWith('f')?'finger':name.startsWith('thumb')?'thumb':'other',segment:name.includes('01')?0:name.includes('02')?1:2,index,digit:index?'index':name.startsWith('fmiddle')?'middle':name.startsWith('fring')?'ring':'pinky',stock:index?STOCK_CURL.index:name.startsWith('fpinky')?STOCK_CURL.pinky:name.startsWith('fring')?STOCK_CURL.ring:STOCK_CURL.middle};
+ bonePoseInfo.set(bone,info);return info;
+}
+// Pose calls are synchronous. Scratch values never escape into a hand/pose and
+// do not overlap the earlier finger-turn scratch quaternion.
+const thumbParentInverse=new THREE.Quaternion(),thumbHandRotation=new THREE.Quaternion(),thumbSwing=new THREE.Quaternion();
+const thumbFrom=new THREE.Vector3(),thumbBasePosition=new THREE.Vector3(),thumbTo=new THREE.Vector3();
 export function poseAnatomicalHand(hand:THREE.Group,openness:number,grip:'rifle'|'cylinder'='rifle',press=0,grasp=0){
  const rig=hand.userData.anatomical as {bones:THREE.Bone[];side:'left'|'right'}|undefined;if(!rig)return;
  const open=THREE.MathUtils.clamp(openness,0,1);
  const stockWeight=hand.userData.stockGrip&&grip==='rifle'?(1-press)*(1-grasp):0;
+ let thumbBase:THREE.Bone|undefined,thumbTip:THREE.Bone|undefined;
  for(const bone of rig.bones){
   bone.quaternion.copy(bone.userData.restQuaternion);
-  const name=bone.name.replace(/[._]/g,'');
-  if(name.startsWith('f')){
-   const segment=name.includes('01')?0:name.includes('02')?1:2;
-   const index=name.startsWith('findex');
-   const digit=index?'index':name.startsWith('fmiddle')?'middle':name.startsWith('fring')?'ring':'pinky';
+  const info=describeBone(bone),{name,segment,index,digit}=info;
+  if(name==='thumb01L'&&!thumbBase)thumbBase=bone;if(name==='thumb03L'&&!thumbTip)thumbTip=bone;
+  if(info.kind==='finger'){
    const support=hand.userData.supportFingerCurl;
-   let base=(rig.side==='right'?(index&&grip==='rifle'?[.30,.5,.38]:[.72,1.02,.75]):(support?.[digit]??support??[.54,.85,.7]))[segment];
-   if(rig.side==='right'&&index&&grip==='rifle')base=THREE.MathUtils.lerp(base,[.72,1.02,.75][segment],grasp);
+   let base=(rig.side==='right'?(index&&grip==='rifle'?INDEX_CURL:GRASP_CURL):(support?.[digit]??support??SUPPORT_CURL))[segment];
+   if(rig.side==='right'&&index&&grip==='rifle')base=THREE.MathUtils.lerp(base,GRASP_CURL[segment],grasp);
    if(stockWeight>0){
     // A rifle's oval stock is wider than the bolt sphere. Relax each shorter
     // digit separately so its tip stays around the underside, not in wood.
-    const stock=hand.userData.stockFingerCurl?.[digit]??(index?[.30,.50,.38]:name.startsWith('fpinky')?[.15,.30,.20]:name.startsWith('fring')?[.50,.50,.30]:[.65,.52,.38]);
+    const stock=hand.userData.stockFingerCurl?.[digit]??info.stock;
     base=THREE.MathUtils.lerp(base,stock[segment],stockWeight);
    }
-   const curl=THREE.MathUtils.lerp(base*(1-open*.85),[.90,1.35,.95][segment],press);
+   const curl=THREE.MathUtils.lerp(base*(1-open*.85),PRESS_CURL[segment],press);
    bone.quaternion.multiply(turn.setFromAxisAngle(axis,curl));
-  }else if(name.startsWith('thumb')){
-   const segment=name.includes('01')?0:name.includes('02')?1:2;
-   const restCurl=[.18,.32,.38][segment],curl=THREE.MathUtils.lerp(restCurl,hand.userData.stockThumbCurl?.[segment]??restCurl,stockWeight);
-   bone.quaternion.multiply(turn.setFromAxisAngle(axis,THREE.MathUtils.lerp(curl*(1-open*.65),name.includes('01')?-.15:name.includes('02')?.08:.12,press)));
+  }else if(info.kind==='thumb'){
+   const restCurl=THUMB_CURL[segment],curl=THREE.MathUtils.lerp(restCurl,hand.userData.stockThumbCurl?.[segment]??restCurl,stockWeight);
+   bone.quaternion.multiply(turn.setFromAxisAngle(axis,THREE.MathUtils.lerp(curl*(1-open*.65),THUMB_PRESS[segment],press)));
    if(bone.userData.supportThumbAxis)bone.quaternion.multiply(turn.setFromAxisAngle(bone.userData.supportThumbAxis,hand.userData.supportThumbTurn??.5));
    if(bone.userData.stockThumbAxis)bone.quaternion.multiply(turn.setFromAxisAngle(bone.userData.stockThumbAxis,(hand.userData.stockThumbTurn??-1.5)*stockWeight));
   }
@@ -144,14 +156,13 @@ export function poseAnatomicalHand(hand:THREE.Group,openness:number,grip:'rifle'
  if(rig.side==='left'&&thumbAim){
   // Orient the proximal thumb toward the barrel instead of extending it
   // vertically beside the sights. Preserve the two distal joint curls.
-  const base=rig.bones.find(bone=>bone.name.replace(/[._]/g,'')==='thumb01L');
-  const tip=rig.bones.find(bone=>bone.name.replace(/[._]/g,'')==='thumb03L');
+  const base=thumbBase,tip=thumbTip;
   if(base&&tip&&base.parent){
    hand.updateMatrixWorld(true);
-   const parentInverse=base.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
-   const from=tip.getWorldPosition(new THREE.Vector3()).sub(base.getWorldPosition(new THREE.Vector3())).normalize().applyQuaternion(parentInverse);
-   const to=thumbAim.clone().normalize().applyQuaternion(hand.getWorldQuaternion(new THREE.Quaternion())).applyQuaternion(parentInverse);
-   base.quaternion.premultiply(new THREE.Quaternion().setFromUnitVectors(from,to));
+   const parentInverse=base.parent.getWorldQuaternion(thumbParentInverse).invert();
+   const from=tip.getWorldPosition(thumbFrom).sub(base.getWorldPosition(thumbBasePosition)).normalize().applyQuaternion(parentInverse);
+   const to=thumbTo.copy(thumbAim).normalize().applyQuaternion(hand.getWorldQuaternion(thumbHandRotation)).applyQuaternion(parentInverse);
+   base.quaternion.premultiply(thumbSwing.setFromUnitVectors(from,to));
   }
  }
 }

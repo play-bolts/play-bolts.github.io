@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {FACTIONS} from '../src/config.ts';
+import {SOLDIER_RENDER_RADIUS} from '../src/renderOptimization.ts';
 import {makeSoldier} from '../src/soldier.ts';
 import {loadSoldierModelFromBuffer,SOLDIER_BONES,type SoldierModelProfile} from '../src/soldierModelAssets.ts';
 import {applySoldierPose,sampleSoldierPose,updateSoldier,type SoldierActor} from '../src/soldierAnimation.ts';
@@ -181,5 +182,22 @@ test('source skeletons replay exact poses and actor disposal cannot damage other
   first[0].skeleton.dispose();first[0].geometry.getAttribute('position').setX(0,999);
   assert.notEqual(second[0].geometry.getAttribute('position').getX(0),999);assert.notEqual(skins(makeSoldier(faction))[0].geometry.getAttribute('position').getX(0),999);
   assert.deepEqual(second[0].skeleton.bones.map(bone=>bone.name),SOLDIER_BONES.map(name=>`skin-${name}`));
+ }
+});
+
+
+test('conservative visibility envelope contains imported skins and held weapons throughout extreme animations',()=>{
+ for(const faction of FACTIONS){
+  const model=makeSoldier(faction),center=new THREE.Vector3(0,.9,0);
+  const cases:Partial<SoldierActor>[]=[];
+  for(const stance of ['stand','crouch','prone'] as const)for(const lean of [-1,1])for(const pitch of [-1.2,1.2])cases.push({stance,lean,pitch,ads:true});
+  for(const time of [.05,.20,.45,.70,.95]){cases.push({lastMeleeTime:2-time});cases.push({reload:3*(1-time),reloadTotal:3});}
+  for(const deathYaw of [0,Math.PI/2,Math.PI,-Math.PI/2])for(const age of [.1,.3,.7,1.3])cases.push({alive:false,deadAt:2-age,deathYaw});
+  for(const patch of cases){
+   applySoldierPose(model,sampleSoldierPose(actor(patch),faction,2));model.updateMatrixWorld(true);
+   for(const skin of skins(model)){skin.skeleton.update();skin.computeBoundingBox();}
+   const box=new THREE.Box3().setFromObject(model,true);
+   for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z])assert.ok(new THREE.Vector3(x,y,z).distanceTo(center)<SOLDIER_RENDER_RADIUS,`${faction}: ${JSON.stringify(patch)} bounds stay in culling sphere`);
+  }
  }
 });

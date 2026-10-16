@@ -22,7 +22,8 @@ function rig(faction:Faction){
 }
 function fakeView(game:Game):View {
  const view=Object.create(View.prototype) as View;
- Object.assign(view,{scene:new THREE.Scene(),weaponScene:new THREE.Scene(),camera:new THREE.PerspectiveCamera(),weaponCamera:new THREE.PerspectiveCamera(),weapon:new THREE.Group(),rifle:new THREE.Group(),grenade:null,faction:game.player.faction,soldiers:game.actors.map(a=>rig(a.faction)),muzzle:makeMuzzleFlash(MUZZLE_FLASH_RADII.local),flash:new THREE.PointLight(),effects:[],ads:1,bob:2,clock:0,weaponActor:0,weaponMeleeStart:-Infinity,weaponShotStart:-Infinity,lastReplayShot:-1,roundEnded:false,renderer:{autoClear:true,render(){},clearDepth(){}}});
+ const viewFrustum=new THREE.Frustum();viewFrustum.intersectsSphere=()=>true; // These tests exercise presentation, not frustum rejection.
+ Object.assign(view,{viewFrustum,viewProjection:new THREE.Matrix4(),shadowDirection:new THREE.Vector3(24,-40,-16).normalize(),worldSun:new THREE.DirectionalLight(),scene:new THREE.Scene(),weaponScene:new THREE.Scene(),camera:new THREE.PerspectiveCamera(),weaponCamera:new THREE.PerspectiveCamera(),weapon:new THREE.Group(),rifle:new THREE.Group(),grenade:null,faction:game.player.faction,soldiers:game.actors.map(a=>rig(a.faction)),muzzle:makeMuzzleFlash(MUZZLE_FLASH_RADII.local),flash:new THREE.PointLight(),effects:[],ads:1,bob:2,clock:0,weaponActor:0,weaponMeleeStart:-Infinity,weaponShotStart:-Infinity,lastReplayShot:-1,roundEnded:false,renderer:{shadowMap:{enabled:true},autoClear:true,render(){},clearDepth(){}}});
  for(const soldier of view.soldiers)view.scene.add(soldier);
  return view;
 }
@@ -47,7 +48,7 @@ test('ending a rendered round clears live blends and muzzle effects while preser
  game.finish();view.render(game,1/60,false);
  assert.equal(view.roundEnded,true);assert.equal(view.weaponShotStart,-Infinity);assert.equal(view.weaponMeleeStart,-Infinity);
  assert.equal(view.ads,0);assert.equal(view.muzzle.visible,false);assert.equal(view.flash.intensity,0);
- assert.equal(view.effects.length,0);assert.equal(disposed,geometries.size);assert.ok(effectMeshes.every(mesh=>mesh.parent===null));
+ assert.equal(view.effects.length,0);assert.equal(disposed,0,'inactive bursts retain their GPU resources for reuse');assert.ok(effectMeshes.every(mesh=>mesh.parent===null&&!mesh.visible));
  const liveState=view.soldiers[1].userData.soldierState;
  assert.notEqual(liveState,oldLiveState);assert.equal(liveState.speed,0);assert.equal(liveState.aim,0);
  assert.equal(view.soldiers[1].userData.animationStage,'Idle');
@@ -95,8 +96,8 @@ test('hit effects pause with simulation time and replay seeks reconstruct withou
  view.effect(shot,false);view.render(game,1/60,false);const paused=particles();game.state='paused';
  for(let i=0;i<12;i++)view.render(game,1/30,false);
  assert.deepEqual(particles(),paused,'rendering alone does not age paused particles');
- const old=view.effects.map(e=>e.mesh);game.state='killcam';game.killer=0;game.replayTime=9.9;game.replayShots=[shot];view.render(game,1/60,false);
- assert.ok(old.every(mesh=>mesh.parent===null),'live effects are discarded when replay begins');assert.equal(view.effects.length,2);const replay=particles();
+ const old=view.effects.slice();game.state='killcam';game.killer=0;game.replayTime=9.9;game.replayShots=[shot];view.render(game,1/60,false);
+ assert.ok(old.every(effect=>!view.effects.includes(effect)),'live event records are discarded when replay begins, even if GPU buffers are reused');assert.equal(view.effects.length,2);assert.equal(new Set(view.effects.map(e=>e.mesh)).size,2,'each live burst has sole ownership of its buffers');const replay=particles();
  game.replayTime=10.2;view.render(game,1/30,false);game.replayTime=9.9;view.render(game,1/120,false);
  assert.deepEqual(particles(),replay,'rewinding reconstructs the same exact particle positions and lifetimes');assert.equal(view.effects.length,2);
  game.replayTime=10.7;view.render(game,1/60,false);assert.equal(view.effects.length,0,'all GPU effects expire by recorded age');
@@ -134,4 +135,18 @@ test('free spectator camera draws the arena alone and near-plane clearance remai
   assert.ok(radius<LEAN_CAMERA_RADIUS,'all near-plane corners fit inside the swept camera clearance');
   if(aspect===16/9)assert.equal(view.camera.near,.05,'ordinary screens retain the original near plane');
  }
+});
+
+
+test('static menu draws once, then invalidates on entry and explicit layout or quality changes',t=>{
+ const game=new Game();game.start('british','recruit');const view=fakeView(game);let draws=0;
+ Object.assign(view,{menuTarget:new THREE.Vector3(),intro:{scene:new THREE.Scene(),camera:new THREE.OrthographicCamera(),invalidateShadows(){}}});
+ t.mock.method(view.renderer,'render',()=>draws++);
+ view.render(game,1/60,true,true);assert.equal(draws,1);
+ const time=view.soldiers[1].userData.soldierState.time;
+ game.time+=1;for(let i=0;i<30;i++)view.render(game,1/60,true,true);
+ assert.equal(draws,1,'unchanged menu does not submit another GPU frame');assert.equal(view.soldiers[1].userData.soldierState.time,time,'menu does no hidden pose work either');
+ view.invalidateIntro();view.render(game,1/60,true,true);assert.equal(draws,2);
+ view.render(game,1/60,false);const playingDraws=draws;assert.equal(playingDraws,4,'world and first-person rendering still run');
+ view.render(game,1/60,true,true);assert.equal(draws,playingDraws+1,'returning from play always restores the menu pixels');
 });

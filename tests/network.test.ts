@@ -33,6 +33,15 @@ test('network authentication keeps opaque token out of URLs and maps self to act
   assert.equal(game.player.id,0);assert.equal(game.player.name,'Player 42');assert.equal(game.actors[1].name,'Player 7');assert.equal(game.actors.length,2);assert.equal(game.state,'playing');
  }finally{client.disconnect();}
 });
+test('render identity follows server actors across roster reindexing and faction changes',async()=>{
+ const {client,game}=await fixture();
+ try{
+  assert.equal(game.player.renderIdentity,'room-one:42');const existing=game.actors[1].renderIdentity;
+  client.receiveSnapshot(snapshot(2,.05,[actor(3,'russian'),actor(7,'german'),actor(42)]));
+  assert.equal(game.actors[2].renderIdentity,existing);assert.equal(game.actors[1].renderIdentity,'room-one:3');
+  client.receiveSnapshot(snapshot(3,.1,[actor(7,'british'),actor(42)]));assert.equal(game.actors[1].renderIdentity,existing);assert.equal(game.actors[1].faction,'british');
+ }finally{client.disconnect();}
+});
 test('prediction moves immediately, reconciles unacked inputs and never runs AI or client damage',async()=>{
  const {client,game,socket,setNow}=await fixture();
  try{

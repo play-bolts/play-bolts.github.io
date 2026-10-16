@@ -82,7 +82,7 @@ function mergeStatic(group:THREE.Group){
 function makeHand(side:'left'|'right',skin:THREE.Material,cuff:THREE.Material) {
   const anatomical=makeAnatomicalHand(side);
   if(anatomical){
-    configureRifleHand(anatomical);
+    configureRifleHand(anatomical,true);
     if(side==='right') {
       const wrist=(anatomical.userData.wristSkinLocal as THREE.Vector3).clone();
       const cuffMesh=mesh(anatomical,new THREE.CylinderGeometry(.032,.029,.030,24,4),cuff);

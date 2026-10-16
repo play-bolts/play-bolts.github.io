@@ -48,8 +48,10 @@ export function makeAnatomicalHand(side:'left'|'right',source=assets[side]){
 }
 
 /** Rifle poses use a point inside the curled fingers, not the wrapper origin.
- * Keep this frame separate from the carried grenade's existing hand frame. */
-export function configureRifleHand(hand:THREE.Group){
+ * Keep this frame separate from the carried grenade's existing hand frame.
+ * The compact operating grip is opt-in for the first-person rifle; world hands
+ * retain the canonical skin contacts shared with authoritative collision. */
+export function configureRifleHand(hand:THREE.Group,closedActionGrip=false){
  const rig=hand.userData.anatomical as {model:THREE.Group;side:'left'|'right';bones:THREE.Bone[]}|undefined;if(!rig)return;
  if(rig.side==='right'){
   const rotation=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-.75);
@@ -59,6 +61,22 @@ export function configureRifleHand(hand:THREE.Group){
   hand.updateMatrixWorld(true);
   const thumb=rig.bones.find(bone=>bone.name.replace(/[._]/g,'')==='thumb01R');
   if(thumb)thumb.userData.stockThumbAxis=new THREE.Vector3(0,0,1).applyQuaternion(thumb.getWorldQuaternion(new THREE.Quaternion()).invert());
+  if(closedActionGrip){
+   hand.userData.closedActionGrip=true;
+   // Remove the source's finger fan and cup the shorter metacarpals. Keep
+   // these targets separate from rest transforms so stock grips stay fitted.
+   const closed=rig.model.getWorldQuaternion(new THREE.Quaternion()).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2));
+   for(const bone of rig.bones)if(/^f.*01R$/.test(bone.name.replace(/[._]/g,''))&&bone.parent){
+    bone.userData.closedRestQuaternion=bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(closed);
+   }
+   const palmTurn:Record<string,[number,number]>={palmindexR:[.07,0],palmmiddleR:[0,0],palmringR:[-.045,.07],palmpinkyR:[-.12,.25]};
+   for(const bone of rig.bones){
+    const angles=palmTurn[bone.name.replace(/[._]/g,'')];if(!angles||!bone.parent)continue;
+    const frame=bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(rig.model.getWorldQuaternion(new THREE.Quaternion()));
+    const across=new THREE.Vector3(0,1,0).applyQuaternion(frame),bend=new THREE.Vector3(1,0,0).applyQuaternion(frame);
+    bone.userData.closedRestQuaternion=new THREE.Quaternion().setFromAxisAngle(across,angles[0]).multiply(new THREE.Quaternion().setFromAxisAngle(bend,angles[1])).multiply(bone.userData.restQuaternion);
+   }
+  }
  }
  if(rig.side==='left'){
   hand.updateMatrixWorld(true);
@@ -112,6 +130,11 @@ export function handContactLocal(hand:THREE.Group,thumbWeight=0){
 const turn=new THREE.Quaternion(),axis=new THREE.Vector3(1,0,0);
 const INDEX_CURL=[.30,.5,.38],GRASP_CURL=[.72,1.02,.75],SUPPORT_CURL=[.54,.85,.7],PRESS_CURL=[.90,1.35,.95],THUMB_CURL=[.18,.32,.38],THUMB_PRESS=[-.15,.08,.12];
 const STOCK_CURL={index:INDEX_CURL,pinky:[.15,.30,.20],ring:[.50,.50,.30],middle:[.65,.52,.38]};
+// Fitted to the actual skinned fingertips around the bolt's palm contact.
+// Per-digit bends and adduction keep adjacent fingers touching as they curl.
+const BOLT_CURL={index:[.757,.873,.757],middle:[.72,1.02,.85],ring:[.6,.665,1.109],pinky:[.555,.289,.897]};
+const BOLT_ADDUCTION={index:.337,middle:0,ring:-.216,pinky:-.344};
+const BOLT_THUMB_CURL=[.3,.5,.4],adductionAxis=new THREE.Vector3(0,0,1);
 type BonePoseInfo={sourceName:string;name:string;kind:'finger'|'thumb'|'other';segment:number;index:boolean;digit:'index'|'middle'|'ring'|'pinky';stock:readonly number[]};
 const bonePoseInfo=new WeakMap<THREE.Bone,BonePoseInfo>();
 function describeBone(bone:THREE.Bone){
@@ -127,10 +150,14 @@ const thumbFrom=new THREE.Vector3(),thumbBasePosition=new THREE.Vector3(),thumbT
 export function poseAnatomicalHand(hand:THREE.Group,openness:number,grip:'rifle'|'cylinder'='rifle',press=0,grasp=0){
  const rig=hand.userData.anatomical as {bones:THREE.Bone[];side:'left'|'right'}|undefined;if(!rig)return;
  const open=THREE.MathUtils.clamp(openness,0,1);
+ const closed=rig.side==='right'&&hand.userData.closedActionGrip&&grip==='rifle';
+ // Fingers can uncurl to release the bolt/charger without fanning apart.
+ const closedWeight=closed?THREE.MathUtils.clamp(grasp+press+open*3,0,1):0;
  const stockWeight=hand.userData.stockGrip&&grip==='rifle'?(1-press)*(1-grasp):0;
  let thumbBase:THREE.Bone|undefined,thumbTip:THREE.Bone|undefined;
  for(const bone of rig.bones){
   bone.quaternion.copy(bone.userData.restQuaternion);
+  if(closed&&bone.userData.closedRestQuaternion)bone.quaternion.slerp(bone.userData.closedRestQuaternion,closedWeight);
   const info=describeBone(bone),{name,segment,index,digit}=info;
   if(name==='thumb01L'&&!thumbBase)thumbBase=bone;if(name==='thumb03L'&&!thumbTip)thumbTip=bone;
   if(info.kind==='finger'){
@@ -143,10 +170,12 @@ export function poseAnatomicalHand(hand:THREE.Group,openness:number,grip:'rifle'
     const stock=hand.userData.stockFingerCurl?.[digit]??info.stock;
     base=THREE.MathUtils.lerp(base,stock[segment],stockWeight);
    }
-   const curl=THREE.MathUtils.lerp(base*(1-open*.85),PRESS_CURL[segment],press);
+   if(closed)base=THREE.MathUtils.lerp(base,BOLT_CURL[digit][segment],grasp);
+   const curl=THREE.MathUtils.lerp(base*(1-open*.85),closed?BOLT_CURL[digit][segment]:PRESS_CURL[segment],press);
    bone.quaternion.multiply(turn.setFromAxisAngle(axis,curl));
+   if(closed&&segment===0)bone.quaternion.multiply(turn.setFromAxisAngle(adductionAxis,BOLT_ADDUCTION[digit]*closedWeight));
   }else if(info.kind==='thumb'){
-   const restCurl=THUMB_CURL[segment],curl=THREE.MathUtils.lerp(restCurl,hand.userData.stockThumbCurl?.[segment]??restCurl,stockWeight);
+   const restCurl=closed?THREE.MathUtils.lerp(THUMB_CURL[segment],BOLT_THUMB_CURL[segment],grasp):THUMB_CURL[segment],curl=THREE.MathUtils.lerp(restCurl,hand.userData.stockThumbCurl?.[segment]??restCurl,stockWeight);
    bone.quaternion.multiply(turn.setFromAxisAngle(axis,THREE.MathUtils.lerp(curl*(1-open*.65),THUMB_PRESS[segment],press)));
    if(bone.userData.supportThumbAxis)bone.quaternion.multiply(turn.setFromAxisAngle(bone.userData.supportThumbAxis,hand.userData.supportThumbTurn??.5));
    if(bone.userData.stockThumbAxis)bone.quaternion.multiply(turn.setFromAxisAngle(bone.userData.stockThumbAxis,(hand.userData.stockThumbTurn??-1.5)*stockWeight));

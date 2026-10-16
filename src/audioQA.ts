@@ -27,6 +27,10 @@ if(import.meta.env.DEV){
  const live=new Sound();let review:HTMLAudioElement|null=null,stopReview:number|undefined;
  const stop=()=>{live.resetScene();review?.pause();clearTimeout(stopReview);};
  for(const button of document.querySelectorAll<HTMLButtonElement>('[data-rifle]'))button.onclick=()=>{stop();live.init();live.shot({actor:0,position:{x:0,y:0,z:0},local:true,faction:button.dataset.rifle as Faction} satisfies SoundEmitter);};
+ for(const button of document.querySelectorAll<HTMLButtonElement>('[data-combat]'))button.onclick=()=>{
+  stop();live.init();const emitter={actor:0,position:{x:0,y:0,z:0},local:true};
+  if(button.dataset.combat==='swing')live.melee(emitter);else live.impact(emitter,button.dataset.combat==='melee-impact'?'melee':'shot');
+ };
  // These ignored analysis recordings/baselines exist only in the local workspace.
  // Neither the development page nor these media files is included in the Vite production build.
  for(const button of document.querySelectorAll<HTMLButtonElement>('[data-before]'))button.onclick=()=>{stop();review=new Audio(`/artifacts/audio-reference/before-spectrogram/${button.dataset.before}-synth.wav`);review.volume=.6;void review.play().catch(error=>output.textContent=String(error));};

@@ -198,7 +198,7 @@ export class Game {
    if(a.ammo===0&&a.cooldown===0&&!a.reload&&(a.id===0||this.difficulty==='recruit'))this.reload(a);
   }
   const p=this.player;
-  if(p.alive&&!p.spectator){const l=Math.hypot(input.forward,input.right)||1;const f=input.forward/l,r=input.right/l,walk=input.walk?.55:1;
+  if(p.alive&&!p.spectator){const l=Math.max(1,Math.hypot(input.forward,input.right));const f=input.forward/l,r=input.right/l,walk=input.walk?.55:1;
    this.move(p,(Math.sin(p.yaw)*f-Math.cos(p.yaw)*r)*walk,(Math.cos(p.yaw)*f+Math.sin(p.yaw)*r)*walk,dt,input.jump);
    this.playerHipSpread=advanceHipSpread(this.playerHipSpread,p.stance,p.moving,dt);
    p.lean=advanceLean(p,input.lean,dt);

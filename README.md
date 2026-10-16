@@ -23,7 +23,9 @@ npm ci
 npm run dev
 ```
 
-Open the printed local URL in a desktop browser with WebGL 2, a mouse and keyboard. Choose **Single player**, then a faction and rifle, to capture the mouse. This mode runs entirely in the browser and needs no backend or account. Escape pauses and releases the mouse. If pointer lock is unavailable, drag to look or use the arrow keys.
+Open the printed local URL in a desktop browser with WebGL 2, a mouse and keyboard. Choose **Single player**, then a faction and rifle, to capture the mouse. This mode runs entirely in the browser and needs no backend or account. Escape pauses and releases the mouse. If mouse look stops, use **Resume**, click the game, or click **Click to enable mouse look**. Every fresh click retries capture after a failure; chat, menus and lost focus cancel pending capture so late events cannot steal the mouse back. If pointer lock remains unavailable, drag to look or use the arrow keys.
+
+Mobile browsers with WebGL 2 can also play. The mobile menu displays **Best experienced on a PC.** Rotate into landscape to enter a match; menus remain usable in portrait.
 
 To use a local multiplayer server, follow [the backend setup](server/README.md) and run the frontend with its origin:
 
@@ -47,6 +49,8 @@ Rendering reuses actor models and effect buffers, batches compatible scenery, sk
 
 High-quality environment compression saves about **60 MiB of GPU texture storage** on supported hardware, with roughly **7 MB more initial downloads** plus the local transcoder. High-quality rendering on high-DPI screens can temporarily reduce pixel ratio from **1.75 to 1.5** under sustained load; HUD text stays at native resolution. WebGPU was evaluated separately and is not enabled in the game. See [implementation, benchmarks and verification](research/performance.md) and [texture/WebGPU findings](research/performance-webgpu.md).
 
+First-time mobile players default to **Medium** graphics. Touch mode caps rendering pixel ratio at **1**, adapts down to **0.75** under sustained load, and gradually restores resolution when performance recovers. Saved graphics preferences are preserved.
+
 ## Deploy to GitHub Pages
 
 The repository's [Pages workflow](.github/workflows/pages.yml) publishes the complete `dist/` directory to **https://play-bolts.github.io/**. It runs on pushes to `main` and can also be started manually from the repository's Actions tab. The build job uses Node.js 22, runs `npm ci`, `npm test`, the Python operator-script tests and `npm run build`, then uploads the Pages artifact; the deployment job publishes that artifact. Set the repository's **Settings → Pages → Source** to **GitHub Actions**.
@@ -66,6 +70,14 @@ Optional direct links `/?launch=singleplayer`, `/?launch=multiplayer`, `/?launch
 British: Lee–Enfield (10 rounds). Russian: Mosin–Nagant (5). German: Kar98k (5). Every spawn starts with 150 total rounds, including the loaded rifle. Slot **1** holds the faction rifle; slot **2** holds a Stielhandgranate. The mouse wheel switches between them. The grenade cannot be thrown. Holding it increases movement speed by 8%. Left-click or Shift performs a vertical grenade bash for 75 damage; rifle-butt melee deals 150.
 
 WASD move; mouse look; LMB fire; 1/2 or wheel select rifle/grenade; RMB toggle iron sights; R reload; C crouch; Ctrl prone; Space stand/jump; Q/E lean; Shift melee; Alt walk; Tab scoreboard; M change team; Escape menu. ADS can be changed to hold in Options. Prone crawling prevents firing. Jumping or falling cancels iron sights and hides the crosshair. Switching lowers the outgoing weapon before raising the selected weapon. Melee runs for about 0.708 s and can interrupt a reload. Hip-fire crosshair radius and shot spread share a 10% increase; prone receives additional tuning and is now about 4% tighter than crouch. Health does not regenerate. Respawn restores ammunition and gives short protection which ends when firing.
+
+In touch mode, the **left joystick** moves at an analog speed and stops on release; tap it to jump. **Crouch** and **Prone** sit above the left joystick, with **Aim** and **Reload** above the right. Drag the **right joystick** to aim; tap for one shot or hold to fire as the rifle cycles. Drag the open right side of the screen to look without shooting. Compact buttons provide menu, scoreboard and multiplayer chat. Rotating into portrait clears held inputs; return to landscape and tap **Resume** to continue. Multiplayer keeps running during interruptions.
+
+In **Options**, set **Controls** to **Automatic**, **Touch**, or **Mouse and keyboard**. **Touch sensitivity** and **Control size** adjust the mobile controls independently of mouse sensitivity.
+
+The mobile main menu is centered in either orientation. The online-player count appears only when at least two players are connected.
+
+Combat feedback combines layered rifle reports, separate melee swings and contacts, and positional hit sounds. Muzzle blasts include animated flame, smoke, sparks and a brief gas ring. Confirmed hits emit denser directional blood mist, streaks and falling droplets; melee uses a wider fan. Effects reuse bounded GPU buffers, and killcams replay the same recorded effect shapes. Audio is originally synthesized with fixed nonrepeating variants; see [audio design and validation](research/audio-reference.md).
 
 In multiplayer, **T** or **Enter** opens chat; **Enter** sends and **Escape** cancels. Gameplay input is suspended while typing, and recent messages fade until chat is reopened. **Tab** shows kills, deaths and each player's server-measured ping in milliseconds. Single player shows kills and deaths without a ping column. Multiplayer keeps running while a menu is open; single player pauses.
 

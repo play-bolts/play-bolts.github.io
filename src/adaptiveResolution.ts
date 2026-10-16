@@ -1,12 +1,12 @@
 /** Bounded quality adjustment. Simulation, camera FOV and DOM resolution are independent. */
 export class AdaptiveResolution {
- private base=1;private current=1;private samples:number[]=[];private elapsed=0;private healthy=0;
+ private base=1;private current=1;private minimum=1;private samples:number[]=[];private elapsed=0;private healthy=0;
  get ratio(){return this.current;}
- setBase(ratio:number){this.base=this.current=Math.max(.1,Math.min(1.75,ratio));this.resetWindow();this.healthy=0;}
+ setBase(ratio:number,minimum=1.5){this.base=this.current=Math.max(.1,Math.min(1.75,ratio));this.minimum=Math.max(.1,Math.min(this.base,minimum));this.resetWindow();this.healthy=0;}
  private resetWindow(){this.samples.length=0;this.elapsed=0;}
  sample(frameMs:number,active:boolean):number|null {
   if(!active){this.resetWindow();this.healthy=0;if(this.current!==this.base){this.current=this.base;return this.current;}return null;}
-  const floor=Math.min(this.base,1.5);
+  const floor=this.minimum;
   if(floor===this.base||!Number.isFinite(frameMs)||frameMs<=0||frameMs>250)return null;
   this.samples.push(frameMs);this.elapsed+=frameMs;
   if(this.elapsed<2500||this.samples.length<45)return null;

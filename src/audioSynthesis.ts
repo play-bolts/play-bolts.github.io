@@ -27,6 +27,7 @@ export const RIFLE_SOUND:Record<Faction,RifleSound>={
  },
 };
 
+const bell=(time:number,center:number,width:number)=>Math.exp(-Math.pow((time-center)/width,2));
 const smooth=(x:number)=>{const t=Math.max(0,Math.min(1,x));return t*t*(3-2*t);};
 function envelope(points:Envelope,time:number){
  for(let i=1;i<points.length;i++)if(time<points[i][0]){const [ta,a]=points[i-1],[tb,b]=points[i];return a+(b-a)*smooth((time-ta)/(tb-ta));}
@@ -47,12 +48,42 @@ function resonantNoise(length:number,rate:number,frequency:number,q:number,seed:
  return output;
 }
 
+/** Remove inaudible DC/rumble, round only large peaks, and leave mix headroom.
+ * The final fades also prevent clicks when a one-shot buffer begins or ends. */
+function finish(samples:Float32Array,rate:number,ceiling:number,drive=0){
+ const pole=Math.exp(-2*Math.PI*28/rate);let previous=0,filtered=0,peak=0;
+ for(let i=0;i<samples.length;i++){
+  const input=samples[i];filtered=pole*(filtered+input-previous);previous=input;
+  const value=drive?Math.tanh(filtered*drive)/drive:filtered;
+  samples[i]=value*Math.min(1,i/(rate*.00015),(samples.length-1-i)/(rate*.02));peak=Math.max(peak,Math.abs(samples[i]));
+ }
+ const gain=ceiling/Math.max(peak,.001);for(let i=0;i<samples.length;i++)samples[i]*=gain;
+ samples[0]=0;samples[samples.length-1]=0;
+ return samples;
+}
+
+/** Short, increasingly dark reflections give the report depth without allocating
+ * live delay/convolution nodes per shot or washing out its directional cue. */
+function reflections(samples:Float32Array,rate:number,seed:number){
+ const direct=samples.slice(),times=[.019,.033,.057,.089,.131,.187,.271];
+ for(let tap=0;tap<times.length;tap++){
+  const delay=times[tap]*(1+(((seed>>>tap)&15)-7)*.003),offset=Math.round(delay*rate);
+  const gain=.15*Math.exp(-delay*8),pole=Math.exp(-2*Math.PI*(3800/(1+delay*9))/rate);let filtered=0;
+  for(let i=offset;i<samples.length;i++){
+   const time=(i-offset)/rate;
+   filtered=(1-pole)*direct[i-offset]+pole*filtered;
+   samples[i]+=filtered*gain*(1-smooth((time-.18)/.20));
+  }
+ }
+}
+
 /** One mono shot carries its complete crack/body/tail through the same spatial route. */
 export function synthesizeRifle(faction:Faction,sampleRate:number,seed=0x51f15e):Float32Array{
  const p=RIFLE_SOUND[faction],length=Math.ceil(sampleRate*.82),out=new Float32Array(length);
  const salt={british:0x2510b2,russian:0x6e4181,german:0x934fb3}[faction];
  const bands=p.bands.map(([hz,q],i)=>resonantNoise(length,sampleRate,hz,q,(seed^salt^Math.imul(i+1,0x9e3779b9))>>>0));
- let peak=0;
+ const crack=resonantNoise(length,sampleRate,8200,.55,seed^0x2fd76a);
+ const thump={british:.62,russian:.84,german:.44}[faction];
  for(let i=0;i<length;i++){
   const t=i/sampleRate,body=smooth((t-.012)/.028),tail=smooth((t-.11)/.075);
   let value=0;
@@ -62,13 +93,48 @@ export function synthesizeRifle(faction:Faction,sampleRate:number,seed=0x51f15e)
   }
   const rough=1+p.roughness*(.65*Math.sin(2*Math.PI*p.roughHz*t)+.35*Math.sin(2*Math.PI*p.roughHz*1.618*t+.8));
   const shock=p.shock*Math.sin(2*Math.PI*93*t)*Math.exp(-t/.008);
-  out[i]=(value*rough+shock)*envelope(p.envelope,t);
+  // Independent micro-transients and a short pressure pulse avoid the old
+  // single-envelope filtered-hiss attack. The low body has audible harmonics
+  // for small phone speakers, rather than relying only on sub-bass.
+  const attack=smooth(t/.0003),pressure=(1-t/.0012)*Math.exp(-t/.0012);
+  const fracture=crack[i]*(Math.exp(-t/.0045)+.28*bell(t,.0065,.002));
+  const phase=2*Math.PI*(85*t+1.8*(1-Math.exp(-t/.023)));
+  const punch=(Math.sin(phase)+.22*Math.sin(phase*2.03))*(1-Math.exp(-t/.001))*Math.exp(-t/.043)*thump;
+  const mechanical=(Math.sin(2*Math.PI*1320*t)+.4*Math.sin(2*Math.PI*3130*t))*Math.exp(-t/.017)*.055;
+  out[i]=(value*rough+shock)*envelope(p.envelope,t)+attack*(pressure*.95+fracture*.42+punch+mechanical);
  }
  const direct=out.slice();
  for(const [delay,gain] of p.reflections){const offset=Math.round(delay*sampleRate);for(let i=offset;i<length;i++)out[i]+=direct[i-offset]*gain;}
- for(const value of out)peak=Math.max(peak,Math.abs(value));
- const normalization=.88/Math.max(peak,.001);
- for(let i=0;i<length;i++)out[i]*=normalization*Math.min(1,(length-i)/(sampleRate*.02));
- out[0]=0;
- return out;
+ reflections(out,sampleRate,seed);
+ return finish(out,sampleRate,.88,.48);
+}
+
+export type CombatSound='swing'|'shot-impact'|'melee-impact';
+export const COMBAT_SOUNDS:readonly CombatSound[]=['swing','shot-impact','melee-impact'];
+/** Original short Foley-like layers, rendered once per variant in the warmup
+ * worker. Swing is deliberately separate: a miss must not play contact audio. */
+export function synthesizeCombat(kind:CombatSound,sampleRate:number,seed=0x71a9):Float32Array{
+ const duration=kind==='swing'?.32:kind==='melee-impact'?.28:.22,length=Math.ceil(sampleRate*duration),out=new Float32Array(length);
+ const low=resonantNoise(length,sampleRate,kind==='swing'?440:180,.7,seed^0x165b);
+ const mid=resonantNoise(length,sampleRate,kind==='swing'?1450:950,.65,seed^0xa237);
+ const high=resonantNoise(length,sampleRate,kind==='swing'?4600:3600,.6,seed^0x362d);
+ const variation=.96+(seed%71)/900;
+ for(let i=0;i<length;i++){
+  const t=i/sampleRate;
+  if(kind==='swing'){
+   const whoosh=Math.sin(Math.PI*Math.min(1,t/.25))**2*Math.exp(-t/.28);
+   const cloth=bell(t,.025,.015)+.45*bell(t,.16,.027);
+   out[i]=(low[i]*.32+mid[i]*(.35+t*2.5)+high[i]*.15)*whoosh+mid[i]*cloth*.14;
+  }else{
+   const heavy=kind==='melee-impact',attack=smooth(t/.0004),bodyDecay=heavy?.055:.035;
+   const phase=2*Math.PI*(78*t+1.1*(1-Math.exp(-t/.018)))*variation;
+   const body=(Math.sin(phase)*(heavy?.9:.62)+low[i]*.42)*Math.exp(-t/bodyDecay);
+   const snap=(mid[i]*.65+high[i]*(heavy?.28:.9))*Math.exp(-t/(heavy?.014:.012));
+   // Several tiny irregular grains add texture to contact instead of a single
+   // featureless thud. They remain quieter than the initial impact.
+   const grains=bell(t,.018,.004)*.24+bell(t,.038,.007)*.14+bell(t,.071,.010)*.07;
+   out[i]=attack*(body+snap+mid[i]*grains);
+  }
+ }
+ return finish(out,sampleRate,kind==='swing'?.34:kind==='melee-impact'?.65:.48,.8);
 }

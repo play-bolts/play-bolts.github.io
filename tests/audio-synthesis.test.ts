@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {synthesizeRifle} from '../src/audioSynthesis.ts';
+import {synthesizeRifle,synthesizeCombat,COMBAT_SOUNDS} from '../src/audioSynthesis.ts';
 import {FACTIONS,type Faction} from '../src/config.ts';
 
 // Independent frequency-domain measurements of produced PCM, not synthesis parameters.
@@ -61,4 +61,26 @@ test('rifle envelopes preserve the separate Enfield thump, Mosin decay, and Kar 
  assert.ok(mean(kar.map(x=>x.tail))> -2,'Kar body persists instead of sharing the Enfield decay');
  assert.ok(mean(kar.map(x=>x.body))>0,'Kar attack opens into the stronger body seen in reference spectra');
  assert.ok(mean(kar.map(x=>x.tail))-mean(enfield.map(x=>x.tail))>4,'the body/tail distinction must remain audible across variants');
+});
+
+test('combat Foley is bounded, click-free, repeatable, and varies across hits at device sample rates',()=>{
+ for(const rate of [44100,48000])for(const kind of COMBAT_SOUNDS){
+  const variants=[0,1,2].map(variant=>synthesizeCombat(kind,rate,0x71a9+variant*3571));
+  for(const pcm of variants){
+   assert.ok(pcm.every(Number.isFinite));assert.ok(Math.max(...pcm.map(Math.abs))<=.651);
+   assert.equal(pcm[0],0);assert.equal(pcm.at(-1),0);
+   const dc=pcm.reduce((sum,value)=>sum+value,0)/pcm.length;assert.ok(Math.abs(dc)<.002,'no headroom wasted on DC');
+   assert.ok(pcm.length<=rate*.33,'short Foley does not produce an excessive tail');
+  }
+  assert.notDeepEqual(variants[0],variants[1]);assert.deepEqual(variants[0],synthesizeCombat(kind,rate));
+ }
+});
+
+test('contact has an immediate transient and low body, while a missed swing has a rising air envelope',()=>{
+ const rate=48000,swing=synthesizeCombat('swing',rate),strike=synthesizeCombat('melee-impact',rate),bullet=synthesizeCombat('shot-impact',rate);
+ const opening=(pcm:Float32Array)=>spectrum(pcm,rate,0,.025),body=(pcm:Float32Array)=>spectrum(pcm,rate,.025,.10);
+ assert.ok(body(swing).rms>opening(swing).rms*2,'swing builds with the arm motion');
+ for(const hit of [strike,bullet])assert.ok(opening(hit).rms>body(hit).rms*1.5,'contact starts at the confirmed hit without a delayed attack');
+ assert.ok(body(strike).rms>body(bullet).rms*1.4,'melee has a weightier sustained body than a bullet contact');
+ assert.ok(opening(bullet).centroid>opening(strike).centroid*1.2,'bullet contact is sharper than the melee thud');
 });

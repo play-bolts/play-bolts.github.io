@@ -1,6 +1,6 @@
 import {clamp,type Faction,type Vec} from './config';
 import {listenerBasis} from './audioSpatial';
-import {synthesizeRifle} from './audioSynthesis';
+import {synthesizeRifle,synthesizeCombat,type CombatSound} from './audioSynthesis';
 import {AudioEnvironmentCache} from './audioEnvironmentCache';
 
 export interface SoundEmitter {actor:number;position:Vec;local:boolean;faction?:Faction}
@@ -14,6 +14,8 @@ export class Sound {
  private voices=new Map<AudioScheduledSourceNode,Voice>();
  private emitters=new Map<number,SoundEmitter>();
  private rifleBuffers=new Map<string,AudioBuffer>();
+ private combatBuffers=new Map<string,AudioBuffer>();
+ private lastVariant=new Map<string,number>();
  private listener={position:{x:0,y:0,z:0},yaw:0,pitch:0};
  private environments=new AudioEnvironmentCache();
  private updatingScene=false;
@@ -33,13 +35,18 @@ export class Sound {
   const c=this.ctx!;const key=`${faction}:${variant}`;if(this.rifleBuffers.has(key))return;
   const buffer=c.createBuffer(1,samples.length,c.sampleRate);buffer.getChannelData(0).set(samples);this.rifleBuffers.set(key,buffer);
  }
+ private saveCombatBuffer(kind:CombatSound,variant:number,samples:Float32Array){
+  const c=this.ctx!,key=`${kind}:${variant}`;if(this.combatBuffers.has(key))return;
+  const buffer=c.createBuffer(1,samples.length,c.sampleRate);buffer.getChannelData(0).set(samples);this.combatBuffers.set(key,buffer);
+ }
  private warmRifles(){
   if(!this.ctx||typeof Worker==='undefined')return;
   try{
    const worker=this.rifleWarmup=new Worker(new URL('./rifleAudio.worker.ts',import.meta.url),{type:'module'});
    const finish=()=>{worker.terminate();if(this.rifleWarmup===worker)this.rifleWarmup=null;};
-   worker.onmessage=(event:MessageEvent<{done?:boolean;faction:Faction;variant:number;samples:Float32Array}>)=>{
-    if(event.data.done){finish();return;}const {faction,variant,samples}=event.data;this.saveRifleBuffer(faction,variant,samples);
+   worker.onmessage=(event:MessageEvent<{done?:boolean;faction:Faction;kind?:CombatSound;variant:number;samples:Float32Array}>)=>{
+    if(event.data.done){finish();return;}const {faction,kind,variant,samples}=event.data;
+    if(kind)this.saveCombatBuffer(kind,variant,samples);else this.saveRifleBuffer(faction,variant,samples);
    };
    worker.onerror=finish;worker.postMessage(this.ctx.sampleRate);
   }catch{/* An exact first-use fallback preserves sound if workers are unavailable. */}
@@ -104,10 +111,23 @@ export class Sound {
  }
  shot(emitter:SoundEmitter){
   if(!this.ctx||!this.master)return;
-  const c=this.ctx,faction=emitter.faction??'british',variant=Math.floor(Math.random()*3),key=`${faction}:${variant}`;
+  const c=this.ctx,faction=emitter.faction??'british',variant=this.nextVariant(faction),key=`${faction}:${variant}`;
   let buffer=this.rifleBuffers.get(key);
   if(!buffer){this.saveRifleBuffer(faction,variant,synthesizeRifle(faction,c.sampleRate,0x51f15e+variant*7919));buffer=this.rifleBuffers.get(key)!;}
   const s=c.createBufferSource();s.buffer=buffer;this.route(s,s,[s],emitter);s.start();s.stop(c.currentTime+buffer.duration);
+ }
+ private nextVariant(kind:string){
+  const previous=this.lastVariant.get(kind),candidate=Math.floor(Math.random()*3);
+  const variant=candidate===previous?(candidate+1+Math.floor(Math.random()*2))%3:candidate;
+  this.lastVariant.set(kind,variant);return variant;
+ }
+ private combat(kind:CombatSound,emitter:SoundEmitter){
+  if(!this.ctx||!this.master)return;
+  const c=this.ctx,variant=this.nextVariant(kind),key=`${kind}:${variant}`;
+  let buffer=this.combatBuffers.get(key);
+  if(!buffer){this.saveCombatBuffer(kind,variant,synthesizeCombat(kind,c.sampleRate,0x71a9+variant*3571));buffer=this.combatBuffers.get(key)!;}
+  const source=c.createBufferSource();source.buffer=buffer;
+  this.route(source,source,[source],emitter);source.start();source.stop(c.currentTime+buffer.duration);
  }
  bolt(emitter:SoundEmitter=LOCAL){this.noiseBurst(.14,.06,4300,0,0,emitter);this.tone(800,.035,.06,0,emitter);this.noiseBurst(.12,.09,2800,.17,0,emitter);}
  cancelReload(actor?:number){
@@ -121,10 +141,11 @@ export class Sound {
   this.reloadSounds.set(emitter.actor,sounds.filter((source):source is AudioBufferSourceNode|OscillatorNode=>!!source));
  }
  step(speed:number,emitter:SoundEmitter=LOCAL){this.noiseBurst(clamp(speed/30,.025,.14),.12,950,0,0,emitter);this.tone(65,.09,.035,0,emitter);}
- melee(emitter:SoundEmitter=LOCAL){this.noiseBurst(.25,.15,1000,0,0,emitter);}
+ melee(emitter:SoundEmitter=LOCAL){this.combat('swing',emitter);}
+ impact(emitter:SoundEmitter=LOCAL,kind:'shot'|'melee'='shot'){this.combat(kind==='melee'?'melee-impact':'shot-impact',emitter);}
  switch(emitter:SoundEmitter=LOCAL){this.noiseBurst(.13,.12,1700,0,0,emitter);}
  stopActor(actor:number){this.cancelReload(actor);for(const voice of [...this.voices.values()])if(voice.actor===actor)this.stop(voice.source);this.emitters.delete(actor);this.environments.delete(actor);}
  resetScene(){this.cancelReload();for(const voice of [...this.voices.values()])if(voice.actor!==null)this.stop(voice.source);this.emitters.clear();this.environments.clear();this.updatingScene=false;}
- hit(){this.noiseBurst(.3,.16,600,0,0,LOCAL);this.tone(85,.13,.08,0,LOCAL);}
+ hit(){this.impact(LOCAL);}
  click(){this.tone(700,.035,.04);}
 }

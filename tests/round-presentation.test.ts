@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {Game,type Shot} from '../src/engine.ts';
 import {View} from '../src/renderer.ts';
-import {makeMuzzleFlash,MUZZLE_FLASH_RADII} from '../src/weaponFeedback.ts';
+import {makeMuzzleFlash,MUZZLE_FLASH_RADII,MUZZLE_EFFECT_SECONDS} from '../src/weaponFeedback.ts';
+import {IMPACT_SECONDS} from '../src/impactFeedback.ts';
 import {type JointChain,type SoldierRig} from '../src/soldierAnimation.ts';
 import type {Faction} from '../src/config.ts';
 
@@ -108,7 +109,7 @@ test('hit effects pause with simulation time and replay seeks reconstruct withou
  assert.ok(old.every(effect=>!view.effects.includes(effect)),'live event records are discarded when replay begins, even if GPU buffers are reused');assert.equal(view.effects.length,2);assert.equal(new Set(view.effects.map(e=>e.mesh)).size,2,'each live burst has sole ownership of its buffers');const replay=particles();
  game.replayTime=10.2;view.render(game,1/30,false);game.replayTime=9.9;view.render(game,1/120,false);
  assert.deepEqual(particles(),replay,'rewinding reconstructs the same exact particle positions and lifetimes');assert.equal(view.effects.length,2);
- game.replayTime=10.7;view.render(game,1/60,false);assert.equal(view.effects.length,0,'all GPU effects expire by recorded age');
+ game.replayTime=shot.time+Math.max(IMPACT_SECONDS,MUZZLE_EFFECT_SECONDS)+.001;view.render(game,1/60,false);assert.equal(view.effects.length,0,'all GPU effects expire by recorded age');
  game.state='playing';view.render(game,1/60,false);assert.equal(view.effects.length,0);
 });
 

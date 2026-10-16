@@ -17,6 +17,7 @@ COPY server/Cargo.toml server/Cargo.lock ./server/
 COPY server/src ./server/src
 COPY server/schema.sql ./server/
 COPY src/generated/hitboxData.json src/generated/handCollisionData.json ./src/generated/
+COPY shared/actor-fields.json ./shared/
 RUN cargo build --release --locked --manifest-path server/Cargo.toml
 
 FROM scratch AS release

@@ -87,7 +87,7 @@ mv -Tf /opt/bolts/current.next /opt/bolts/current
 systemctl restart bolts.service
 healthy=false
 for attempt in $(seq 1 30); do
-  if curl --fail --silent --max-time 2 http://127.0.0.1:8080/api/health | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("ok") is True and d.get("version")==1 else 1)' 2>/dev/null; then
+  if curl --fail --silent --max-time 2 http://127.0.0.1:8080/api/health | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("ok") is True and d.get("version")==2 else 1)' 2>/dev/null; then
     healthy=true
     break
   fi

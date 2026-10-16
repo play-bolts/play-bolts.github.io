@@ -13,7 +13,7 @@ function actor(id=42):WireActor{
  for(const [key,value] of Object.entries(result))if(typeof value==='number'&&!Number.isFinite(value))(result as any)[key]=-1000;
  return result;
 }
-function snapshot(tick:number,actors:WireActor[]):WireSnapshot{return{type:'snapshot',inputTiming:'tick-v1',tick,time:tick*STEP,remaining:300-tick*STEP,roundNumber:1,ended:false,winner:null,actors:clone(actors),events:[]};}
+function snapshot(tick:number,actors:WireActor[]):WireSnapshot{return{type:'snapshot',inputTiming:'tick-v2',tick,time:tick*STEP,remaining:300-tick*STEP,roundNumber:1,ended:false,winner:null,actors:clone(actors),events:[]};}
 class Socket implements SocketLike{
  readyState=0;onopen:SocketLike['onopen']=null;onmessage:SocketLike['onmessage']=null;onerror:SocketLike['onerror']=null;onclose:SocketLike['onclose']=null;
  messages:any[]=[];onSend=(message:any)=>{};
@@ -25,7 +25,7 @@ async function fixture(rtt=50){
  let now=0;const game=new Game(),socket=new Socket(),self=actor();self.ping=rtt;
  const client=new NetworkClient(game,{origin:'https://timing.example.test',now:()=>now,storage:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}},fetch:async()=>new Response(JSON.stringify({token:'test-only-session-with-twenty-characters'})),socket:()=>socket});
  const joining=client.join(undefined,'Timing','british');await new Promise(resolve=>setImmediate(resolve));
- socket.readyState=1;socket.onopen?.({});socket.receive({type:'welcome'});socket.receive({type:'joined',actorId:42,lobbyId:'timing',lobbyName:'Timing',snapshot:snapshot(0,[self])});await joining;
+ socket.readyState=1;socket.onopen?.({});socket.receive({type:'welcome',version:2});socket.receive({type:'joined',actorId:42,lobbyId:'timing',lobbyName:'Timing',snapshot:snapshot(0,[self])});await joining;
  return{game,client,socket,setNow:(value:number)=>{now=value;}};
 }
 

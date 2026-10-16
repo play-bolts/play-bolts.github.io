@@ -1,7 +1,8 @@
 use crate::{
     bots::{BotBrain, Navigation},
-    db::{self, Db, EventRow},
-    sim::{self, Faction, GameEvent, InputFrame, Simulation},
+    db::{self, EventRow},
+    storage::Storage,
+    sim::{self, Faction, InputFrame, Simulation},
 };
 use hmac::{Hmac, Mac};
 use rusqlite::params;
@@ -12,7 +13,8 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
+use crate::transport::Outbox;
 
 pub struct Config {
     pub bind: String,
@@ -64,7 +66,7 @@ impl Config {
 }
 pub struct Endpoint {
     pub cid: String,
-    pub tx: mpsc::Sender<String>,
+    pub tx: Outbox,
     pub cancel: watch::Sender<Option<String>>,
     latency: Latency,
 }
@@ -125,8 +127,12 @@ struct Room {
     next_actor: u32,
     empty_since: Option<Instant>,
     ended_since: Option<Instant>,
-    pending: Vec<GameEvent>,
+    pending: Vec<Value>,
+    event_seq: u64,
     navigation: Navigation,
+    participation: HashMap<String, [i64; 4]>,
+    durable_pending: VecDeque<(u64, Value)>,
+    durable_chat: VecDeque<(u64, Value)>,
 }
 impl Room {
     fn human_seats(&self) -> usize {
@@ -140,7 +146,7 @@ impl Room {
             })
             .count()
     }
-    fn snapshot(&self, events: &[GameEvent], connections: &HashMap<String, Endpoint>) -> Value {
+    fn snapshot(&self, connections: &HashMap<String, Endpoint>) -> Value {
         let now = Instant::now();
         let mut actors = serde_json::to_value(&self.sim.actors).expect("serializable actors");
         for actor in actors.as_array_mut().expect("actor array") {
@@ -156,16 +162,18 @@ impl Room {
                 .and_then(|(player, _)| connections.get(player))
                 .and_then(|endpoint| endpoint.latency.value(now));
             actor["ping"] = json!(latency);
+            actor["inputTiming"] = json!(self.sim.input_timing(actor["id"].as_u64().unwrap() as u32));
         }
-        json!({"type":"snapshot","inputTiming":"tick-v1","tick":self.sim.tick_number,"time":self.sim.time,"remaining":self.sim.remaining,"roundNumber":self.sim.round_number,"ended":self.sim.ended,"winner":self.sim.winner,"actors":actors,"events":events})
+        json!({"type":"snapshot","inputTiming":"tick-v2","lobbyId":self.id,"eventSeq":self.event_seq,"tick":self.sim.tick_number,"time":self.sim.time,"remaining":self.sim.remaining,"roundNumber":self.sim.round_number,"ended":self.sim.ended,"winner":self.sim.winner,"actors":actors,"events":[]})
     }
 }
 pub struct Hub {
     pub config: Config,
-    pub db: Db,
+    pub db: Storage,
     rooms: HashMap<String, Room>,
     pub connections: HashMap<String, Endpoint>,
     pub failed: bool,
+    pub shutting_down: bool,
     rate: HashMap<String, VecDeque<Instant>>,
     name_index: usize,
     pub internal_token: Option<String>,
@@ -174,13 +182,14 @@ pub struct Hub {
 pub type HResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 impl Hub {
     pub fn new(config: Config) -> HResult<Self> {
-        let db = Db::open(&config.database)?;
+        let db = Storage::open(&config.database)?;
         Ok(Self {
             config,
             db,
             rooms: HashMap::new(),
             connections: HashMap::new(),
             failed: false,
+            shutting_down: false,
             rate: HashMap::new(),
             name_index: 0,
             internal_token: None,
@@ -221,7 +230,7 @@ impl Hub {
     }
     pub fn send(&self, player: &str, message: Value) {
         if let Some(e) = self.connections.get(player)
-            && e.tx.try_send(message.to_string()).is_err()
+            && !e.tx.send(message)
         {
             let _ = e.cancel.send(Some("slow_consumer".into()));
         }
@@ -230,7 +239,7 @@ impl Hub {
         let encoded = message.to_string();
         for player in room.members.keys() {
             if let Some(e) = self.connections.get(player)
-                && e.tx.try_send(encoded.clone()).is_err()
+                && !e.tx.send_text(encoded.clone(), false)
             {
                 let _ = e.cancel.send(Some("slow_consumer".into()));
             }
@@ -240,15 +249,16 @@ impl Hub {
         &mut self,
         player: &str,
         cid: String,
-        tx: mpsc::Sender<String>,
+        tx: Outbox,
         cancel: watch::Sender<Option<String>>,
         ip: &str,
         ua: &str,
     ) -> HResult<()> {
+        if self.shutting_down { return Err("server_busy".into()); }
         if let Some(old) = self.connections.remove(player) {
             let _ = old
                 .tx
-                .try_send(error("session_replaced", "Connected in another tab.").to_string());
+                .send(error("session_replaced", "Connected in another tab."));
             let _ = old.cancel.send(Some("session_replaced".into()));
             self.db.disconnect(&old.cid, "session_replaced")?;
         }
@@ -352,13 +362,18 @@ impl Hub {
                 empty_since: Some(Instant::now()),
                 ended_since: None,
                 pending: vec![],
+                event_seq: 0,
                 navigation,
+                participation: HashMap::new(),
+                durable_pending: VecDeque::new(),
+                durable_chat: VecDeque::new(),
             },
         );
         Ok(id)
     }
     /// A managed process owns exactly one GameLift session, including its rounds.
     pub fn activate_managed(&mut self, id: &str, name: &str) -> HResult<()> {
+        if self.shutting_down { return Err("server_busy".into()); }
         if self.managed_lobby.as_deref() == Some(id) {
             return Ok(());
         }
@@ -375,6 +390,7 @@ impl Hub {
         json!({"ok": !self.failed, "active": self.managed_lobby.as_ref().is_some_and(|id| self.rooms.contains_key(id)), "players": self.online_count()})
     }
     pub fn lobbies(&mut self) -> HResult<Value> {
+        if self.shutting_down { return Err("server_busy".into()); }
         if !self
             .rooms
             .values()
@@ -402,6 +418,7 @@ impl Hub {
         faction: Faction,
         spectator: bool,
     ) -> HResult<()> {
+        if self.shutting_down { return Err("server_busy".into()); }
         if let Some(room) = self
             .rooms
             .values_mut()
@@ -422,7 +439,7 @@ impl Hub {
                 target: None,
                 data: json!({"actorId":actor}),
             })?;
-            let packet = json!({"type":"joined","lobbyId":room.id,"lobbyName":room.name,"actorId":actor,"snapshot":room.snapshot(&[], &self.connections)});
+            let packet = json!({"type":"joined","lobbyId":room.id,"lobbyName":room.name,"actorId":actor,"snapshot":room.snapshot(&self.connections)});
             self.send(player, packet);
             return Ok(());
         }
@@ -469,11 +486,7 @@ impl Hub {
             cid,
             spectator,
         )?;
-        let stats_before_join = self.db.conn.query_row(
-            "SELECT kills,deaths,shots,hits FROM match_players WHERE match_id=?1 AND player_id=?2",
-            params![room.game, player],
-            |row| Ok([row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?]),
-        )?;
+        let stats_before_join = room.participation.get(player).copied().unwrap_or([0; 4]);
         room.members.insert(
             player.into(),
             Member {
@@ -488,7 +501,7 @@ impl Hub {
         );
         room.empty_since = None;
         reconcile_bots(&mut self.db, room, &self.connections)?;
-        let packet = json!({"type":"joined","lobbyId":room.id,"lobbyName":room.name,"actorId":actor,"snapshot":room.snapshot(&[], &self.connections)});
+        let packet = json!({"type":"joined","lobbyId":room.id,"lobbyName":room.name,"actorId":actor,"snapshot":room.snapshot(&self.connections)});
         self.send(player, packet);
         Ok(())
     }
@@ -499,6 +512,7 @@ impl Hub {
                 self.db
                     .leave(&member.membership, &room.id, &room.game, player, reason)?;
                 let actor = member.actor;
+                remember_stats(room, player);
                 room.members.remove(player);
                 room.sim.leave(actor);
                 if reason != "server_stop" {
@@ -515,6 +529,7 @@ impl Hub {
         Ok(())
     }
     pub fn input(&mut self, player: &str, input: InputFrame) {
+        if self.shutting_down { return; }
         if let Some(room) = self
             .rooms
             .values_mut()
@@ -525,6 +540,7 @@ impl Hub {
         }
     }
     pub fn chat(&mut self, player: &str, cid: &str, text: &str) -> HResult<()> {
+        if self.shutting_down { return Err("server_busy".into()); }
         let text: String = text.chars().filter(|c| !c.is_control()).take(257).collect();
         let text = text.trim();
         if text.is_empty() || text.chars().count() > 256 {
@@ -549,15 +565,16 @@ impl Hub {
         member.chat.push_back(Instant::now());
         let actor = member.actor;
         let name = room.sim.actor(actor).ok_or("not_joined")?.name.clone();
-        let (eid, at) = self
+        let (ticket, eid, at) = self
             .db
             .chat(&room.id, &room.game, player, cid, &name, text)?;
         let msg = json!({"type":"chat","id":eid,"actorId":actor,"name":name,"text":text,"at":at});
-        let rid = room.id.clone();
-        self.broadcast(&self.rooms[&rid], msg);
+        if room.durable_chat.len() >= 128 { return Err("durable chat backlog exhausted".into()); }
+        room.durable_chat.push_back((ticket, msg));
         Ok(())
     }
     pub fn profile(&mut self, player: &str, name: &str) -> HResult<()> {
+        if self.shutting_down { return Err("server_busy".into()); }
         let name = sanitize_name(name);
         if let Some(room) = self
             .rooms
@@ -586,6 +603,7 @@ impl Hub {
         Ok(())
     }
     pub fn loadout(&mut self, player: &str, faction: Faction) -> HResult<()> {
+        if self.shutting_down { return Err("server_busy".into()); }
         if let Some(room) = self
             .rooms
             .values_mut()
@@ -611,6 +629,7 @@ impl Hub {
     }
 
     pub fn spectate(&mut self, player: &str) -> HResult<()> {
+        if self.shutting_down { return Err("server_busy".into()); }
         let room = self
             .rooms
             .values_mut()
@@ -632,6 +651,9 @@ impl Hub {
         Ok(())
     }
     pub fn tick(&mut self) -> HResult<()> {
+        if self.shutting_down { return Ok(()); }
+        self.db.check()?;
+        let committed = self.db.committed();
         let expired: Vec<_> = self
             .rooms
             .values()
@@ -650,8 +672,15 @@ impl Hub {
             self.leave(&p, "timeout", false)?;
         }
         let mut packets = vec![];
+        let mut chats = vec![];
         let mut closed = vec![];
         for room in self.rooms.values_mut() {
+            while room.durable_pending.front().is_some_and(|(ticket, _)| *ticket <= committed) {
+                room.pending.push(room.durable_pending.pop_front().unwrap().1);
+            }
+            while room.durable_chat.front().is_some_and(|(ticket, _)| *ticket <= committed) {
+                chats.push((room.id.clone(), room.durable_chat.pop_front().unwrap().1));
+            }
             if room.members.is_empty() {
                 if room
                     .empty_since
@@ -669,6 +698,10 @@ impl Hub {
             }
             room.sim.tick(sim::TICK_SECONDS);
             record_sim_events(&mut self.db, room)?;
+            let committed = self.db.committed();
+            while room.durable_pending.front().is_some_and(|(ticket, _)| *ticket <= committed) {
+                room.pending.push(room.durable_pending.pop_front().unwrap().1);
+            }
             if room.sim.ended && room.ended_since.is_none() {
                 room.ended_since = Some(Instant::now());
                 let winner = room
@@ -677,7 +710,7 @@ impl Hub {
                     .find(|(_, m)| Some(m.actor) == room.sim.winner)
                     .map(|(p, _)| p.as_str());
                 sync_stats(&self.db, room)?;
-                self.db.conn.execute("UPDATE matches SET ended_at=?1,end_reason='time_limit',winner_player_id=?2 WHERE id=?3",params![db::now_ms(),winner,room.game])?;
+                self.db.execute("UPDATE matches SET ended_at=?1,end_reason='time_limit',winner_player_id=?2 WHERE id=?3",vec![db::now_ms().into(),winner.map(str::to_owned).into(),room.game.clone().into()])?;
                 self.db.event(EventRow {
                     kind: "round_end",
                     lobby: Some(&room.id),
@@ -692,6 +725,7 @@ impl Hub {
                 .ended_since
                 .is_some_and(|t| t.elapsed() > Duration::from_secs(8))
             {
+                room.participation.clear();
                 room.sim.restart_round();
                 room.ended_since = None;
                 room.game = db::id();
@@ -700,15 +734,21 @@ impl Hub {
                 sync_stats(&self.db, room)?;
             }
             if room.sim.tick_number % 3 == 0 {
-                packets.push((
-                    room.id.clone(),
-                    room.snapshot(&room.pending, &self.connections),
-                ));
-                room.pending.clear();
+                let events = crate::transport::event_batches(&room.id, room.sim.round_number,
+                    room.sim.tick_number, room.sim.time, &mut room.event_seq, std::mem::take(&mut room.pending));
+                packets.push((room.id.clone(), events, room.snapshot(&self.connections)));
             }
         }
-        for (id, packet) in packets {
-            self.broadcast(&self.rooms[&id], packet);
+        for (id, message) in chats { self.broadcast(&self.rooms[&id], message); }
+        for (id, events, packet) in packets {
+            let room = &self.rooms[&id];
+            for events in events { self.broadcast(room, events); }
+            let encoded = crate::codec::compact_snapshot(packet).to_string();
+            for player in room.members.keys() {
+                if let Some(endpoint) = self.connections.get(player) {
+                    if !endpoint.tx.snapshot(encoded.clone()) { let _ = endpoint.cancel.send(Some("slow_consumer".into())); }
+                }
+            }
         }
         for id in closed {
             self.close_room(&id, "inactive")?;
@@ -718,13 +758,13 @@ impl Hub {
     fn close_room(&mut self, id: &str, reason: &str) -> HResult<()> {
         if let Some(room) = self.rooms.remove(id) {
             let at = db::now_ms();
-            self.db.conn.execute(
+            self.db.execute(
                 "UPDATE lobbies SET closed_at=?1,close_reason=?2 WHERE id=?3",
-                params![at, reason, id],
+                vec![at.into(), reason.to_owned().into(), id.to_owned().into()],
             )?;
-            self.db.conn.execute(
+            self.db.execute(
                 "UPDATE matches SET ended_at=?1,end_reason=?2 WHERE id=?3 AND ended_at IS NULL",
-                params![at, reason, room.game],
+                vec![at.into(), reason.to_owned().into(), room.game.into()],
             )?;
         }
         Ok(())
@@ -733,11 +773,13 @@ impl Hub {
         self.failed = true;
         for e in self.connections.values() {
             let _ =
-                e.tx.try_send(error("server_busy", "Server unavailable.").to_string());
+                e.tx.send(error("server_busy", "Server unavailable."));
             let _ = e.cancel.send(Some("server_busy".into()));
         }
     }
     pub fn shutdown(&mut self) -> HResult<()> {
+        if self.shutting_down { return Ok(()); }
+        self.shutting_down = true;
         let mut players: Vec<_> = self.connections.keys().cloned().collect();
         players.extend(self.rooms.values().flat_map(|r| r.members.keys().cloned()));
         players.sort();
@@ -762,9 +804,7 @@ impl Hub {
             target: None,
             data: json!({}),
         })?;
-        self.db
-            .conn
-            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
+        // The caller drains/checkpoints Storage outside the simulation mutex.
         Ok(())
     }
 }
@@ -772,7 +812,7 @@ impl Hub {
 /// this threshold; reconnect reservations are not. Bots never consume a seat
 /// ahead of a human, and zero connected humans removes every bot immediately.
 fn reconcile_bots(
-    db: &mut Db,
+    db: &Storage,
     room: &mut Room,
     connections: &HashMap<String, Endpoint>,
 ) -> HResult<()> {
@@ -826,11 +866,7 @@ fn reconcile_bots(
             name,
             if slot == 0 { "russian" } else { "german" },
         )?;
-        let stats_before_join = db.conn.query_row(
-            "SELECT kills,deaths,shots,hits FROM match_players WHERE match_id=?1 AND player_id=?2",
-            params![room.game, player],
-            |row| Ok([row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?]),
-        )?;
+        let stats_before_join = room.participation.get(&player).copied().unwrap_or([0; 4]);
         room.members.insert(
             player,
             Member {
@@ -849,7 +885,7 @@ fn reconcile_bots(
     Ok(())
 }
 
-fn remove_one_bot(db: &mut Db, room: &mut Room, reason: &str) -> HResult<()> {
+fn remove_one_bot(db: &Storage, room: &mut Room, reason: &str) -> HResult<()> {
     let player = room
         .members
         .iter()
@@ -861,23 +897,34 @@ fn remove_one_bot(db: &mut Db, room: &mut Room, reason: &str) -> HResult<()> {
     sync_stats(db, room)?;
     let member = &room.members[&player];
     db.leave(&member.membership, &room.id, &room.game, &player, reason)?;
-    room.sim.leave(member.actor);
+    let actor = member.actor;
+    remember_stats(room, &player);
+    room.sim.leave(actor);
     room.members.remove(&player);
     Ok(())
 }
 
-fn sync_stats(db: &Db, room: &Room) -> rusqlite::Result<()> {
-    for (player, m) in &room.members {
-        if let Some(a) = room.sim.actor(m.actor) {
-            let faction = serde_json::to_value(a.faction).unwrap();
-            let before = if m.stats_game == room.game {
-                m.stats_before_join
-            } else {
-                [0; 4]
-            };
-            db.conn.execute("INSERT INTO match_players(match_id,player_id,name,faction,joined_at,kills,deaths,shots,hits) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(match_id,player_id) DO UPDATE SET name=excluded.name,faction=excluded.faction,kills=excluded.kills,deaths=excluded.deaths,shots=excluded.shots,hits=excluded.hits",params![room.game,player,a.name,faction.as_str(),db::now_ms(),before[0]+i64::from(a.kills),before[1]+i64::from(a.deaths),before[2]+i64::from(a.shots),before[3]+i64::from(a.hits)])?;
+fn totals(room: &Room, player: &str) -> [i64; 4] {
+    let m = &room.members[player];
+    let before = if m.stats_game == room.game { m.stats_before_join } else { [0; 4] };
+    room.sim.actor(m.actor).map(|a| [before[0]+i64::from(a.kills),before[1]+i64::from(a.deaths),before[2]+i64::from(a.shots),before[3]+i64::from(a.hits)]).unwrap_or(before)
+}
+fn remember_stats(room: &mut Room, player: &str) {
+    room.participation.insert(player.to_owned(), totals(room, player));
+}
+fn sync_stats(db: &Storage, room: &Room) -> HResult<()> {
+    let game = room.game.clone();
+    let at = db::now_ms();
+    let rows = room.members.iter().filter_map(|(player,m)| room.sim.actor(m.actor).map(|a| (player.clone(),a.name.clone(),a.faction,totals(room,player)))).collect::<Vec<_>>();
+    db.write(move |db| {
+        let tx = db.conn.transaction()?;
+        for (player,name,faction,stats) in rows {
+            let faction=serde_json::to_value(faction)?;
+            tx.execute("INSERT INTO match_players(match_id,player_id,name,faction,joined_at,kills,deaths,shots,hits) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(match_id,player_id) DO UPDATE SET name=excluded.name,faction=excluded.faction,kills=excluded.kills,deaths=excluded.deaths,shots=excluded.shots,hits=excluded.hits",params![game,player,name,faction.as_str(),at,stats[0],stats[1],stats[2],stats[3]])?;
         }
-    }
+        tx.commit()?;
+        Ok(())
+    })?;
     Ok(())
 }
 pub fn error(code: &str, message: &str) -> Value {
@@ -887,8 +934,9 @@ pub fn sanitize_name(name: &str) -> String {
     sim::sanitize_name(name)
 }
 
-fn record_sim_events(db: &mut Db, room: &mut Room) -> rusqlite::Result<()> {
+fn record_sim_events(db: &Storage, room: &mut Room) -> HResult<()> {
     for event in room.sim.drain_events() {
+        let mut ticket = None;
         if event.kind == "kill"
             && let Some(victim) = event.victim
         {
@@ -903,7 +951,7 @@ fn record_sim_events(db: &mut Db, room: &mut Room) -> rusqlite::Result<()> {
                 .find(|(_, m)| m.actor == victim)
                 .map(|(p, _)| p.as_str());
             if let (Some(k), Some(v)) = (killer, victim) {
-                db.kill(
+                ticket = Some(db.kill(
                     &room.id,
                     &room.game,
                     k,
@@ -911,13 +959,81 @@ fn record_sim_events(db: &mut Db, room: &mut Room) -> rusqlite::Result<()> {
                     event.weapon.as_deref().unwrap_or("rifle"),
                     event.headshot.unwrap_or(false),
                     json!({"serverTime":room.sim.time,"event":event}),
-                )?;
+                )?);
                 sync_stats(db, room)?;
             }
         }
-        room.pending.push(event);
+        let wire = wire_sim_event(&room.sim, &event)?;
+        // Subsequent events cannot overtake an uncommitted kill. Other rooms
+        // continue independently; the simulation itself never waits for disk.
+        let ticket = ticket.unwrap_or(0).max(room.durable_pending.back().map_or(0, |(ticket, _)| *ticket));
+        if room.durable_pending.len() >= 512 { return Err("durable event backlog exhausted".into()); }
+        room.durable_pending.push_back((ticket, wire));
     }
     Ok(())
+}
+
+/// Absent optional event metadata is omitted, matching the strict browser wire
+/// contract. Explicit null would invalidate the entire reliable event batch.
+fn wire_sim_event(sim: &Simulation, event: &sim::GameEvent) -> HResult<Value> {
+    let mut wire = serde_json::to_value(event)?;
+    if let Some(actor) = sim.actor(event.actor) {
+        wire["actorName"] = json!(actor.name);
+        wire["actorFaction"] = json!(actor.faction);
+        wire["actorGeneration"] = json!(actor.spawn_generation);
+    }
+    if let Some(victim) = event.victim.and_then(|id| sim.actor(id)) {
+        wire["victimName"] = json!(victim.name);
+        wire["victimGeneration"] = json!(victim.spawn_generation);
+    }
+    wire["roundNumber"] = json!(sim.round_number);
+    wire["tick"] = json!(sim.tick_number);
+    wire["time"] = json!(sim.time);
+    Ok(wire)
+}
+
+#[cfg(test)]
+mod event_metadata_tests {
+    use super::*;
+
+    #[test]
+    fn ordinary_combat_and_step_batches_omit_absent_optional_metadata() {
+        let mut sim = Simulation::new(51235);
+        sim.join(42, "Event test".into(), Faction::British).unwrap();
+        let actor = sim.actor_mut(42).unwrap();
+        actor.x = 13.5;
+        actor.z = 0.0;
+        actor.yaw = 0.0;
+        actor.spawn_safe = 0.0;
+        actor.cooldown = 0.0;
+        sim.drain_events();
+        let mut events = vec![];
+        for tick in 1..=30 {
+            assert!(sim.submit_input(42, InputFrame {
+                seq: tick, tick: Some(tick),
+                generation: Some(sim.actor(42).unwrap().spawn_generation),
+                forward: 1.0, fire: tick == 1, reload: tick == 2,
+                ..Default::default()
+            }));
+            sim.tick(sim::TICK_SECONDS);
+            for event in sim.drain_events() { events.push(wire_sim_event(&sim, &event).unwrap()); }
+        }
+        for kind in ["shot", "reload", "step"] {
+            assert!(events.iter().any(|event| event["type"] == kind), "real simulation produced {kind}");
+        }
+        let mut sequence = 0;
+        let batches = crate::transport::event_batches("event-test", sim.round_number, sim.tick_number, sim.time, &mut sequence, events);
+        for event in batches[0]["events"].as_array().unwrap() {
+            assert_eq!(event["actorName"], "Event test");
+            assert_eq!(event["actorFaction"], "british");
+            assert!(event["actorGeneration"].is_u64());
+            assert!(event.get("victimName").is_none());
+            assert!(event.get("victimGeneration").is_none());
+            for key in ["actorGeneration", "victimGeneration", "roundNumber", "tick", "seq"] {
+                if let Some(value) = event.get(key) { assert!(value.is_u64(), "{key} must be an integer when present"); }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -987,7 +1103,7 @@ mod bot_round_tests {
         .unwrap();
         let (player, _) = hub.db.session(None).unwrap().unwrap();
         let cid = db::id();
-        let (tx, _rx) = mpsc::channel(256);
+        let (tx, _rx) = crate::transport::channel();
         let (cancel, _cancelled) = watch::channel(None);
         hub.register(&player, cid.clone(), tx, cancel, "test", "test")
             .unwrap();
@@ -1000,12 +1116,12 @@ mod bot_round_tests {
             .filter(|(_, member)| member.bot.is_some())
             .map(|(id, _)| id.clone())
             .collect();
-        let changes = hub.db.conn.total_changes();
+        let changes = hub.db.test_conn().total_changes();
         for _ in 0..30 {
             hub.tick().unwrap();
         }
         assert_eq!(
-            hub.db.conn.total_changes(),
+            hub.db.test_conn().total_changes(),
             changes,
             "movement/perception ticks never write to SQLite"
         );
@@ -1025,20 +1141,20 @@ mod bot_round_tests {
             assert!(room.members[&bot].bot.is_some());
             let rows: i64 = hub
                 .db
-                .conn
+                .test_conn()
                 .query_row(
                     "SELECT count(*) FROM match_players WHERE player_id=?1",
-                    [&bot],
+                    &[&bot],
                     |r| r.get(0),
                 )
                 .unwrap();
             assert_eq!(rows, 2);
             let memberships: i64 = hub
                 .db
-                .conn
+                .test_conn()
                 .query_row(
                     "SELECT count(*) FROM memberships WHERE player_id=?1",
-                    [&bot],
+                    &[&bot],
                     |r| r.get(0),
                 )
                 .unwrap();
@@ -1079,10 +1195,65 @@ mod bot_round_tests {
         ));
         room.sim.tick(sim::TICK_SECONDS);
         record_sim_events(&mut hub.db, room).unwrap();
-        let roles: (i64, i64) = hub.db.conn.query_row(
+        let roles: (i64, i64) = hub.db.test_conn().query_row(
             "SELECT k.is_bot,v.is_bot FROM combat_events c JOIN players k ON k.id=c.killer_id JOIN players v ON v.id=c.victim_id",
-            [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+            &[], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
         assert_eq!(roles, (1, 0));
-        assert_eq!(hub.db.conn.query_row("SELECT count(*) FROM events WHERE event_type IN ('player_kill','player_death')", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
+        assert_eq!(hub.db.test_conn().query_row("SELECT count(*) FROM events WHERE event_type IN ('player_kill','player_death')", &[], |r| r.get::<_, i64>(0)).unwrap(), 2);
+    }
+}
+
+#[cfg(test)]
+mod persistence_boundary_tests {
+    use super::*;
+    #[tokio::test]
+    async fn kill_notifications_wait_for_commit_while_both_lobbies_keep_simulating() {
+        let directory=tempfile::tempdir().unwrap();
+        let path=directory.path().join("events.sqlite");
+        let mut hub=Hub::new(Config {bind:"127.0.0.1:0".into(),database:path.clone(),origins:vec![],identity_salt:"storage-boundary-test-32-byte-salt".into(),empty_seconds:300.0,reconnect_seconds:30.0,max_rooms:2,proxy:false}).unwrap();
+        let mut peers=vec![];
+        for index in 0..2 {
+            let (player,_)=hub.db.session(None).unwrap().unwrap();
+            let cid=db::id();
+            let (outbox, outgoing)=crate::transport::channel();
+            let (cancel,cancelled)=watch::channel(None);
+            hub.register(&player,cid.clone(),outbox,cancel,"test","test").unwrap();
+            let lobby=hub.create_room().unwrap();
+            hub.join(&player,&cid,Some(&lobby),&format!("Player {index}"),Faction::British,false).unwrap();
+            peers.push((player,lobby,outgoing,cancelled));
+        }
+        hub.db.request(|_|Ok(())).await.unwrap();
+        let lock=rusqlite::Connection::open(&path).unwrap();
+        lock.execute_batch("BEGIN IMMEDIATE").unwrap();
+        // Changing faction legitimately produces a self-death record/kill event.
+        hub.loadout(&peers[0].0,Faction::German).unwrap();
+        let room=&hub.rooms[&peers[0].1];
+        assert!(room.durable_pending.iter().any(|(_,event)|event["type"]=="kill"));
+        let starts=peers.iter().map(|(_,id,_,_)|hub.rooms[id].sim.tick_number).collect::<Vec<_>>();
+        let before=Instant::now();
+        for _ in 0..18 { hub.tick().unwrap(); }
+        assert!(before.elapsed()<Duration::from_millis(150));
+        for ((_,id,_,_),start) in peers.iter().zip(starts) { assert_eq!(hub.rooms[id].sim.tick_number,start+18); }
+        for (_,_,outgoing,_) in &mut peers {
+            while let Ok(raw)=outgoing.try_recv() {
+                let packet:Value=serde_json::from_str(&raw).unwrap();
+                if packet["type"]=="events" { assert!(!packet["events"].as_array().unwrap().iter().any(|event|event["type"]=="kill")); }
+            }
+        }
+        lock.execute_batch("ROLLBACK").unwrap();
+        hub.db.request(|_|Ok(())).await.unwrap();
+        for _ in 0..3 { hub.tick().unwrap(); }
+        let mut kills=0;
+        while let Ok(raw)=peers[0].2.try_recv() {
+            let packet:Value=serde_json::from_str(&raw).unwrap();
+            if packet["type"]=="events" {
+                for event in packet["events"].as_array().unwrap() { if event["type"]=="kill" {kills+=1;assert_eq!(event["roundNumber"],1);assert!(event["tick"].as_u64().unwrap()<hub.rooms[&peers[0].1].sim.tick_number);} }
+            }
+        }
+        assert_eq!(kills,1);
+        hub.shutdown().unwrap();
+        assert!(!hub.failed);
+        assert!(hub.lobbies().is_err());
+        hub.db.drain().await.unwrap();
     }
 }

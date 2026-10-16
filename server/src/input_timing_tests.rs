@@ -153,6 +153,44 @@ fn ended_rounds_do_not_accumulate_commands() {
 }
 
 #[test]
+fn scheduling_feedback_counts_unique_late_commands_and_real_gaps() {
+    let mut sim = arena();
+    assert!(sim.submit_input(42, command(&sim, 1, 3, 1.0)));
+    assert_eq!(sim.input_timing(42).arrival_lead, 3);
+    for _ in 0..3 { sim.tick(TICK_SECONDS); }
+    assert_eq!(sim.input_timing(42).missing, 0, "initial scheduling cushion is not starvation");
+    sim.tick(TICK_SECONDS);
+    assert_eq!(sim.input_timing(42).missing, 1);
+    let late = command(&sim, 2, 4, 1.0);
+    assert!(!sim.submit_input(42, late.clone()));
+    assert!(!sim.submit_input(42, late));
+    let timing = sim.input_timing(42);
+    assert_eq!(timing.received, 2);
+    assert_eq!(timing.late, 1, "replayed packets cannot inflate feedback");
+    assert_eq!(timing.arrival_lead, 0);
+    sim.reset_input_stream(42);
+    assert_eq!(sim.input_timing(42).received, 0);
+    sim.tick(TICK_SECONDS);
+    assert_eq!(sim.input_timing(42).missing, 0, "disconnected or reset streams do not accumulate gaps");
+}
+
+#[test]
+fn shot_diagnostics_report_rewind_clipping_without_extending_the_fairness_window() {
+    let mut sim = arena();
+    for _ in 0..30 { sim.tick(TICK_SECONDS); }
+    let mut fire = command(&sim, 1, 31, 0.0);
+    fire.fire = true;
+    fire.shot_time = Some(sim.time - 0.25);
+    assert!(sim.submit_input(42, fire));
+    sim.tick(TICK_SECONDS);
+    let timing = sim.input_timing(42);
+    assert_eq!(timing.shots, 1);
+    assert_eq!(timing.rewind_clamped, 1);
+    assert!((timing.shot_age_ms - 266.6666666667).abs() < 0.001);
+    assert_eq!(MAX_REWIND, 0.2);
+}
+
+#[test]
 fn typescript_and_rust_share_movement_traces() {
     #[derive(Deserialize)]
     struct Row {

@@ -5,6 +5,8 @@
  * production identities, membership events, or matches.
  */
 import assert from 'node:assert/strict';
+import {decodeSnapshot} from '../src/networkCodec.ts';
+import {TestInputStream} from './test-input-stream.mjs';
 import {spawn} from 'node:child_process';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {createServer} from 'node:net';
@@ -34,7 +36,7 @@ async function json(path,body){
  assert.equal(response.ok,true,`${path}: HTTP ${response.status}`);return response.json();
 }
 class Client {
- constructor(name){this.name=name;this.messages=[];this.seq=0;}
+ constructor(name){this.name=name;this.messages=[];this.seq=0;this.controls=new TestInputStream(message=>this.send(message),()=>this.actor());}
  send(message){this.socket.send(JSON.stringify(message));}
  async connect(){
   const session=await json('/api/session',{});
@@ -42,14 +44,15 @@ class Client {
   this.socket.addEventListener('message',({data})=>{
    const message=JSON.parse(String(data));this.messages.push(message);
    if(message.type==='joined'){this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.snapshot=message.snapshot;}
-   if(message.type==='snapshot')this.snapshot=message;
+   if(message.type==='snapshot')this.snapshot=decodeSnapshot(message);
+   if(message.type==='snapshot'||message.type==='joined')this.controls.observe(this.snapshot);
   });
   await new Promise((resolve,reject)=>{
    const timer=setTimeout(()=>reject(new Error('WebSocket open timed out')),5000);
    this.socket.addEventListener('open',()=>{clearTimeout(timer);resolve();},{once:true});
    this.socket.addEventListener('error',()=>{clearTimeout(timer);reject(new Error('WebSocket failed'));},{once:true});
   });
-  this.send({type:'hello',version:1,token:session.token});
+  this.send({type:'hello',version:2,token:session.token});
   await eventually(()=>this.messages.some(message=>message.type==='welcome'),'hello');
  }
  async join(lobbyId){
@@ -59,12 +62,10 @@ class Client {
  get self(){return this.actor();}
  actor(id=this.actorId){return this.snapshot?.actors.find(actor=>actor.id===id);}
  input(actions={}){
-  const seq=++this.seq;
-  this.send({type:'input',seq,forward:0,right:0,jump:false,walk:false,lean:0,yaw:0,pitch:1.3,ads:false,stance:'stand',weapon:'rifle',fire:false,reload:false,melee:false,...actions});
-  return seq;
+  return this.controls.input({yaw:0,pitch:1.3,stance:'stand',weapon:'rifle',...actions}).seq;
  }
  events(since=0){return this.messages.slice(since).flatMap(message=>message.events??[]);}
- close(){if(this.socket?.readyState===WebSocket.OPEN)this.socket.close();}
+ close(){this.controls.close();if(this.socket?.readyState===WebSocket.OPEN)this.socket.close();}
 }
 
 function routeToShot(shooter,target,actors){

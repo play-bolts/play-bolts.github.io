@@ -118,7 +118,7 @@ def main():
     files = [ROOT / 'server/Cargo.toml', ROOT / 'server/Cargo.lock', ROOT / 'server/schema.sql',
              *sorted((ROOT / 'server/src').glob('*.rs')), *sorted((ROOT / 'server/gamelift').glob('*.go')),
              ROOT / 'server/gamelift/go.mod', ROOT / 'server/gamelift/go.sum',
-             ROOT / 'src/generated/hitboxData.json', ROOT / 'src/generated/handCollisionData.json', ROOT / 'infra/gamelift/Dockerfile']
+             ROOT / 'src/generated/hitboxData.json', ROOT / 'src/generated/handCollisionData.json', ROOT / 'shared/actor-fields.json', ROOT / 'infra/gamelift/Dockerfile']
     context = OUT / 'context'
     if context.exists():
         shutil.rmtree(context)

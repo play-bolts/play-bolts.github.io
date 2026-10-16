@@ -6,6 +6,7 @@
  * player enters. It creates durable QA events. No teleports or authority edits.
  */
 import assert from 'node:assert/strict';
+import {decodeSnapshot} from '../src/networkCodec.ts';
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {mkdtemp,mkdir,readFile,rm,writeFile} from 'node:fs/promises';
@@ -27,6 +28,10 @@ const remoteOrigin='https://bolts-api.christopherkrapu.com';
 const root=resolve(fileURLToPath(new URL('..',import.meta.url))),started=Date.now(),idle:Input={forward:0,right:0,jump:false,walk:false,lean:0};
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 const checks:string[]=[],combat:any[]=[],latencyEvidence:{observer:string;alphaMs:number;betaMs:number;observerMs:number}[]=[],users:ReturnType<typeof user>[]=[];
+const netcodeEvidence:Record<string,unknown>={};
+const authoritativeEffects:{observer:string;actor:string;type:'shot'|'reload';serverTime?:number}[]=[];
+const backendPath=resolve(process.env.BOLTS_TEST_SERVER??join(root,'server/target/debug/bolts-server'));
+let relayBurst={up:0,down:0};
 let base=remote?remoteOrigin:'',temporary='',dbPath='',diagnostics='',isolationError='',qaLobbyId='',backend:ReturnType<typeof spawn>|undefined,timer:ReturnType<typeof setInterval>|undefined,relay:Server|undefined;
 let inventoryBefore:unknown,inventoryAfter:unknown;
 const relaySockets=new Set<Socket>(),relayTimers=new Set<ReturnType<typeof setTimeout>>();
@@ -36,10 +41,11 @@ function protectRoom(snapshot:WireSnapshot){if(remote&&snapshot.actors.some(acto
 function check(label:string,assertions:()=>void){assertions();checks.push(label);console.log(`PASS ${label}`);}
 async function unusedPort(){const server=createServer();await new Promise<void>((done,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',done);});const port=(server.address() as {port:number}).port;await new Promise<void>(done=>server.close(()=>done()));return port;}
 async function delayRelay(serverPort:number){
- const schedule=(fn:()=>void)=>{const timer=setTimeout(()=>{relayTimers.delete(timer);fn();},80);relayTimers.add(timer);};
  relay=createServer(client=>{
   const upstream=createConnection({host:'127.0.0.1',port:serverPort});
   for(const [source,target]of [[client,upstream],[upstream,client]]){
+   let lastDelivery=0;
+   const schedule=(fn:()=>void)=>{const now=performance.now(),extra=source===client?relayBurst.up:relayBurst.down;lastDelivery=Math.max(lastDelivery,now+80+extra);const timer=setTimeout(()=>{relayTimers.delete(timer);fn();},Math.max(0,lastDelivery-now));relayTimers.add(timer);};
    relaySockets.add(source);source.on('close',()=>relaySockets.delete(source));source.on('error',()=>target.destroy());
    source.on('data',bytes=>schedule(()=>{if(!target.destroyed)target.write(bytes);}));source.on('end',()=>schedule(()=>target.end()));
   }
@@ -51,7 +57,7 @@ function user(name:string,faction:Faction,relayPort?:number){
  let actorId=-1,snapshot:WireSnapshot|undefined;
  const network=new NetworkClient(game,{origin:base,storage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>void storage.set(k,v),removeItem:k=>void storage.delete(k)},socket:url=>{
   const destination=new URL(url);if(relayPort)destination.port=String(relayPort);
-  const socket=new WebSocket(destination);socket.addEventListener('message',({data})=>{const message=JSON.parse(String(data));messages.push(message);if(message.type==='joined'){actorId=message.actorId;snapshot=message.snapshot;protectRoom(snapshot!);}if(message.type==='snapshot'){snapshot=message;protectRoom(snapshot!);}});return socket;
+  const socket=new WebSocket(destination);socket.addEventListener('message',({data})=>{const message=JSON.parse(String(data));messages.push(message);if(message.type==='joined'){actorId=message.actorId;snapshot=message.snapshot;protectRoom(snapshot!);}if(message.type==='snapshot'){snapshot=decodeSnapshot(message) as WireSnapshot;protectRoom(snapshot!);}});return socket;
  }});
  network.onChat=message=>chat.push(message.message);network.onFailure=message=>failures.push(message);
  return{name,faction,game,network,storage,messages,chat,failures,input:{...idle},get actorId(){return actorId;},get snapshot(){assert.ok(snapshot);return snapshot;},get authority(){assert.ok(snapshot);return snapshot.actors.find(actor=>actor.id===actorId)!;}};
@@ -104,19 +110,47 @@ function aim(shooter:User,point:Vec){const p=shooter.game.player,eye=shooter.gam
 async function shoot(shooter:User,target:User,part:'head'|'leg'){
  await until(()=>shooter.authority.cooldown===0&&target.authority.spawnSafe===0,'weapon recovery and spawn protection');
  aim(shooter,aimPoint(shooter,target,part));await until(()=>shooter.authority.ads&&shooter.authority.moving<.01&&target.authority.moving<.01,'stationary authoritative ADS');await delay(500);const intended=aimPoint(shooter,target,part);aim(shooter,intended);
+ const observer=users.find(u=>u!==shooter&&u!==target&&u.authority.spectator);assert.ok(observer,'an independent spectator observes authoritative effects');
+ const effectMark=observer.game.events.length,shownShooter=actorOn(observer,shooter.name),shownTarget=actorOn(observer,target.name);
  const marks=users.map(u=>u.messages.length),ammo=shooter.authority.ammo;shooter.network.fire();
  await until(()=>users.every((u,i)=>events(u,marks[i]).some(e=>e.type==='shot'&&e.actor===shooter.actorId)),`${shooter.name} shot delivered to all three adapters`);
  const shots=users.map((u,i)=>events(u,marks[i]).find(e=>e.type==='shot'&&e.actor===shooter.actorId).shot);
+ // Raw delivery alone cannot prove that the strict adapter accepted the event.
+ // A spectator generates no predicted attacks, so this observes the actual
+ // application effect queue consumed by graphics/audio in the browser.
+ const renderedShots=()=>observer.game.events.slice(effectMark).filter(event=>event.type==='shot'&&event.actor===shownShooter.id&&event.shot?.time===shots[0].time);
+ await until(()=>renderedShots().length>0,`${shooter.name} authoritative shot reaches spectator game.events`);
+ check(`${shooter.name} ${part} shot reaches the frontend effect queue exactly once`,()=>{
+  assert.equal(observer.game.player.spectator,true);assert.notEqual(shownShooter.id,0);
+  assert.equal(renderedShots().length,1);assert.deepEqual(renderedShots()[0].shot,{...shots[0],actor:shownShooter.id,hit:shownTarget.id});
+  assert.equal(renderedShots()[0].actorName,shooter.name);
+ });
+ authoritativeEffects.push({observer:observer.name,actor:shooter.name,type:'shot',serverTime:shots[0].time});
  await until(()=>shooter.authority.ammo===ammo-1,'authoritative ammunition consumption');
  if(shots[0].hit!==target.actorId)console.error('Shot geometry mismatch',JSON.stringify({intended,shot:shots[0],shooter:{position:shooter.game.eye(shooter.authority),yaw:shooter.authority.yaw,pitch:shooter.authority.pitch,ads:shooter.authority.ads},target:{id:target.authority.id,x:target.authority.x,y:target.authority.y,z:target.authority.z,yaw:target.authority.yaw,pose:target.authority.pose}},null,2));
  check(`${shooter.name} ${part} shot agrees on all three connections`,()=>{for(const shot of shots)assert.deepEqual(shots[0],shot);assert.equal(shots[0].hit,target.actorId);assert.equal(shots[0].headshot,part==='head');assert.equal(shooter.authority.ammo,ammo-1);});
  combat.push({shooter:shooter.name,victim:target.name,part,serverTime:shots[0].time,headshot:shots[0].headshot});
+}
+async function reloadObserved(shooter:User,target:User){
+ const observer=users.find(u=>u!==shooter&&u!==target&&u.authority.spectator);assert.ok(observer);
+ await until(()=>shooter.authority.cooldown===0,'bolt recovery before reload');
+ const actor=actorOn(observer,shooter.name),mark=observer.game.events.length,ammo=shooter.authority.ammo,total=ammo+shooter.authority.reserve;
+ shooter.network.setADS(false);shooter.network.reload();
+ const reloads=()=>observer.game.events.slice(mark).filter(event=>event.type==='reload'&&event.actor===actor.id);
+ await until(()=>reloads().length>0&&users.every(u=>actorOn(u,shooter.name).reload>0),`${shooter.name} authoritative reload reaches spectator game.events`);
+ check(`${shooter.name} reload reaches the frontend effect queue exactly once`,()=>{
+  assert.equal(observer.game.player.spectator,true);assert.notEqual(actor.id,0);assert.equal(reloads().length,1);assert.equal(reloads()[0].actorName,shooter.name);
+ });
+ await until(()=>shooter.authority.reload===0&&shooter.authority.ammo>ammo,`${shooter.name} reload completes authoritatively`,8000);
+ check(`${shooter.name} reload transfers ammunition without duplicate effects`,()=>{assert.equal(shooter.authority.ammo+shooter.authority.reserve,total);assert.equal(reloads().length,1);});
+ authoritativeEffects.push({observer:observer.name,actor:shooter.name,type:'reload'});
 }
 async function fight(shooter:User,target:User){
  await navigate(shooter,target);const deaths=target.authority.deaths,kills=shooter.authority.kills;
  await shoot(shooter,target,'leg');
  await until(()=>users.every(u=>actorOn(u,target.name).hp>0&&actorOn(u,target.name).hp<100),'all adapters show nonfatal damage');
  check(`${target.name} survives limb damage with matching health`,()=>{assert.equal(actorOn(shooter,target.name).hp,target.game.player.hp);assert.equal(target.authority.alive,true);assert.equal(target.authority.deaths,deaths);assert.equal(shooter.authority.kills,kills);});
+ await reloadObserved(shooter,target);
  await shoot(shooter,target,'head');
  await until(()=>users.every(u=>actorOn(u,target.name).deaths===deaths+1&&!actorOn(u,target.name).alive&&actorOn(u,shooter.name).kills===kills+1),'all adapters agree on death and scores');
  check(`${target.name} death, killer score and killcam are authoritative`,()=>{for(const u of users){assert.equal(actorOn(u,target.name).hp,0);assert.ok(events(u).some(e=>e.type==='kill'&&e.actor===shooter.actorId&&e.victim===target.actorId));}assert.equal(target.game.state,'killcam');});
@@ -130,7 +164,7 @@ try{
  let relayPort:number|undefined;
  if(!remote){
   temporary=await mkdtemp(join(tmpdir(),'bolts-real-clients-'));dbPath=join(temporary,'events.sqlite');const port=await unusedPort();base=`http://127.0.0.1:${port}`;
-  backend=spawn(resolve(root,'server/target/debug/bolts-server'),[],{cwd:root,env:{...process.env,BOLTS_BIND:`127.0.0.1:${port}`,BOLTS_DB:dbPath,BOLTS_EMPTY_SECONDS:'2',BOLTS_RECONNECT_SECONDS:'1'},stdio:['ignore','pipe','pipe']});
+  backend=spawn(backendPath,[],{cwd:root,env:{...process.env,BOLTS_BIND:`127.0.0.1:${port}`,BOLTS_DB:dbPath,BOLTS_EMPTY_SECONDS:'2',BOLTS_RECONNECT_SECONDS:'1'},stdio:['ignore','pipe','pipe']});
   backend.stdout!.on('data',chunk=>{diagnostics=(diagnostics+chunk).slice(-12000);});backend.stderr!.on('data',chunk=>{diagnostics=(diagnostics+chunk).slice(-12000);});backend.on('error',error=>{diagnostics+=error.message;});
   relayPort=await delayRelay(port);
  }
@@ -158,11 +192,32 @@ try{
  const onlineThree=await community.status();check('online count includes all three connected humans',()=>{if(!remote)assert.equal(onlineThree,onlineBefore+3);else assert.ok(onlineThree>=3);});
  await until(()=>users.every(u=>u.game.actors.every(actor=>Number.isInteger(actor.ping))),'server-measured ping on all three humans',10000);
  check(remote?'all production clients receive bounded server-measured human RTTs':'each scoreboard row has its own server-measured RTT across a delayed connection',()=>{for(const u of users){const fast=actorOn(u,a.name).ping!,slow=actorOn(u,b.name).ping!,observerPing=actorOn(u,observer.name).ping!;for(const ping of [fast,slow,observerPing])assert.ok(ping>=0&&ping<=999);if(!remote){assert.ok(slow>=140);assert.ok(slow-fast>100,'the remote delayed row cannot reuse the local connection ping');}latencyEvidence.push({observer:u.name,alphaMs:fast,betaMs:slow,observerMs:observerPing});}});
+ if(!remote){
+  // Exercise the real HTTP/SQLite path while clients continue receiving ticks.
+  // Spectators keep combat out of the measurement; this never touches live DBs.
+  await community.leaderboard();
+  const locker=new DatabaseSync(dbPath);locker.exec('BEGIN IMMEDIATE');
+  const mark=a.messages.length,startTick=a.snapshot.tick,start=performance.now();let finished=false;
+  const visit=fetch(base+'/api/visits',{method:'POST',headers:{'content-type':'application/json',origin:'http://127.0.0.1:5173'},body:JSON.stringify({visitorId:crypto.randomUUID()})}).then(response=>{finished=true;return response;});
+  try{
+   await delay(300);
+   const frames=a.messages.slice(mark).filter(m=>m.type==='snapshot');
+   check('SQLite writer contention does not stop authoritative snapshots',()=>{assert.equal(finished,false,'visitor waits for persistence');assert.ok(frames.length>=3,`received ${frames.length} snapshots during writer lock`);assert.ok(a.snapshot.tick-startTick>=9,'authority continues advancing fixed ticks');});
+   netcodeEvidence.storageLock={milliseconds:performance.now()-start,snapshots:frames.length,ticks:a.snapshot.tick-startTick};
+  }finally{locker.exec('ROLLBACK');locker.close();}
+  assert.equal((await visit).status,204);
+  // Ordered TCP stalls in each direction, followed by normal traffic. This is
+  // separate from the unit clock tests and exercises actual browser adapters.
+  relayBurst={up:100,down:150};await delay(200);relayBurst={up:0,down:0};await delay(1200);
+  check('all adapters recover after asymmetric ordered delivery stalls',()=>{for(const u of users){assert.equal(u.network.connected,true);assert.deepEqual(u.failures,[]);}assert.ok(b.network.diagnostics.remoteBufferedMs<500,'playback does not retain a growing stale-state backlog');});
+  netcodeEvidence.afterOrderedStall=users.map(u=>({name:u.name,...u.network.diagnostics}));
+ }
  a.network.setFaction(a.faction);b.network.setFaction(b.faction);await until(()=>users.every(u=>!actorOn(u,a.name).spectator&&!actorOn(u,b.name).spectator&&actorOn(u,observer.name).spectator),'two combatants leave spectator mode and third remains observing');
  const bodies=remote?[`${a.name}: temporary QA <b>literal</b> ^3hello`,`${b.name}: temporary QA reply`]:['Alpha says <b>literal</b> ^3hello','Beta replies after joining'];
  a.network.chat(bodies[0]);b.network.chat(bodies[1]);await until(()=>users.every(u=>bodies.every(body=>u.chat.includes(body))),'bidirectional chat');
  check('chat from both combatants arrives verbatim for all three players',()=>{for(const u of users)assert.deepEqual([...u.chat].sort(),[...bodies].sort());});
  await fight(a,b);await fight(b,a);
+ check('spectator application effects contain four authoritative shots and two reloads',()=>{assert.equal(authoritativeEffects.filter(event=>event.type==='shot').length,4);assert.equal(authoritativeEffects.filter(event=>event.type==='reload').length,2);});
  check('all three clients agree on the final reciprocal combat totals',()=>{for(const u of users)for(const name of [a.name,b.name]){const actor=actorOn(u,name);assert.equal(actor.kills,1);assert.equal(actor.deaths,1);assert.equal(actor.shots,2);assert.equal(actor.hits,2);}});
  const board=await community.leaderboard();
  check('both leaderboard periods match combat totals and omit default and AI names',()=>{for(const rows of [board.allTime,board.last24Hours]){for(const name of [a.name,b.name]){const row=rows.find(row=>row.name===name);assert.ok(row);assert.equal(row.kills,1);assert.equal(row.deaths,1);}const watching=rows.find(row=>row.name===observer.name);assert.ok(watching);assert.equal(watching.kills,0);assert.equal(watching.deaths,0);assert.ok(rows.every(row=>row.name.toLowerCase()!=='unknown soldier'));if(!remote)assert.ok(rows.every(row=>!row.name.startsWith('[AI]')));}});
@@ -195,7 +250,7 @@ try{
   check('production QA clients disconnected and their room is empty',()=>assert.ok(inventoryAfter));
  }
  check('none of the three adapters experienced a connection failure',()=>{for(const u of users)assert.deepEqual(u.failures,[]);});
- const report={passed:true,mode:remote?'production QA':'isolated local',endpoint:base,lobbyId:qaLobbyId,startedAt:new Date(started).toISOString(),durationSeconds:(Date.now()-started)/1000,...(!remote?{backendSha256:createHash('sha256').update(await readFile(resolve(root,'server/target/debug/bolts-server'))).digest('hex')}:{inventoryBefore,inventoryAfter}),delayRelayMsEachDirection:remote?0:80,latencyEvidence,online:{before:onlineBefore,oneHuman:onlineOne,threeHumans:onlineThree,after:onlineAfter},checks,combat,persisted};
+ const report={passed:true,mode:remote?'production QA':'isolated local',endpoint:base,lobbyId:qaLobbyId,startedAt:new Date(started).toISOString(),durationSeconds:(Date.now()-started)/1000,...(!remote?{backendSha256:createHash('sha256').update(await readFile(backendPath)).digest('hex')}:{inventoryBefore,inventoryAfter}),delayRelayMsEachDirection:remote?0:80,latencyEvidence,netcodeEvidence,authoritativeEffects,online:{before:onlineBefore,oneHuman:onlineOne,threeHumans:onlineThree,after:onlineAfter},checks,combat,persisted};
  const reportPath=remote?'artifacts/multiplayer-remote-e2e.json':'artifacts/multiplayer-client-e2e.json';
  await mkdir(resolve(root,'artifacts'),{recursive:true});await writeFile(resolve(root,reportPath),JSON.stringify(report,null,2)+'\n');
  console.log(`Multiplayer adapter combat: ${checks.length} checks passed; report ${reportPath}.`);

@@ -13,7 +13,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use futures_util::SinkExt;
+use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -21,7 +21,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::sync::{Mutex, Semaphore, mpsc, watch};
+use tokio::sync::{Mutex, Semaphore, watch};
 use tower_http::cors::CorsLayer;
 pub type Shared = Arc<Mutex<Hub>>;
 // Count upgrades waiting for hello as well as authenticated sockets. A guard
@@ -66,14 +66,15 @@ pub fn router(state: Shared) -> Router {
         .with_state(state)
 }
 async fn health(State(state): State<Shared>) -> Response {
-    if state.lock().await.failed {
+    let h = state.lock().await;
+    if h.failed || h.shutting_down {
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"ok":false,"version":1})),
+            Json(json!({"ok":false,"version":2})),
         )
             .into_response()
     } else {
-        Json(json!({"ok":true,"version":1})).into_response()
+        Json(json!({"ok":true,"version":2})).into_response()
     }
 }
 fn peer(h: &Hub, address: SocketAddr, headers: &HeaderMap) -> String {
@@ -111,7 +112,7 @@ async fn session(
     Json(body): Json<SessionRequest>,
 ) -> Response {
     let mut h = state.lock().await;
-    if h.failed {
+    if h.failed || h.shutting_down {
         return unavailable();
     }
     if !h.allowed_origin(origin(&headers)) {
@@ -125,7 +126,9 @@ async fn session(
         )
             .into_response();
     }
-    match h.db.session(body.token.as_deref()) {
+    let storage = h.db.clone();
+    drop(h);
+    match storage.request(move |db| Ok(db.session(body.token.as_deref())?)).await {
         Ok(Some((player, token))) => Json(json!({"playerId":player,"token":token})).into_response(),
         Ok(None) => (
             StatusCode::UNAUTHORIZED,
@@ -134,7 +137,6 @@ async fn session(
             .into_response(),
         Err(e) => {
             tracing::error!(error=%e,"identity persistence failed");
-            h.fail();
             unavailable()
         }
     }
@@ -145,7 +147,7 @@ async fn lobbies(
     headers: HeaderMap,
 ) -> Response {
     let mut h = state.lock().await;
-    if h.failed {
+    if h.failed || h.shutting_down {
         return unavailable();
     }
     if !h.allowed_origin(origin(&headers)) {
@@ -171,7 +173,7 @@ fn community_access(
     route: &str,
     limit: usize,
 ) -> Option<Response> {
-    if h.failed {
+    if h.failed || h.shutting_down {
         return Some(unavailable());
     }
     if !h.allowed_origin(origin(headers)) {
@@ -209,11 +211,12 @@ async fn leaderboard(
     if let Some(response) = community_access(&mut h, address, &headers, "leaderboard", 30) {
         return response;
     }
-    match h.db.leaderboard(crate::db::now_ms()) {
+    let storage = h.db.clone();
+    drop(h);
+    match storage.request(|db| Ok(db.leaderboard(crate::db::now_ms())?)).await {
         Ok(board) => Json(board).into_response(),
         Err(e) => {
             tracing::error!(error=%e,"leaderboard persistence failed");
-            h.fail();
             unavailable()
         }
     }
@@ -245,7 +248,9 @@ async fn visit(
     let Some(visitor_id) = body.visitor_id() else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    match h.db.record_visit(&visitor_id, crate::db::now_ms()) {
+    let storage = h.db.clone();
+    drop(h);
+    match storage.request(move |db| Ok(db.record_visit(&visitor_id, crate::db::now_ms())?)).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             // Analytics are optional: a failed heartbeat must never end games.
@@ -325,7 +330,9 @@ async fn feedback(
         }
     };
     let ip_hash = h.fingerprint(&format!("feedback:{}", peer(&h, address, &headers)));
-    match h.db.feedback(&message, email.as_deref(), &ip_hash) {
+    let storage = h.db.clone();
+    drop(h);
+    match storage.request(move |db| Ok(db.feedback(&message, email.as_deref(), &ip_hash)?)).await {
         Ok(Some(id)) => (StatusCode::CREATED, Json(json!({"id":id}))).into_response(),
         Ok(None) => (
             StatusCode::TOO_MANY_REQUESTS,
@@ -334,7 +341,6 @@ async fn feedback(
             .into_response(),
         Err(e) => {
             tracing::error!(error=%e,"feedback persistence failed");
-            h.fail();
             unavailable()
         }
     }
@@ -349,7 +355,7 @@ async fn upgrade(
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     };
     let mut h = state.lock().await;
-    if h.failed {
+    if h.failed || h.shutting_down {
         return unavailable();
     }
     if !h.allowed_origin(origin(&headers)) {
@@ -439,10 +445,10 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
     let Some(hello) = hello else {
         return;
     };
-    if hello["type"] != "hello" || hello["version"] != 1 {
+    if hello["type"] != "hello" || hello["version"] != 2 {
         let _ = socket
             .send(Message::Text(
-                error("unauthenticated", "Protocol mismatch.")
+                error("protocol_mismatch", "Reload Bolts to update.")
                     .to_string()
                     .into(),
             ))
@@ -452,54 +458,63 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
     let Some(token) = hello["token"].as_str() else {
         return;
     };
-    let player = match state.lock().await.db.authenticate(token) {
+    let storage = state.lock().await.db.clone();
+    let token = token.to_owned();
+    let player = match storage.request(move |db| Ok(db.authenticate(&token)?)).await {
         Ok(Some(p)) => p,
-        _ => {
-            let _ = socket
-                .send(Message::Text(
-                    error("unauthenticated", "Session expired.")
-                        .to_string()
-                        .into(),
-                ))
-                .await;
+        result => {
+            let message = match result {
+                Ok(None) => error("unauthenticated", "Session expired."),
+                Err(error) => {
+                    tracing::warn!(%error, "authentication storage unavailable");
+                    // A transient queue/disk failure must not erase the browser's
+                    // persistent player credential as an expired token would.
+                    crate::hub::error("server_busy", "Server unavailable.")
+                }
+                Ok(Some(_)) => unreachable!(),
+            };
+            let _ = socket.send(Message::Text(message.to_string().into())).await;
             return;
         }
     };
     let cid = crate::db::id();
-    let (tx, mut rx) = mpsc::channel::<String>(64);
+    let (tx, outgoing) = crate::transport::channel();
     let (cancel, mut cancelled) = watch::channel::<Option<String>>(None);
     {
         let mut h = state.lock().await;
-        if let Err(e) = h.register(&player, cid.clone(), tx, cancel, &ip, &ua) {
+        if h.failed || h.shutting_down { return; }
+        if let Err(e) = h.register(&player, cid.clone(), tx.clone(), cancel.clone(), &ip, &ua) {
             tracing::error!(error=%e,"connection persistence failed");
             h.fail();
             return;
         }
-        h.send(&player, json!({"type":"welcome","playerId":player}));
+        h.send(&player, json!({"type":"welcome","version":2,"playerId":player}));
     }
+    let (sink, mut incoming) = socket.split();
+    let mut writer = tokio::spawn(crate::transport::write_socket(sink, outgoing, cancelled.clone()));
     let idle = tokio::time::sleep(Duration::from_secs(30));
     tokio::pin!(idle);
     let mut ping = tokio::time::interval(Duration::from_secs(3));
     ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {
-         _ = cancelled.changed() => { let reason=cancelled.borrow().clone().unwrap_or_else(||"server_stop".into()); let _=socket.send(Message::Text(error(&reason,if reason=="session_replaced"{"Connected in another tab."}else{"Connection closed."}).to_string().into())).await; let _=socket.send(Message::Close(Some(axum::extract::ws::CloseFrame{code:if reason=="session_replaced"{4001}else{4002},reason:reason.into()}))).await; break; },
+         _ = cancelled.changed() => break,
+         _ = &mut writer => break,
          _=&mut idle=>break,
          _=ping.tick()=>{
           let nonce=state.lock().await.ping(&player,&cid,Instant::now());
           if let Some(nonce)=nonce
-           && !matches!(tokio::time::timeout(Duration::from_secs(3),socket.send(Message::Ping(nonce.into()))).await,Ok(Ok(()))){break;}
+           && !tx.control(Message::Ping(nonce.into())) { break; }
          },
-         outgoing=rx.recv()=>{let Some(text)=outgoing else{break;};if !matches!(tokio::time::timeout(Duration::from_secs(3),socket.send(Message::Text(text.into()))).await,Ok(Ok(()))){break;}},
-         incoming=socket.recv()=>{
+         received=incoming.next()=>{
           idle.as_mut().reset(tokio::time::Instant::now()+Duration::from_secs(30));
-          let text=match incoming {Some(Ok(Message::Text(text)))=>text,Some(Ok(Message::Ping(v)))=>{let _=socket.send(Message::Pong(v)).await;continue;},Some(Ok(Message::Pong(v)))=>{state.lock().await.pong(&player,&cid,&v,Instant::now());continue;},_=>break};
-          let mut h=state.lock().await;if h.failed||!h.connections.get(&player).is_some_and(|e|e.cid==cid){break;}
+          let text=match received {Some(Ok(Message::Text(text)))=>text,Some(Ok(Message::Ping(v)))=>{if !tx.control(Message::Pong(v)){break;}continue;},Some(Ok(Message::Pong(v)))=>{state.lock().await.pong(&player,&cid,&v,Instant::now());continue;},_=>break};
+          let mut h=state.lock().await;if h.failed||h.shutting_down||!h.connections.get(&player).is_some_and(|e|e.cid==cid){break;}
           if !h.allow(format!("ws:{cid}"),150,1){h.send(&player,error("rate_limited","Too many messages."));break;}
           let value=match serde_json::from_str::<Value>(&text){Ok(v)=>v,Err(_)=>{h.send(&player,error("invalid_message","Invalid message."));continue;}};
           let result:crate::hub::HResult<()>=match value["type"].as_str(){
            Some("join")=>{if h.allow(format!("join:{player}"),10,10){let faction=serde_json::from_value::<Faction>(value["faction"].clone());let spectator=serde_json::from_value::<bool>(value.get("spectator").cloned().unwrap_or(json!(false)));match (faction,spectator){(Ok(faction),Ok(spectator))=>h.join(&player,&cid,value["lobbyId"].as_str(),value["name"].as_str().unwrap_or(DEFAULT_PLAYER_NAME),faction,spectator),_=>Err("invalid_message".into())}}else{Err("rate_limited".into())}},
-           Some("input")=>match serde_json::from_value::<InputFrame>(value){Ok(input)=>{h.input(&player,input);Ok(())},Err(_)=>Err("invalid_message".into())},
+           Some("input")=>match serde_json::from_value::<InputFrame>(value){Ok(input) if input.tick.is_some() && input.generation.is_some()=>{h.input(&player,input);Ok(())},_=>Err("invalid_message".into())},
            Some("chat")=>h.chat(&player,&cid,value["text"].as_str().unwrap_or("")),
            Some("profile")=>if h.allow(format!("profile:{player}"),6,10){h.profile(&player,value["name"].as_str().unwrap_or(DEFAULT_PLAYER_NAME))}else{Err("rate_limited".into())},
            Some("loadout")=>if h.allow(format!("loadout:{player}"),3,10){match serde_json::from_value::<Faction>(value["faction"].clone()){Ok(f)=>h.loadout(&player,f),Err(_)=>Err("invalid_message".into())}}else{Err("rate_limited".into())},
@@ -512,7 +527,10 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
          }
         }
     }
-    let _ = socket.close().await;
+    if cancel.borrow().is_none() { let _ = cancel.send(Some("connection_closed".into())); }
+    if !writer.is_finished() {
+        if tokio::time::timeout(Duration::from_millis(300), &mut writer).await.is_err() { writer.abort(); }
+    }
     let mut h = state.lock().await;
     if let Err(e) = h.disconnected(&player, &cid) {
         tracing::error!(error=%e,"disconnect persistence failed");

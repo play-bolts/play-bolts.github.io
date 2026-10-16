@@ -170,8 +170,8 @@ async fn visits_reject_invalid_uuids_unknown_fields_and_oversized_bodies() {
             .lock()
             .await
             .db
-            .conn
-            .query_row("SELECT count(*) FROM visitors", [], |r| r.get::<_, i64>(0))
+            .test_conn()
+            .query_row("SELECT count(*) FROM visitors", &[], |r| r.get::<_, i64>(0))
             .unwrap(),
         0
     );
@@ -203,8 +203,8 @@ async fn visits_are_server_timed_canonicalized_and_limited_per_network() {
     assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
     let h = server.state.lock().await;
     let row =
-        h.db.conn
-            .query_row("SELECT id,first_seen,last_seen FROM visitors", [], |r| {
+        h.db.test_conn()
+            .query_row("SELECT id,first_seen,last_seen FROM visitors", &[], |r| {
                 Ok((
                     r.get::<_, String>(0)?,
                     r.get::<_, i64>(1)?,
@@ -215,14 +215,14 @@ async fn visits_are_server_timed_canonicalized_and_limited_per_network() {
     assert_eq!(row.0, id.to_string());
     assert!(row.1 >= before && row.2 <= after && row.2 >= row.1);
     assert_eq!(
-        h.db.conn
-            .query_row("SELECT count(*) FROM visitors", [], |r| r.get::<_, i64>(0))
+        h.db.test_conn()
+            .query_row("SELECT count(*) FROM visitors", &[], |r| r.get::<_, i64>(0))
             .unwrap(),
         1
     );
     assert_eq!(
-        h.db.conn
-            .query_row("SELECT count(*) FROM players", [], |r| r.get::<_, i64>(0))
+        h.db.test_conn()
+            .query_row("SELECT count(*) FROM players", &[], |r| r.get::<_, i64>(0))
             .unwrap(),
         0
     );
@@ -233,7 +233,7 @@ async fn visitor_database_failure_does_not_fail_games_or_health() {
     let server = Server::new().await;
     {
         let h = server.state.lock().await;
-        h.db.conn.execute_batch("CREATE TRIGGER fail_visits BEFORE INSERT ON visitors BEGIN SELECT RAISE(ABORT,'test analytics failure'); END;").unwrap();
+        h.db.test_conn().execute_batch("CREATE TRIGGER fail_visits BEFORE INSERT ON visitors BEGIN SELECT RAISE(ABORT,'test analytics failure'); END;").unwrap();
     }
     let client = reqwest::Client::new();
     let response = client
@@ -263,4 +263,68 @@ async fn visitor_database_failure_does_not_fail_games_or_health() {
         .await
         .unwrap();
     assert_eq!(session.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn blocked_visitor_write_does_not_hold_hub_lock_or_stop_snapshot_progress() {
+    use std::sync::atomic::Ordering;
+    let server = Server::new().await;
+    let (storage, database, metrics, _outgoing, _cancelled) = {
+        let mut hub = server.state.lock().await;
+        let (player, _) = hub.db.session(None).unwrap().unwrap();
+        let (outbox, outgoing) = crate::transport::channel();
+        let metrics = outbox.metrics.clone();
+        let (cancel, cancelled) = watch::channel(None);
+        let cid = crate::db::id();
+        hub.register(&player, cid.clone(), outbox, cancel, "test", "test")
+            .unwrap();
+        hub.join(
+            &player,
+            &cid,
+            None,
+            "Storage test",
+            crate::sim::Faction::British,
+            true,
+        )
+        .unwrap();
+        (
+            hub.db.clone(),
+            hub.config.database.clone(),
+            metrics,
+            outgoing,
+            cancelled,
+        )
+    };
+    storage.request(|_| Ok(())).await.unwrap();
+    let lock = rusqlite::Connection::open(database).unwrap();
+    lock.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let url = format!("{}/api/visits", server.url);
+    let request = tokio::spawn(async move {
+        reqwest::Client::new()
+            .post(url)
+            .header("origin", ORIGIN)
+            .json(&json!({"visitorId":uuid::Uuid::new_v4()}))
+            .send()
+            .await
+            .unwrap()
+    });
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    assert!(!request.is_finished(), "SQLite writer is deliberately held");
+    let before = Instant::now();
+    for _ in 0..18 {
+        tokio::time::timeout(Duration::from_millis(100), server.state.lock())
+            .await
+            .unwrap()
+            .tick()
+            .unwrap();
+    }
+    assert!(before.elapsed() < Duration::from_millis(150));
+    assert_eq!(metrics.snapshots_published.load(Ordering::Relaxed), 6);
+    assert!(
+        !request.is_finished(),
+        "simulation progressed while persistence still waited"
+    );
+    lock.execute_batch("ROLLBACK").unwrap();
+    assert_eq!(request.await.unwrap().status(), StatusCode::NO_CONTENT);
+    storage.drain().await.unwrap();
 }

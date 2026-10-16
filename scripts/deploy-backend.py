@@ -55,6 +55,7 @@ def prepare():
         *sorted((ROOT / 'server/src').glob('*.rs')),
         ROOT / 'src/generated/hitboxData.json',
         ROOT / 'src/generated/handCollisionData.json',
+        ROOT / 'shared/actor-fields.json',
         *[ROOT / 'infra' / name for name in [
             'install-release.sh', 'backup.py', 'bolts.service', 'bolts-backup.service', 'bolts-backup.timer',
         ]],
@@ -339,7 +340,7 @@ def verify_edge(url):
         try:
             with urllib.request.urlopen(url + '/api/health', timeout=10) as response:
                 result = json.load(response)
-                if result.get('ok') is True and result.get('version') == 1:
+                if result.get('ok') is True and result.get('version') == 2:
                     print(f'Backend ready: {url}', flush=True)
                     return
         except (OSError, ValueError):

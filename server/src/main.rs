@@ -1,8 +1,9 @@
 use bolts_server::{
     app,
     hub::{Config, Hub},
+    tick_clock::{STEP, TickClock},
 };
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -24,24 +25,75 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         initial.internal_token = Some(token);
     }
     let hub = Arc::new(Mutex::new(initial));
+    // Router construction reads immutable origin policy with try_lock; finish
+    // it before the simulation task can acquire the shared state.
+    let application = app::router(hub.clone());
     let runner = hub.clone();
     let fatal = Arc::new(tokio::sync::Notify::new());
     let tick_fatal = fatal.clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs_f64(1.0 / 60.0));
+    let (stop_ticks, mut stopping) = tokio::sync::watch::channel(false);
+    let tick_task = tokio::spawn(async move {
+        let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + STEP, STEP);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut previous = Instant::now();
+        let mut clock = TickClock::default();
+        let mut report_at = previous;
+        let (mut catch_up, mut dropped, mut maximum_lock_ms, mut maximum_tick_ms) =
+            (0_u64, 0_u64, 0.0_f64, 0.0_f64);
         loop {
-            interval.tick().await;
-            let mut h = runner.lock().await;
-            if h.failed {
-                tick_fatal.notify_one();
-                break;
+            tokio::select! {
+                biased;
+                _ = stopping.changed() => break,
+                _ = interval.tick() => {},
             }
-            if let Err(error) = h.tick() {
-                tracing::error!(%error,"persistent event failure; game service stopped");
-                h.fail();
-                tick_fatal.notify_one();
-                break;
+            let now = Instant::now();
+            let batch = clock.advance(now.saturating_duration_since(previous));
+            previous = now;
+            catch_up += u64::from(batch.steps.saturating_sub(1));
+            dropped += batch.dropped;
+            for _ in 0..batch.steps {
+                if *stopping.borrow() {
+                    return;
+                }
+                let waiting = Instant::now();
+                let mut h = runner.lock().await;
+                let started = Instant::now();
+                maximum_lock_ms =
+                    maximum_lock_ms.max(started.duration_since(waiting).as_secs_f64() * 1000.0);
+                if h.failed {
+                    tick_fatal.notify_one();
+                    return;
+                }
+                if let Err(error) = h.tick() {
+                    tracing::error!(%error,"persistent event failure; game service stopped");
+                    h.fail();
+                    tick_fatal.notify_one();
+                    return;
+                }
+                maximum_tick_ms = maximum_tick_ms.max(started.elapsed().as_secs_f64() * 1000.0);
+                drop(h);
+                // Catch-up cannot monopolize admission or incoming commands.
+                if batch.steps > 1 {
+                    tokio::task::yield_now().await;
+                }
+            }
+            if now.duration_since(report_at).as_secs() >= 5 {
+                tracing::debug!(
+                    catch_up_ticks = catch_up,
+                    dropped_ticks = dropped,
+                    max_lock_ms = maximum_lock_ms,
+                    max_tick_ms = maximum_tick_ms,
+                    pending_ticks = batch.pending,
+                    "simulation timing"
+                );
+                if dropped > 0 {
+                    tracing::warn!(
+                        dropped_ticks = dropped,
+                        "simulation overload exceeded bounded catch-up"
+                    );
+                }
+                (catch_up, dropped, maximum_lock_ms, maximum_tick_ms) = (0, 0, 0.0, 0.0);
+                report_at = now;
             }
         }
     });
@@ -50,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!(%bind,"Bolts multiplayer listening");
     axum::serve(
         listener,
-        app::router(hub.clone()).into_make_service_with_connect_info::<SocketAddr>(),
+        application.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(async move {
         #[cfg(unix)]
@@ -64,8 +116,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         {
             tokio::select! {_=tokio::signal::ctrl_c()=>{},_=fatal.notified()=>{}}
         }
-        if let Err(error) = shutdown_hub.lock().await.shutdown() {
+        let _ = stop_ticks.send(true);
+        let _ = tick_task.await;
+        let storage = {
+            let mut hub = shutdown_hub.lock().await;
+            if let Err(error) = hub.shutdown() {
+                tracing::error!(%error, "shutdown persistence failed; recovery will run on restart");
+                hub.fail();
+            }
+            hub.db.clone()
+        };
+        if let Err(error) = storage.drain().await {
             tracing::error!(%error, "shutdown persistence failed; recovery will run on restart");
+            shutdown_hub.lock().await.fail();
         }
     })
     .await?;

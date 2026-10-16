@@ -404,11 +404,11 @@ func TestRealRustAdmissionHeartbeatReconnectAndReplication(t *testing.T) {
 		t.Cleanup(func() { c.Close() })
 		c.SetReadDeadline(time.Now().Add(6 * time.Second))
 		ticket := remote.ticket(admission{Player: identity.PlayerID, Session: session, PlayerSession: "ps-test", Expires: time.Now().Add(time.Minute).Unix()})
-		if err = c.WriteJSON(map[string]any{"type": "hello", "version": 1, "token": ticket}); err != nil {
+		if err = c.WriteJSON(map[string]any{"type": "hello", "version": 2, "token": ticket}); err != nil {
 			t.Fatal(err)
 		}
 		var m map[string]any
-		if err = c.ReadJSON(&m); err != nil || m["type"] != "welcome" {
+		if err = c.ReadJSON(&m); err != nil || (m["type"] != "welcome" || m["version"] != float64(2)) {
 			t.Fatalf("welcome: %v %v", m, err)
 		}
 		c.WriteJSON(map[string]any{"type": "join", "lobbyId": session, "name": "Alice", "faction": "british"})
@@ -428,19 +428,41 @@ func TestRealRustAdmissionHeartbeatReconnectAndReplication(t *testing.T) {
 		return c.WriteControl(websocket.PongMessage, []byte(s), time.Now().Add(time.Second))
 	})
 	measured := false
-	for !measured {
-		var m struct {
-			Type   string `json:"type"`
-			Actors []struct {
-				Name string `json:"name"`
-				Ping *int   `json:"ping"`
-			} `json:"actors"`
+	fieldBytes, err := os.ReadFile("../../shared/actor-fields.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields []string
+	if err = json.Unmarshal(fieldBytes, &fields); err != nil {
+		t.Fatal(err)
+	}
+	nameIndex, pingIndex := -1, -1
+	for i, field := range fields {
+		if field == "name" {
+			nameIndex = i
 		}
+		if field == "ping" {
+			pingIndex = i
+		}
+	}
+	if nameIndex < 0 || pingIndex < 0 {
+		t.Fatal("missing actor fields")
+	}
+	for !measured {
+		var m map[string]any
 		if err = c.ReadJSON(&m); err != nil {
 			t.Fatal("no end-to-end heartbeat: ", err)
 		}
-		for _, a := range m.Actors {
-			if a.Name == "Alice" && a.Ping != nil && *a.Ping >= 70 {
+		if m["type"] != "snapshot" {
+			continue
+		}
+		if m["actorEncoding"] != "tuple-v1" {
+			t.Fatal("expected compact snapshot")
+		}
+		for _, item := range m["actors"].([]any) {
+			a := item.([]any)
+			ping, ok := a[pingIndex].(float64)
+			if a[nameIndex] == "Alice" && ok && ping >= 70 {
 				measured = true
 			}
 		}

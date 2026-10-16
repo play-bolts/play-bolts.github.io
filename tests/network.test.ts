@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {Game,createActor} from '../src/engine.ts';
 import {NetworkClient,type SocketLike,type WireActor,type WireSnapshot} from '../src/network.ts';
 import {MELEE_SECONDS,WEAPONS,HEIGHTS} from '../src/config.ts';
+import actorFields from '../shared/actor-fields.json';
 
 class MockSocket implements SocketLike {
  readyState=0;onopen:SocketLike['onopen']=null;onmessage:SocketLike['onmessage']=null;onerror:SocketLike['onerror']=null;onclose:SocketLike['onclose']=null;messages:any[]=[];closed=false;
@@ -13,23 +14,24 @@ class MockSocket implements SocketLike {
 }
 function actor(id:number,faction:WireActor['faction']='british'):WireActor {
  const {ai,...body}=createActor(id,faction,`Player ${id}`);
- const value={...body,ack:0,hipSpread:.08,x:12,z:id===42?0:4};
+ const value={...body,ack:0,spawnGeneration:1,hipSpread:.08,x:12,z:id===42?0:4};
  for(const [key,v]of Object.entries(value))if(typeof v==='number'&&!Number.isFinite(v))(value as any)[key]=-1000;
  return value;
 }
-function snapshot(tick=1,time=0,actors=[actor(7,'german'),actor(42)]):WireSnapshot{return{type:'snapshot',tick,time,remaining:300-time,roundNumber:1,ended:false,winner:null,actors,events:[]};}
+function snapshot(tick=1,time=0,actors=[actor(7,'german'),actor(42)]):WireSnapshot{return{type:'snapshot',inputTiming:'tick-v2',tick:Math.max(tick,Math.round(time*60)),time,remaining:300-time,roundNumber:1,ended:false,winner:null,actors,events:[]};}
+const sampleRemote=(client:NetworkClient,time:number)=>{client['playback'].time=time;client['interpolate']();};
 const idle={forward:0,right:0,jump:false,walk:false,lean:0};
 async function fixture(spectator=false){
  const game=new Game(),sockets:MockSocket[]=[],urls:string[]=[],requests:{url:string;init?:RequestInit}[]=[],storage=new Map<string,string>();let now=0;
  const client=new NetworkClient(game,{origin:'https://multiplayer.example.test',now:()=>now,storage:{getItem:key=>storage.get(key)??null,setItem:(k,v)=>void storage.set(k,v),removeItem:k=>void storage.delete(k)},fetch:async(url,init)=>{requests.push({url:String(url),init});return new Response(JSON.stringify({playerId:'6e1b12b2-133f-407f-a882-53065c83139f',token:'opaque-session-token-at-least-twenty-characters'}),{status:200});},socket:url=>{urls.push(url);const ws=new MockSocket();sockets.push(ws);return ws;}});
- const joining=client.join(undefined,'^3Chris','british',spectator);await new Promise(resolve=>setImmediate(resolve));const socket=sockets[0];socket.open();socket.receive({type:'welcome',playerId:'6e1b12b2-133f-407f-a882-53065c83139f'});const initial=snapshot();if(spectator)Object.assign(initial.actors[1],{spectator:true,alive:false,hp:0});socket.receive({type:'joined',lobbyId:'room-one',lobbyName:'Rommel Alpha',actorId:42,snapshot:initial});await joining;
+ const joining=client.join(undefined,'^3Chris','british',spectator);await new Promise(resolve=>setImmediate(resolve));const socket=sockets[0];socket.open();socket.receive({type:'welcome',version:2,playerId:'6e1b12b2-133f-407f-a882-53065c83139f'});const initial=snapshot();if(spectator)Object.assign(initial.actors[1],{spectator:true,alive:false,hp:0});socket.receive({type:'joined',lobbyId:'room-one',lobbyName:'Rommel Alpha',actorId:42,snapshot:initial});await joining;
  return{client,game,socket,sockets,urls,requests,storage,setNow:(value:number)=>{now=value;}};
 }
 test('network authentication keeps opaque token out of URLs and maps self to actor zero',async()=>{
  const {client,game,socket,urls,requests,storage}=await fixture();
  try{
   assert.equal(urls[0],'wss://multiplayer.example.test/api/ws');assert.equal(requests[0].url,'https://multiplayer.example.test/api/session');assert.deepEqual(JSON.parse(String(requests[0].init?.body)),{});
-  assert.deepEqual(socket.messages[0],{type:'hello',version:1,token:'opaque-session-token-at-least-twenty-characters'});assert.deepEqual(socket.messages[1],{type:'join',name:'^3Chris',faction:'british'});assert.equal(storage.size,1);
+  assert.deepEqual(socket.messages[0],{type:'hello',version:2,token:'opaque-session-token-at-least-twenty-characters'});assert.deepEqual(socket.messages[1],{type:'join',name:'^3Chris',faction:'british'});assert.equal(storage.size,1);
   assert.equal(game.player.id,0);assert.equal(game.player.name,'Player 42');assert.equal(game.actors[1].name,'Player 7');assert.equal(game.actors.length,2);assert.equal(game.state,'playing');
  }finally{client.disconnect();}
 });
@@ -48,7 +50,7 @@ test('prediction moves immediately, reconciles unacked inputs and never runs AI 
   game.update=()=>{throw new Error('Online must not run the local AI simulation');};game.damage=()=>{throw new Error('Online must not author damage');};
   const start=game.player.z;setNow(17);client.update(1/60,{...idle,forward:1});setNow(34);client.update(1/60,{...idle,forward:1});assert.ok(game.player.z>start+.15);
   const frames=socket.messages.filter(m=>m.type==='input');assert.equal(frames.length,2);
-  const self=actor(42);self.ack=frames[0].seq;self.z=.05;client.receiveSnapshot(snapshot(2,.017,[actor(7,'german'),self]));assert.ok(Math.abs(game.player.z-.13)<1e-9,'unacknowledged movement is replayed once after correction');
+  const self=actor(42);self.ack=frames[0].seq;self.z=.05;client.receiveSnapshot(snapshot(frames[0].tick,frames[0].tick/60,[actor(7,'german'),self]));assert.ok(Math.abs(game.player.z-.13)<1e-9,'unacknowledged movement is replayed once after correction');
   const victimHp=game.actors[1].hp;game.player.cooldown=0;client.fire();setNow(51);client.update(1/60,idle);assert.equal(game.actors[1].hp,victimHp);assert.equal(game.player.kills,0);assert.ok(game.events.some(event=>event.type==='shot'&&event.shot?.hit===null));
  }finally{client.disconnect();}
 });
@@ -106,7 +108,7 @@ test('chat focus clears queued combat and sends neutral input until text entry c
 test('touch fire release clears delayed attacks while preserving other desired controls',async()=>{
  const {client,game,socket,setNow}=await fixture();
  try{
-  const frame=snapshot(2,2/60);frame.inputTiming='tick-v1';for(const actor of frame.actors)actor.spawnGeneration=1;assert.equal(client.receiveSnapshot(frame),true);
+  const frame=snapshot(2,2/60);frame.inputTiming='tick-v2';for(const actor of frame.actors)actor.spawnGeneration=1;assert.equal(client.receiveSnapshot(frame),true);
   // Exhaust the current prediction horizon: an update here cannot consume
   // queued actions until the clock advances or another snapshot arrives.
   for(let i=0;i<20;i++)client.update(1/60,idle);
@@ -124,7 +126,7 @@ test('touch fire release clears delayed attacks while preserving other desired c
 for(const cancellation of ['release','cancel','clearInput','pause']as const)test(`a quick touch tap at the prediction horizon handles ${cancellation} without repeat fire`,async()=>{
  const {client,game,socket,setNow}=await fixture();
  try{
-  const frame=snapshot(2,2/60);frame.inputTiming='tick-v1';for(const actor of frame.actors)actor.spawnGeneration=1;assert.equal(client.receiveSnapshot(frame),true);
+  const frame=snapshot(2,2/60);frame.inputTiming='tick-v2';for(const actor of frame.actors)actor.spawnGeneration=1;assert.equal(client.receiveSnapshot(frame),true);
   for(let i=0;i<20;i++)client.update(1/60,idle);
   const sent=socket.messages.length;
   client.fireOnce();client.fire();client.update(1/60,idle);assert.equal(socket.messages.length,sent,'the tap is still queued');
@@ -184,8 +186,8 @@ test('remote movement interpolates across authority frames without interpolating
  const {client,game,setNow}=await fixture();
  try{
   const first=snapshot(2,.1);first.actors[0].x=10;client.receiveSnapshot(first);
-  const next=snapshot(3,.2);next.actors[0].x=11;client.receiveSnapshot(next);setNow(50);client.update(1/60,idle);assert.ok(Math.abs(game.actors[1].x-10.5)<1e-9);
-  const respawn=snapshot(4,.3);respawn.actors[0].x=-12;client.receiveSnapshot(respawn);setNow(100);client.update(1/60,idle);assert.equal(game.actors[1].x,11,'respawns never sweep through walls');
+  const next=snapshot(3,.2);next.actors[0].x=11;client.receiveSnapshot(next);sampleRemote(client,.15);assert.ok(Math.abs(game.actors[1].x-10.5)<1e-9);
+  const respawn=snapshot(4,.3);respawn.actors[0].x=-12;client.receiveSnapshot(respawn);sampleRemote(client,.25);assert.equal(game.actors[1].x,11,'respawns never sweep through walls');
  }finally{client.disconnect();}
 });
 test('remote jump and landing use event times inside a snapshot interval',async()=>{
@@ -193,15 +195,15 @@ test('remote jump and landing use event times inside a snapshot interval',async(
  try{
   const before=snapshot(2,.1);Object.assign(before.actors[0],{y:1.4,ads:true});setNow(100);client.receiveSnapshot(before);
   const airborne=snapshot(3,.15);Object.assign(airborne.actors[0],{y:1.55,vy:4,grounded:false,leftGroundAt:.125,jumpStarted:.125,ads:false});setNow(150);client.receiveSnapshot(airborne);
-  const present=(ms:number)=>{setNow(ms);client.present();return game.actors[1];};
+  const present=(ms:number)=>{sampleRemote(client,ms/1000-.1);return game.actors[1];};
   let remote=present(220);assert.equal(remote.grounded,true);assert.equal(remote.y,1.4);assert.equal(remote.vy,0);assert.equal(remote.jumpStarted,-1000);
   remote=present(230);assert.equal(remote.grounded,false);assert.equal(remote.jumpStarted,.125);assert.equal(remote.leftGroundAt,.125);assert.equal(remote.ads,false);assert.ok(Math.abs(remote.y-1.43)<1e-9);assert.ok(remote.vy>0);
   const falling=snapshot(4,.2);Object.assign(falling.actors[0],{y:1.5,vy:-3,grounded:false,leftGroundAt:.125,jumpStarted:.125});setNow(240);client.receiveSnapshot(falling);
   const ground=snapshot(5,.25);Object.assign(ground.actors[0],{y:1.4,vy:0,grounded:true,leftGroundAt:.125,jumpStarted:.125,landedAt:.225,landingSpeed:3.5});setNow(250);client.receiveSnapshot(ground);
   // Read at explicit buffered times without advancing prediction or modifying
   // the authority snapshots; this also covers landing on a raised crate.
-  game.time=.32;client['interpolate']();remote=game.actors[1];assert.equal(remote.grounded,false);assert.equal(remote.landedAt,-1000);assert.ok(Math.abs(remote.y-1.42)<1e-9);assert.ok(remote.vy<0);
-  game.time=.33;client['interpolate']();remote=game.actors[1];assert.equal(remote.grounded,true);assert.equal(remote.landedAt,.225);assert.equal(remote.landingSpeed,3.5);assert.equal(remote.y,1.4);assert.equal(remote.vy,0);
+  sampleRemote(client,.22);remote=game.actors[1];assert.equal(remote.grounded,false);assert.equal(remote.landedAt,-1000);assert.ok(Math.abs(remote.y-1.42)<1e-9);assert.ok(remote.vy<0);
+  sampleRemote(client,.23);remote=game.actors[1];assert.equal(remote.grounded,true);assert.equal(remote.landedAt,.225);assert.equal(remote.landingSpeed,3.5);assert.equal(remote.y,1.4);assert.equal(remote.vy,0);
   assert.equal(airborne.actors[0].y,1.55);assert.equal(ground.actors[0].landedAt,.225,'presentation leaves recorded frames immutable');
  }finally{client.disconnect();}
 });
@@ -210,8 +212,8 @@ test('remote landing followed by an immediate jump selects the most recent event
  try{
   const before=snapshot(2,.1);Object.assign(before.actors[0],{y:.05,vy:-3,grounded:false,leftGroundAt:.01,jumpStarted:.01});client.receiveSnapshot(before);
   const after=snapshot(3,.15);Object.assign(after.actors[0],{y:.08,vy:4,grounded:false,leftGroundAt:.135,jumpStarted:.135,landedAt:.115,landingSpeed:3.2});client.receiveSnapshot(after);
-  game.time=.22;client['interpolate']();assert.equal(game.actors[1].grounded,true);assert.equal(game.actors[1].landedAt,.115);assert.equal(game.actors[1].jumpStarted,.01);
-  game.time=.24;client['interpolate']();assert.equal(game.actors[1].grounded,false);assert.equal(game.actors[1].leftGroundAt,.135);assert.equal(game.actors[1].jumpStarted,.135);assert.equal(game.actors[1].landedAt,.115);
+  sampleRemote(client,.12);assert.equal(game.actors[1].grounded,true);assert.equal(game.actors[1].landedAt,.115);assert.equal(game.actors[1].jumpStarted,.01);
+  sampleRemote(client,.14);assert.equal(game.actors[1].grounded,false);assert.equal(game.actors[1].leftGroundAt,.135);assert.equal(game.actors[1].jumpStarted,.135);assert.equal(game.actors[1].landedAt,.115);
  }finally{client.disconnect();}
 });
 test('late snapshots never rewind the live clock or expose an unbuffered remote pose',async()=>{
@@ -219,7 +221,7 @@ test('late snapshots never rewind the live clock or expose an unbuffered remote 
  try{
   setNow(100);const first=snapshot(2,.1);first.actors[0].x=10;first.actors[0].moving=4;client.receiveSnapshot(first);
   setNow(200);const second=snapshot(3,.2);second.actors[0].x=11;second.actors[0].moving=4;client.receiveSnapshot(second);
-  setNow(240);client.present();assert.ok(Math.abs(game.actors[1].x-10.4)<1e-9);
+  setNow(240);client.present();assert.ok(client.remoteTime>=.1&&client.remoteTime<.2);
   const beforeTime=game.time,beforeRemoteTime=client.remoteTime,beforeX=game.actors[1].x,inputCount=socket.messages.filter(m=>m.type==='input').length;
   const late=snapshot(4,.23);late.actors[0].x=11.3;late.actors[0].moving=4;late.actors[0].kills=3;late.actors[0].hp=80;
   client.receiveSnapshot(late);
@@ -230,7 +232,7 @@ test('late snapshots never rewind the live clock or expose an unbuffered remote 
   assert.equal(game.history.at(-1)?.time,.23);assert.equal(game.history.at(-1)?.actors[1].x,11.3,'killcam history retains exact authority frames');
   setNow(247);client.present();const middle=game.actors[1].x;
   setNow(254);client.present();assert.ok(middle>beforeX&&game.actors[1].x>middle,'presentation advances on frames between fixed input ticks');
-  assert.ok(game.time-beforeTime>.012&&game.time-beforeTime<.015,'clock correction is gradual');
+  assert.ok(client.remoteTime-beforeRemoteTime>0&&client.remoteTime-beforeRemoteTime<=.014*1.1,'clock correction is gradual');
   assert.equal(socket.messages.filter(m=>m.type==='input').length,inputCount,'render interpolation sends no extra inputs');
   const invalidTime=snapshot(5,.22);assert.equal(client.receiveSnapshot(invalidTime),false,'authority time may not run backwards');
  }finally{client.disconnect();}
@@ -240,7 +242,7 @@ test('remote reload progress and roster changes preserve the same delayed presen
  try{
   setNow(100);const first=snapshot(2,.1);Object.assign(first.actors[0],{x:10,reload:2,reloadTotal:3,cooldown:.5});client.receiveSnapshot(first);
   setNow(200);const next=snapshot(3,.2);Object.assign(next.actors[0],{x:11,reload:1.9,reloadTotal:3,cooldown:.4});client.receiveSnapshot(next);
-  setNow(250);client.present();assert.ok(Math.abs(game.actors[1].reload-1.95)<1e-9);assert.ok(Math.abs(game.actors[1].cooldown-.45)<1e-9);
+  setNow(250);client.present();const fraction=(client.remoteTime-.1)/.1;assert.ok(fraction>0&&fraction<1);assert.ok(Math.abs(game.actors[1].reload-(2-.1*fraction))<1e-9);assert.ok(Math.abs(game.actors[1].cooldown-(.5-.1*fraction))<1e-9);
   const position=game.actors[1].x,clock=client.remoteTime;
   const newcomer=actor(3,'german'),joined=snapshot(4,.25,[newcomer,actor(42),actor(7,'german')]);Object.assign(joined.actors[2],{x:11.5,reload:1.85,reloadTotal:3,cooldown:.35});client.receiveSnapshot(joined);
   assert.equal(game.actors[2].name,'Player 7');assert.ok(Math.abs(game.actors[2].x-position)<1e-9,'joining players do not snap existing remote bodies to the latest packet');assert.equal(client.remoteTime,clock);
@@ -297,9 +299,9 @@ test('prediction preserves reload when melee is blocked and preserves completed 
    if(blocked==='switching')self.switchStarted=.9;
    if(blocked==='crawling'){self.stance='prone';self.eyeHeight=HEIGHTS.prone;}
    const ready=snapshot(2,1,[actor(7,'german'),self]);ready.roundNumber=2;
-   setNow(1000);client.receiveSnapshot(ready);game.events=[];
+   setNow(1000);client.receiveSnapshot(ready);game.events=[];const predictedReload=game.player.reload;
    client.fire(blocked!=='rifle-fire');setNow(1017);client.update(1/60,blocked==='crawling'?{...idle,forward:1}:idle);
-   assert.ok(Math.abs(game.player.reload-(2-1/60))<1e-9,blocked+' keeps loading');
+   assert.ok(Math.abs(game.player.reload-(predictedReload-1/60))<1e-9,blocked+' keeps loading');
    assert.equal(game.player.reloadTotal,WEAPONS.british.reload);assert.equal(game.player.ammo,2);assert.equal(game.player.reserve,17);
    assert.equal(game.events.some(event=>event.type==='shot'),false);assert.equal(game.player.lastMeleeTime,-1000);
   }finally{client.disconnect();}
@@ -364,5 +366,109 @@ test('spectator follow remaps participants, skips departures and returns through
   client.setFaction('german');assert.deepEqual(socket.messages.at(-1),{type:'loadout',faction:'german'});assert.equal(game.player.spectator,true,'only the server can return the player to combat');
   const joined=snapshot(5,.2,[actor(3),actor(42,'german')]);joined.roundNumber=2;joined.events=[{type:'spawn',actor:42}];client.receiveSnapshot(joined);
   assert.equal(game.player.spectator,false);assert.equal(game.player.alive,true);assert.equal(game.spectator.targetId,null);assert.equal(game.viewedActor,game.player);assert.equal(game.state,'playing');
+ }finally{client.disconnect();}
+});
+
+test('v2 rejects legacy timing and malformed arrival diagnostics',async()=>{
+ const {client}=await fixture();
+ try{
+  for(const timing of [undefined,'tick-v1','tick-v3'])assert.equal(client.receiveSnapshot({...snapshot(2,.05),inputTiming:timing}),false);
+  const missing=snapshot(2,.05);delete missing.actors[0].spawnGeneration;assert.equal(client.receiveSnapshot(missing),false);
+  for(const sample of [{received:-1,late:0,missing:0,arrivalLead:2},{received:1,late:0,missing:0,arrivalLead:NaN}]){const bad=snapshot(2,.05);bad.actors[0].inputTiming=sample;assert.equal(client.receiveSnapshot(bad),false);}
+ }finally{client.disconnect();}
+});
+
+test('reliable events wait for authority, survive replaced snapshots, and deduplicate',async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  game.events=[];
+  const batch={type:'events',lobbyId:'room-one',roundNumber:1,tick:6,time:.1,eventSeq:1,events:[{type:'kill',actor:42,victim:7,actorGeneration:1,victimGeneration:1,actorName:'Player 42',victimName:'Player 7',actorFaction:'british',weapon:'rifle'}]};
+  socket.receive(batch);assert.equal(game.events.length,0,'events cannot precede the state they describe');
+  // tick6's snapshot was replaced by tick9 in the server outbox.
+  setNow(175);const state=snapshot(9,.15);state.eventSeq=1;state.actors[1].kills=1;state.actors[0].alive=false;state.actors[0].hp=0;socket.receive(state);
+  assert.equal(game.events.filter(e=>e.type==='kill').length,1);assert.equal(game.events[0].actor,0);assert.equal(game.events[0].victim,1);
+  socket.receive(batch);assert.equal(game.events.filter(e=>e.type==='kill').length,1);
+  assert.equal(client.receiveEvents({...batch,lobbyId:'another-room',eventSeq:2}),false);
+ }finally{client.disconnect();}
+});
+
+test('a delayed reliable kill starts the matching death replay but cannot affect a later life',async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  setNow(125);const dead=snapshot(6,.1);Object.assign(dead.actors[1],{alive:false,hp:0,deadAt:.1});socket.receive(dead);assert.equal(client.waitingForRespawn,true);
+  const kill={type:'events',lobbyId:'room-one',roundNumber:1,tick:6,time:.1,eventSeq:1,events:[{type:'kill',actor:7,victim:42,actorGeneration:1,victimGeneration:1,roundNumber:1,time:.1}]};
+  socket.receive(kill);assert.equal(game.state,'killcam');assert.equal(game.killer,1);assert.equal(client.waitingForRespawn,false);
+  const live=snapshot(180,3);live.actors[1].spawnGeneration=2;setNow(3025);socket.receive(live);assert.equal(game.state,'playing');game.events=[];
+  socket.receive({...kill,eventSeq:2,tick:180,time:3});assert.equal(game.state,'playing');assert.equal(game.events.filter(e=>e.type==='kill').length,1,'late committed kills still appear in the feed');
+  socket.receive({...kill,eventSeq:3,tick:180,time:3,events:[{type:'reload',actor:42,actorGeneration:1}]});assert.equal(game.events.filter(e=>e.type==='reload').length,0,'old life effects do not animate the respawned body');
+ }finally{client.disconnect();}
+});
+
+test('reliable kill feed preserves identities when the killer has left the replacement snapshot',async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  const kill={type:'events',lobbyId:'room-one',roundNumber:1,tick:6,time:.1,eventSeq:1,events:[{type:'kill',actor:7,victim:42,actorGeneration:1,victimGeneration:1,actorName:'Departed',victimName:'Player 42',actorFaction:'german',weapon:'rifle'}]};
+  socket.receive(kill);const dead=actor(42);Object.assign(dead,{alive:false,hp:0,deadAt:.1});setNow(175);socket.receive(snapshot(9,.15,[dead]));
+  const event=game.events.find(event=>event.type==='kill');assert.equal(event?.actor,-1);assert.equal(event?.actorName,'Departed');assert.equal(event?.victimName,'Player 42');assert.equal(game.killer,0,'no replay camera is assigned to a missing body');
+ }finally{client.disconnect();}
+});
+
+test('outbound congestion does not accumulate stale movement or fire intent',async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  Object.assign(socket,{bufferedAmount:8192});const before={x:game.player.x,z:game.player.z};client.fireOnce();setNow(17);client.update(1/60,{...idle,forward:1});
+  assert.equal(socket.messages.filter(m=>m.type==='input').length,0);assert.deepEqual({x:game.player.x,z:game.player.z},before);assert.equal(game.events.filter(e=>e.type==='shot').length,0);assert.equal(client.diagnostics.congestedInputs,1);
+  Object.assign(socket,{bufferedAmount:0});setNow(34);client.update(1/60,idle);const command=socket.messages.findLast(m=>m.type==='input');assert.equal(command.fire,false);assert.equal(command.forward,0);assert.deepEqual({x:game.player.x,z:game.player.z},before);
+ }finally{client.disconnect();}
+});
+
+
+test('the v2 handshake fails clearly against an obsolete endpoint',async()=>{
+ const game=new Game(),socket=new MockSocket();const client=new NetworkClient(game,{origin:'https://multiplayer.example.test',storage:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}},fetch:async()=>new Response(JSON.stringify({token:'test-only-session-token-long-enough'})),socket:()=>socket});
+ const joining=client.join(undefined,'Version test','british');const rejected=assert.rejects(joining,/Incompatible server version/);
+ await new Promise(resolve=>setImmediate(resolve));socket.open();socket.receive({type:'welcome',version:1});await rejected;assert.equal(client.online,false);assert.equal(socket.closed,true);
+});
+
+test('the actual client decodes independent compact state after intermediate snapshots were replaced',async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  setNow(525);const state=snapshot(30,.5);Object.assign(state.actors[1],{kills:3,name:'^2Tuple Soldier',inputTiming:{received:10,late:0,missing:0,arrivalLead:3}});
+  const compact={...state,actorEncoding:'tuple-v1',actors:state.actors.map(actor=>actorFields.map(field=>(actor as any)[field]??null))};
+  socket.receive(compact);assert.equal(game.player.kills,3);assert.equal(game.player.name,'^2Tuple Soldier');assert.equal(client.diagnostics.inputTiming?.received,10);
+  assert.equal(client.receiveSnapshot({...compact,tick:33,time:.55,actorEncoding:'tuple-v0'}),false);
+ }finally{client.disconnect();}
+});
+
+test('ordinary server-shaped shot, reload, and step envelopes have no nullable optional metadata',async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  setNow(75);socket.receive(snapshot(3,.05));game.events=[];
+  const metadata={actor:7,actorName:'Player 7',actorFaction:'german',actorGeneration:1,roundNumber:1,tick:3,time:.05};
+  const events=[{...metadata,type:'shot',seq:1,shot:{time:.05,actor:7,origin:{x:12,y:1.65,z:4},end:{x:12,y:1.65,z:10},hit:null,headshot:false,kind:'shot',seq:1}},{...metadata,type:'reload',seq:2},{...metadata,type:'step',value:4.8}];
+  assert.equal(client.receiveEvents({type:'events',lobbyId:'room-one',roundNumber:1,tick:3,time:.05,eventSeq:1,events}),true);
+  assert.deepEqual(game.events.map(event=>event.type),['shot','reload','step']);
+  assert.equal(client.receiveEvents({type:'events',lobbyId:'room-one',roundNumber:1,tick:3,time:.05,eventSeq:2,events:[{...metadata,type:'step',victimGeneration:null}]}),false,'the server regression ensures absent metadata is omitted');
+ }finally{client.disconnect();}
+});
+
+test('a queued reliable kill survives roster remapping before the next rendered frame',async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  setNow(125);const killed=snapshot(6,.1);killed.actors[0].alive=false;killed.actors[0].hp=0;socket.receive(killed);game.events=[];
+  socket.receive({type:'events',lobbyId:'room-one',roundNumber:1,tick:6,time:.1,eventSeq:1,events:[{type:'kill',actor:42,victim:7,actorGeneration:1,victimGeneration:1,actorName:'Player 42',victimName:'Player 7',actorFaction:'british'}]});
+  assert.equal(game.events.filter(event=>event.type==='kill').length,1);game.events.push({type:'reload',actor:1});
+  // No processEvents()/render between the reliable batch and this callback.
+  setNow(175);socket.receive(snapshot(9,.15,[actor(3,'russian'),actor(42)]));
+  assert.equal(game.events.length,1);const kill=game.events[0];assert.equal(kill.type,'kill');assert.equal(kill.actor,0);assert.equal(kill.victim,-1);assert.equal(kill.actorName,'Player 42');assert.equal(kill.victimName,'Player 7');assert.equal(kill.actorFaction,'british');
+  client.present();assert.equal(game.events[0],kill,'the UI can still consume the notification on the next frame');
+ }finally{client.disconnect();}
+});
+
+test('a state coalesced across round rollover retains old killfeed but suppresses old-round body effects',async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  setNow(175);const round=snapshot(9,.15);round.roundNumber=2;socket.receive(round);game.events=[];
+  socket.receive({type:'events',lobbyId:'room-one',roundNumber:1,tick:6,time:.1,eventSeq:1,events:[{type:'kill',actor:7,victim:42,actorGeneration:1,victimGeneration:1,actorName:'Player 7',victimName:'Player 42',actorFaction:'german'},{type:'reload',actor:7,actorGeneration:1}]});
+  assert.deepEqual(game.events.map(event=>event.type),['kill']);assert.equal(game.state,'playing');assert.equal(game.replay.length,0);
  }finally{client.disconnect();}
 });

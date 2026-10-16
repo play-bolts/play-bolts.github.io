@@ -240,13 +240,17 @@ function updateAudioScene(){
 }
 function processEvents(){
  updateAudioScene();const viewed=game.viewedActor;
- for(const event of game.events){const a=game.actors[event.actor];if(!a)continue;
+ for(const event of game.events){const a=game.actors[event.actor];
+  if(event.type==='kill'){
+   const victim=game.actors[event.victim!],actorName=event.actorName??a?.name,victimName=event.victimName??victim?.name,faction=event.actorFaction??a?.faction;
+   if(actorName&&victimName&&faction){ui.feed.push({text:`${playerNameHTML(actorName)}${weaponIcon(faction,event.weapon??'rifle',!!event.headshot)}${playerNameHTML(victimName)}`,time:performance.now()});if(ui.feed.length>5)ui.feed.shift();if(event.actor===0&&event.victim!==0&&!game.player.spectator)ui.showKill(victimName);}
+  }
+  if(!a)continue;
   const emitter={actor:a.id,position:game.eye(a),local:a.id===viewed?.id,faction:a.faction};
   if(event.type==='shot'&&event.shot){view.effect(event.shot,emitter.local);if(event.shot.kind==='shot')sound.shot({...emitter,position:event.shot.origin});else sound.melee(emitter);}
   if(event.type==='bolt')sound.bolt(emitter);if(event.type==='reload')sound.reload(emitter);if(event.type==='step')sound.step(event.value??3,emitter);
   if(event.type==='hurt'&&event.actor===0&&!game.player.spectator){ui.showDamage(!game.player.alive);sound.hit();}
   if(event.type==='switch')sound.switch(emitter);
-  if(event.type==='kill'){const victim=game.actors[event.victim!];if(!victim)continue;ui.feed.push({text:`${playerNameHTML(a.name)}${weaponIcon(a.faction,event.weapon??'rifle',!!event.headshot)}${playerNameHTML(victim.name)}`,time:performance.now()});if(ui.feed.length>5)ui.feed.shift();if(a.id===0&&victim.id!==0&&!game.player.spectator)ui.showKill(victim.name);}
   if(event.type==='spawn'&&event.actor===0){if(touchEnabled)clearTouchInput();ui.damageUntil=0;ui.damageStarted=-Infinity;ui.hitUntil=0;view.setFaction(game.player.faction);}
  }
  game.events=[];

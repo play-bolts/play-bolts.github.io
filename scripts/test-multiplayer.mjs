@@ -4,6 +4,8 @@
  * short idle/reconnection timeouts are used. No simulation or teleport hooks.
  */
 import assert from 'node:assert/strict';
+import {decodeSnapshot} from '../src/networkCodec.ts';
+import {TestInputStream} from './test-input-stream.mjs';
 import {spawn} from 'node:child_process';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -30,20 +32,20 @@ async function lobbies(){return (await json('/api/lobbies')).lobbies;}
 async function unusedPort(){const server=createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
 
 class Client {
- constructor(session,label){this.session=session;this.label=label;this.messages=[];this.waiters=[];this.seq=0;this.joined=false;}
+ constructor(session,label){this.session=session;this.label=label;this.messages=[];this.waiters=[];this.seq=0;this.joined=false;this.controls=new TestInputStream(message=>this.send(message),()=>this.self);}
  async connect(){
   this.socket=new WebSocket(base.replace(/^http/,'ws')+'/api/ws');
-  this.socket.addEventListener('message',event=>{const message=JSON.parse(String(event.data));this.messages.push(message);if(message.type==='snapshot')this.snapshot=message;if(message.type==='joined'){this.snapshot=message.snapshot;this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.joined=true;}for(const waiter of [...this.waiters])if(waiter.predicate(message)){clearTimeout(waiter.timer);this.waiters.splice(this.waiters.indexOf(waiter),1);waiter.resolve(message);}});
+  this.socket.addEventListener('message',event=>{const raw=JSON.parse(String(event.data)),message=raw.type==='snapshot'?decodeSnapshot(raw):raw;if(!message)return;this.messages.push(message);if(message.type==='snapshot')this.snapshot=message;if(message.type==='joined'){this.snapshot=message.snapshot;this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.joined=true;}if(message.type==='snapshot'||message.type==='joined')this.controls.observe(this.snapshot);for(const waiter of [...this.waiters])if(waiter.predicate(message)){clearTimeout(waiter.timer);this.waiters.splice(this.waiters.indexOf(waiter),1);waiter.resolve(message);}});
   await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(`${this.label}: socket open timed out`)),8000);this.socket.addEventListener('open',()=>{clearTimeout(timer);resolve();},{once:true});this.socket.addEventListener('error',()=>{clearTimeout(timer);reject(new Error(`${this.label}: socket connection failed`));},{once:true});});
-  const welcome=this.wait(message=>message.type==='welcome');this.send({type:'hello',version:1,token:this.session.token});const message=await welcome;assert.equal(message.playerId,this.session.playerId);this.heartbeat=setInterval(()=>{if(this.socket.readyState===WebSocket.OPEN)this.send({type:'ping',nonce:Date.now()});},5000);this.socket.addEventListener('close',()=>clearInterval(this.heartbeat),{once:true});return this;
+  const welcome=this.wait(message=>message.type==='welcome');this.send({type:'hello',version:2,token:this.session.token});const message=await welcome;assert.equal(message.playerId,this.session.playerId);this.heartbeat=setInterval(()=>{if(this.socket.readyState===WebSocket.OPEN)this.send({type:'ping',nonce:Date.now()});},5000);this.socket.addEventListener('close',()=>{clearInterval(this.heartbeat);this.controls.close();},{once:true});return this;
  }
  wait(predicate,timeout=5000){return new Promise((resolve,reject)=>{const waiter={predicate,resolve,timer:setTimeout(()=>{this.waiters.splice(this.waiters.indexOf(waiter),1);reject(new Error(`${this.label}: expected message timed out`));},timeout)};this.waiters.push(waiter);});}
  send(message){assert.equal(this.socket.readyState,WebSocket.OPEN,`${this.label}: socket not open`);this.socket.send(JSON.stringify(message));}
  async join(lobbyId){const result=this.wait(message=>message.type==='joined'||message.type==='error');this.send({type:'join',...(lobbyId?{lobbyId}:{}),name:`^${(Number(this.label.replace(/\D/g,''))%6)+1}${this.label}`,faction:'british'});return result;}
- input(overrides={}){const input={type:'input',seq:++this.seq,forward:0,right:0,jump:false,walk:false,lean:0,yaw:this.self?.yaw??0,pitch:0,ads:false,fire:false,reload:false,melee:false,...overrides};this.send(input);return input;}
+ input(overrides={}){return this.controls.input(overrides);}
  get self(){return this.snapshot?.actors.find(actor=>actor.id===this.actorId);}
- async leave(){if(!this.joined||this.socket.readyState!==WebSocket.OPEN)return;const left=this.wait(message=>message.type==='left');this.send({type:'leave'});await left;this.joined=false;}
- close(){clearInterval(this.heartbeat);if(this.socket?.readyState===WebSocket.OPEN||this.socket?.readyState===WebSocket.CONNECTING)this.socket.close();}
+ async leave(){if(!this.joined||this.socket.readyState!==WebSocket.OPEN)return;const left=this.wait(message=>message.type==='left');this.send({type:'leave'});await left;this.joined=false;this.controls.close();}
+ close(){this.controls.close();clearInterval(this.heartbeat);if(this.socket?.readyState===WebSocket.OPEN||this.socket?.readyState===WebSocket.CONNECTING)this.socket.close();}
 }
 
 // A grid search produces only ordinary forward/yaw input. The server remains

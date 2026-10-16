@@ -9,7 +9,7 @@ use rusqlite::params;
 use serde_json::Value;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 
 struct Fixture {
     hub: Hub,
@@ -39,7 +39,7 @@ impl Fixture {
 struct Peer {
     player: String,
     connection: String,
-    messages: mpsc::Receiver<String>,
+    messages: crate::transport::Outgoing,
     cancelled: watch::Receiver<Option<String>>,
 }
 impl Peer {
@@ -49,7 +49,7 @@ impl Peer {
     }
     fn connect(hub: &mut Hub, player: String) -> Self {
         let connection = db::id();
-        let (tx, messages) = mpsc::channel(256);
+        let (tx, messages) = crate::transport::channel();
         let (cancel, cancelled) = watch::channel(None);
         hub.register(
             &player,
@@ -92,7 +92,7 @@ impl Peer {
 }
 
 fn count(hub: &Hub, sql: &str) -> i64 {
-    hub.db.conn.query_row(sql, [], |row| row.get(0)).unwrap()
+    hub.db.test_conn().query_row(sql, &[], |row| row.get(0)).unwrap()
 }
 
 #[test]
@@ -461,10 +461,10 @@ fn replacing_a_connection_keeps_the_actor_and_does_not_duplicate_membership() {
     );
     let reasons: (Option<String>, Option<i64>) = hub
         .db
-        .conn
+        .test_conn()
         .query_row(
             "SELECT end_reason,closed_at FROM connections WHERE id=?1",
-            [&old.connection],
+            &[&old.connection],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .unwrap();
@@ -520,9 +520,9 @@ fn changing_loadout_then_immediately_leaving_persists_linked_kill_death_and_stat
         ),
         1
     );
-    let record: (String, String, String, String, String, String) = hub.db.conn.query_row(
+    let record: (String, String, String, String, String, String) = hub.db.test_conn().query_row(
         "SELECT c.killer_id,c.victim_id,k.actor_player_id,d.actor_player_id,json_extract(k.data,'$.combatId'),json_extract(d.data,'$.combatId') FROM combat_events c JOIN events k ON k.id=c.kill_event_id JOIN events d ON d.id=c.death_event_id",
-        [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?)),
+        &[], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?)),
     ).unwrap();
     assert_eq!(record.0, player.player);
     assert_eq!(record.1, player.player);
@@ -531,10 +531,10 @@ fn changing_loadout_then_immediately_leaving_persists_linked_kill_death_and_stat
     assert_eq!(record.4, record.5);
     let stats: (i64, i64, String) = hub
         .db
-        .conn
+        .test_conn()
         .query_row(
             "SELECT kills,deaths,faction FROM match_players WHERE player_id=?1",
-            [&player.player],
+            &[&player.player],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .unwrap();
@@ -570,10 +570,10 @@ fn leaving_and_rejoining_preserves_cumulative_match_statistics() {
     hub.leave(&player.player, "left", true).unwrap();
     let totals: (i64, i64) = hub
         .db
-        .conn
+        .test_conn()
         .query_row(
             "SELECT kills,deaths FROM match_players WHERE player_id=?1",
-            [&player.player],
+            &[&player.player],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .unwrap();
@@ -672,10 +672,10 @@ fn six_player_room_cap_and_global_room_cap_never_evict_an_existing_seat() {
     );
     let retained: String = hub
         .db
-        .conn
+        .test_conn()
         .query_row(
             "SELECT lobby_id FROM memberships WHERE player_id=?1 AND left_at IS NULL",
-            [&mover.player],
+            &[&mover.player],
             |row| row.get(0),
         )
         .unwrap();
@@ -739,10 +739,10 @@ fn reconnect_before_grace_keeps_actor_but_timeout_releases_the_seat_once() {
     );
     let reason: String = hub
         .db
-        .conn
+        .test_conn()
         .query_row(
             "SELECT leave_reason FROM memberships WHERE player_id=?1",
-            [&original.player],
+            &[&original.player],
             |row| row.get(0),
         )
         .unwrap();
@@ -867,7 +867,7 @@ fn shutdown_finishes_connected_and_reconnect_grace_members_exactly_once() {
         0
     );
     for player in [&connected.player, &grace.player] {
-        let leaves: i64 = hub.db.conn.query_row(
+        let leaves: i64 = hub.db.test_conn().query_row(
             "SELECT count(*) FROM events WHERE event_type='player_leave' AND actor_player_id=?1", params![player], |row| row.get(0),
         ).unwrap();
         assert_eq!(leaves, 1);

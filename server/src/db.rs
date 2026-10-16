@@ -12,7 +12,23 @@ use uuid::Uuid;
 #[path = "visitors.rs"]
 pub(crate) mod visitors;
 
+thread_local! { static RECORD_TIME: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) }; }
+/// Keep accepted event timestamps tied to their occurrence, even when SQLite is
+/// temporarily busy. The override belongs only to the dedicated storage thread.
+pub(crate) fn at_time<T>(at: i64, work: impl FnOnce() -> T) -> T {
+    struct Reset(Option<i64>);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            RECORD_TIME.set(self.0);
+        }
+    }
+    let _reset = Reset(RECORD_TIME.replace(Some(at)));
+    work()
+}
 pub fn now_ms() -> i64 {
+    if let Some(at) = RECORD_TIME.get() {
+        return at;
+    }
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -70,7 +86,11 @@ fn canonical_name(name: &str) -> Option<(String, String)> {
         Some((key, display))
     }
 }
-pub(crate) fn register_name(conn: &Connection, name: &str, at: i64) -> rusqlite::Result<Option<String>> {
+pub(crate) fn register_name(
+    conn: &Connection,
+    name: &str,
+    at: i64,
+) -> rusqlite::Result<Option<String>> {
     let Some((key, display)) = canonical_name(name) else {
         return Ok(None);
     };
@@ -480,13 +500,28 @@ impl Db {
         name: &str,
         text: &str,
     ) -> rusqlite::Result<(String, i64)> {
-        let tx = self.conn.transaction()?;
         let eid = id();
         let at = now_ms();
+        self.chat_at(lobby, game, player, cid, name, text, &eid, at)?;
+        Ok((eid, at))
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn chat_at(
+        &mut self,
+        lobby: &str,
+        game: &str,
+        player: &str,
+        cid: &str,
+        name: &str,
+        text: &str,
+        eid: &str,
+        at: i64,
+    ) -> rusqlite::Result<()> {
+        let tx = self.conn.transaction()?;
         tx.execute("INSERT INTO events(id,event_type,at,lobby_id,match_id,connection_id,actor_player_id,data) VALUES(?1,'chat',?2,?3,?4,?5,?6,'{}')",params![eid,at,lobby,game,cid,player])?;
         tx.execute("INSERT INTO chat_messages(id,lobby_id,match_id,player_id,name,body,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![eid,lobby,game,player,name,text,at])?;
         tx.commit()?;
-        Ok((eid, at))
+        Ok(())
     }
     #[allow(clippy::too_many_arguments)] // One atomic combat record links both event roles.
     pub fn kill(

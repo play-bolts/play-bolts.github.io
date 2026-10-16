@@ -230,7 +230,7 @@ pub struct Actor {
     pub hip_spread: f64,
     pub ack: u64,
     #[serde(default)]
-    spawn_generation: u64,
+    pub(crate) spawn_generation: u64,
 }
 
 impl Actor {
@@ -491,6 +491,20 @@ struct PendingAttack {
     shot_time: Option<f64>,
 }
 
+/// Connection-local scheduling observations. These are derived from the
+/// authority's tick clock, never client-supplied ping or timing claims.
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InputTiming {
+    pub received: u64,
+    pub late: u64,
+    pub missing: u64,
+    pub arrival_lead: i32,
+    pub shots: u64,
+    pub rewind_clamped: u64,
+    pub shot_age_ms: f64,
+}
+
 #[derive(Default)]
 struct Control {
     latest: InputFrame,
@@ -505,6 +519,9 @@ struct Control {
     fire: Option<PendingAttack>,
     melee: Option<PendingAttack>,
     step_clock: f64,
+    timing: InputTiming,
+    observed_seq: u64,
+    first_scheduled_tick: Option<u64>,
 }
 
 #[derive(Clone)]
@@ -638,6 +655,9 @@ impl Simulation {
             c.reload = None;
             c.fire = None;
             c.melee = None;
+            c.timing = InputTiming::default();
+            c.observed_seq = c.received_seq;
+            c.first_scheduled_tick = None;
         }
     }
 
@@ -651,7 +671,12 @@ impl Simulation {
             c.latest.seq = ack;
             c.received_seq = ack;
             c.received_tick = 0;
+            c.observed_seq = ack;
         }
+    }
+
+    pub fn input_timing(&self, id: u32) -> InputTiming {
+        self.controls.get(&id).map_or_else(InputTiming::default, |c| c.timing)
     }
 
     pub fn change_faction(&mut self, id: u32, faction: Faction) -> bool {
@@ -751,7 +776,6 @@ impl Simulation {
         }
         if let Some(tick) = input.tick {
             if self.ended
-                || tick <= self.tick_number
                 || tick > self.tick_number.saturating_add(MAX_INPUT_LEAD_TICKS)
                 || self.actor(id).is_none_or(|a| input.generation != Some(a.spawn_generation))
             {
@@ -761,6 +785,20 @@ impl Simulation {
         let Some(control) = self.controls.get_mut(&id) else {
             return false;
         };
+        if let Some(tick) = input.tick {
+            if input.seq > control.observed_seq {
+                control.observed_seq = input.seq;
+                control.timing.received = control.timing.received.saturating_add(1);
+                control.timing.arrival_lead = (i128::from(tick) - i128::from(self.tick_number))
+                    .clamp(i128::from(i32::MIN), i128::from(i32::MAX)) as i32;
+                if tick <= self.tick_number {
+                    control.timing.late = control.timing.late.saturating_add(1);
+                }
+            }
+            if tick <= self.tick_number {
+                return false;
+            }
+        }
         if control.seen_input && input.seq <= control.received_seq {
             return false;
         }
@@ -784,6 +822,7 @@ impl Simulation {
             control.received_tick = tick;
             control.received = self.time;
             control.seen_input = true;
+            control.first_scheduled_tick.get_or_insert(tick);
             control.queue.insert(tick, input);
             return true;
         }
@@ -1021,6 +1060,11 @@ impl Simulation {
                     control.latest = input;
                     true
                 } else {
+                    if control.first_scheduled_tick.is_some_and(|tick| self.tick_number >= tick)
+                        && self.actors.iter().any(|a| a.id == id && a.alive && !a.spectator)
+                    {
+                        control.timing.missing = control.timing.missing.saturating_add(1);
+                    }
                     false
                 }
             } else {
@@ -1378,6 +1422,14 @@ impl Simulation {
             150
         };
         let shooter_id = a.id;
+        if let Some(control) = self.controls.get_mut(&shooter_id) {
+            let age = (self.time - attack.shot_time.unwrap_or(self.time)).max(0.0);
+            control.timing.shots = control.timing.shots.saturating_add(1);
+            control.timing.shot_age_ms = age * 1000.0;
+            if age > MAX_REWIND + 1e-8 {
+                control.timing.rewind_clamped = control.timing.rewind_clamped.saturating_add(1);
+            }
+        }
         let yaw = attack.yaw + (self.random() - 0.5) * spread;
         let pitch = attack.pitch + recoil + (self.random() - 0.5) * spread;
         let direction = Vec3 {

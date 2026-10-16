@@ -171,15 +171,15 @@ async fn public_endpoints_check_origin_feedback_privacy_and_limits() {
     assert_eq!(board, json!({"allTime":[],"last24Hours":[]}));
     let h = server.state.lock().await;
     assert_eq!(
-        h.db.conn
-            .query_row("SELECT count(*) FROM feedback_requests", [], |r| r
+        h.db.test_conn()
+            .query_row("SELECT count(*) FROM feedback_requests", &[], |r| r
                 .get::<_, i64>(0))
             .unwrap(),
         3
     );
     let hash: String =
-        h.db.conn
-            .query_row("SELECT ip_hash FROM feedback_requests LIMIT 1", [], |r| {
+        h.db.test_conn()
+            .query_row("SELECT ip_hash FROM feedback_requests LIMIT 1", &[], |r| {
                 r.get(0)
             })
             .unwrap();
@@ -194,7 +194,7 @@ async fn api_counts_connected_humans_not_bot_fill_or_disconnected_seats() {
         let mut h = server.state.lock().await;
         let (player, _) = h.db.session(None).unwrap().unwrap();
         let cid = crate::db::id();
-        let (tx, rx) = mpsc::channel(64);
+        let (tx, rx) = crate::transport::channel();
         let (cancel, receiver) = watch::channel(None);
         h.register(&player, cid.clone(), tx, cancel, "127.0.0.1", "test")
             .unwrap();
@@ -294,8 +294,8 @@ async fn invalid_feedback_is_rejected_without_persistence() {
             .lock()
             .await
             .db
-            .conn
-            .query_row("SELECT count(*) FROM feedback_requests", [], |r| r
+            .test_conn()
+            .query_row("SELECT count(*) FROM feedback_requests", &[], |r| r
                 .get::<_, i64>(0))
             .unwrap(),
         0

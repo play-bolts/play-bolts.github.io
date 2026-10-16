@@ -40,49 +40,60 @@ pub async fn handle(
     if hub.internal_token.as_deref().is_none() || supplied != hub.internal_token.as_deref() {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let result: HResult<Value> = (|| match body["op"].as_str() {
-        Some("authenticate") => {
-            if hub.managed_lobby.is_some() {
-                return Err("not a directory".into());
+    let storage = hub.db.clone();
+    let managed = hub.managed_lobby.clone();
+    let result: HResult<Value> = async {
+        match body["op"].as_str() {
+            Some("activate") => {
+                hub.activate_managed(string(&body, "session")?, string(&body, "name")?)?;
+                drop(hub);
+                storage.request(|_| Ok(())).await?;
+                Ok(json!({"ok":true}))
             }
-            let player = hub.db.authenticate(string(&body, "token")?)?;
-            Ok(json!({"playerId":player}))
-        }
-        Some("activate") => {
-            hub.activate_managed(string(&body, "session")?, string(&body, "name")?)?;
-            Ok(json!({"ok":true}))
-        }
-        Some("identity") => {
-            let player = string(&body, "playerId")?;
-            let token = string(&body, "token")?;
-            uuid::Uuid::parse_str(player)?;
-            if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
-                return Err("invalid token".into());
+            Some("status") => Ok(hub.managed_status()),
+            Some("shutdown") => {
+                hub.shutdown()?;
+                drop(hub);
+                storage.request(|_| Ok(())).await?;
+                storage.check()?;
+                Ok(json!({"ok":true}))
             }
-            if hub.managed_lobby.is_none() {
-                return Err("game not active".into());
+            Some("authenticate") => {
+                if managed.is_some() { return Err("not a directory".into()); }
+                let token = string(&body, "token")?.to_owned();
+                drop(hub);
+                let player = storage.request(move |db| Ok(db.authenticate(&token)?)).await?;
+                Ok(json!({"playerId":player}))
             }
-            hub.db.conn.execute("INSERT INTO players(id,credential_hash,created_at,last_seen) VALUES(?1,?2,?3,?3) ON CONFLICT(id) DO UPDATE SET credential_hash=excluded.credential_hash,last_seen=excluded.last_seen", params![player,db::hash(token),db::now_ms()])?;
-            Ok(json!({"ok":true}))
-        }
-        Some("status") => Ok(hub.managed_status()),
-        Some("shutdown") => {
-            hub.shutdown()?;
-            Ok(json!({"ok":true}))
-        }
-        Some("export") => {
-            let session = hub.managed_lobby.clone().ok_or("not a managed game")?;
-            export(&hub.db, &session, body["after"].as_i64().unwrap_or(0))
-        }
-        Some("import") => {
-            if hub.managed_lobby.is_some() {
-                return Err("not a directory".into());
+            Some("identity") => {
+                let player = string(&body, "playerId")?.to_owned();
+                let token = string(&body, "token")?.to_owned();
+                uuid::Uuid::parse_str(&player)?;
+                if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) { return Err("invalid token".into()); }
+                if managed.is_none() { return Err("game not active".into()); }
+                drop(hub);
+                storage.request(move |db| {
+                    db.conn.execute("INSERT INTO players(id,credential_hash,created_at,last_seen) VALUES(?1,?2,?3,?3) ON CONFLICT(id) DO UPDATE SET credential_hash=excluded.credential_hash,last_seen=excluded.last_seen",params![player,db::hash(&token),db::now_ms()])?;
+                    Ok(())
+                }).await?;
+                Ok(json!({"ok":true}))
             }
-            import(&mut hub.db, &body["batch"])?;
-            Ok(json!({"ok":true}))
+            Some("export") => {
+                let session = managed.ok_or("not a managed game")?;
+                let after = body["after"].as_i64().unwrap_or(0);
+                drop(hub);
+                storage.request(move |db| export(db, &session, after)).await
+            }
+            Some("import") => {
+                if managed.is_some() { return Err("not a directory".into()); }
+                drop(hub);
+                let bytes = body.to_string().len();
+                storage.request_sized(bytes, move |db| import(db, &body["batch"])).await?;
+                Ok(json!({"ok":true}))
+            }
+            _ => Err("invalid operation".into()),
         }
-        _ => Err("invalid operation".into()),
-    })();
+    }.await;
     match result {
         Ok(value) => Json(value).into_response(),
         Err(error) => {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Game} from '../src/engine.ts';
+import {Game,createActor} from '../src/engine.ts';
+import {initialMotion} from '../src/soldierMotionState.ts';
 import {ARENA,DIFFICULTIES,WEAPONS,visible,type Difficulty} from '../src/config.ts';
 
 const difficulties:Difficulty[]=['recruit','regular','veteran'];
@@ -10,11 +11,14 @@ const dt=1/60;
 // ray collisions remain real; restore the target after each sample so lethal
 // headshots cannot bias the number of remaining shots in the accuracy trial.
 function shootingLane(difficulty:Difficulty,seed:number){
- const game=new Game();game.start('german',difficulty);game.seed=seed;
- for(const actor of game.actors){actor.alive=false;actor.deadAt=99999;}
- const bot=game.actors[1],target=game.player,x=ARENA.width/2-1.2;
+ // Construct neutral actors directly: Game.start seeds from the wall clock
+ // and gives the target a random spawn orientation before the test can seed it.
+ // That changes its anatomical hitboxes between otherwise paired trials.
+ const game=new Game(),target=createActor(0,'german','Target'),bot=createActor(1,'british','Bot'),x=ARENA.width/2-1.2;
+ game.actors=[target,bot];game.difficulty=difficulty;game.state='playing';game.seed=seed;
  Object.assign(bot,{alive:true,x,y:0,z:-7,yaw:0,pitch:0,cooldown:0,spawnSafe:0,ammo:100,reserve:100,hp:1e9});
- Object.assign(target,{alive:true,x,y:0,z:7,spawnSafe:0,hp:1e9});
+ Object.assign(target,{alive:true,x,y:0,z:7,yaw:Math.PI,pitch:0,spawnSafe:0,hp:1e9});
+ target.pose=initialMotion(target);bot.pose=initialMotion(bot);
  // Locomotion is tested by the separate full-round simulation. Keeping this
  // actor stationary isolates whether target movement defeats perfect tracking.
  game.move=()=>{};
@@ -39,6 +43,17 @@ function accuracy(difficulty:Difficulty,moving:boolean){
  }
  return{shots,hits,rate:hits/shots,earliest};
 }
+
+test('shooting-lane replay depends on its explicit seed rather than wall-clock spawn state',()=>{
+ const replay=(wallClock:number)=>{
+  const previous=Date.now;let lane:ReturnType<typeof shootingLane>;
+  try{Date.now=()=>wallClock;lane=shootingLane('regular',7919);}finally{Date.now=previous;}
+  assert.equal(lane.target.yaw,Math.PI,'the paired target faces the shooter in every trial');
+  for(let frame=0;frame<360;frame++){const phase=(frame*dt*4/1.1)%2;lane.target.x=lane.x+.55-1.1*(phase<1?phase:2-phase);lane.tick();lane.bot.ai.decision=Infinity;}
+  return{shots:lane.game.shots,hits:lane.bot.hits,seed:lane.game.seed};
+ };
+ assert.deepEqual(replay(1),replay(987654321));
+});
 
 test('seeded rifle accuracy is fallible at every difficulty and strafing disrupts tracking',()=>{
  const rates:number[]=[];

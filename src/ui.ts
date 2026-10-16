@@ -99,6 +99,7 @@ export class UI {
     <p>Adapted with continuous body skinning, neutral bind poses, material response and optimized textures.</p>
     <p>CC0: Mesh2Motion / Quaternius motion; para / MakeHuman hands; MakeHuman head; ambientCG and Poly Haven materials.</p>
     <p>Title font: <a href="https://github.com/google/fonts/tree/main/ofl/alfaslabone" target="_blank" rel="noopener">Alfa Slab One</a> — JM Solé · <a href="./assets/fonts/alfa-slab-one/OFL.txt" target="_blank" rel="noopener">SIL OFL 1.1</a></p>
+    <p>Visit counts use a random browser ID. <a href="https://github.com/play-bolts/play-bolts.github.io/blob/main/research/user-analytics.md" target="_blank" rel="noopener">Privacy and analytics</a></p>
    </section>
    <div id="tab-controls" class="hidden"><div class="controls-grid">${controls.map(([key,label])=>`<div><kbd>${key}</kbd><span>${label}</span></div>`).join('')}</div></div>
    <div id="tab-settings">

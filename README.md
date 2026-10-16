@@ -12,7 +12,7 @@ The main menu displays the three playable rifle models on a dark walnut tabletop
 
 The all-time leaderboard includes three operator-seeded launch scores, tracked separately in `leaderboard_seeds`. They create no player identities or activity events and contribute nothing to the rolling 24-hour scores. The repeatable [seed utility](scripts/seed-leaderboard.py) preserves later earned scores and requires a private pre-change backup when applying changes.
 
-Count multiplayer browser identities active in the past N hours with `python3 scripts/user-analytics.py --aws --hours 24 --json`. The [analytics guide](research/user-analytics.md) covers local databases, historical windows and explicit QA exclusions. Counts exclude bots and leaderboard seeds; they are browser identities, not verified distinct people. Local-only play and page visits are not recorded.
+Count browsers opening Bolts in the past N hours with `python3 scripts/user-analytics.py --aws --hours 24 --json`. Lightweight visitor tracking includes the menu and single-player mode, using a random browser ID and server receipt times, independent of multiplayer identities. It respects Do Not Track and Global Privacy Control; failed requests never block play. Counts begin at deployment and represent browsers, not verified distinct people. Use `--source multiplayer` for the separate connection-based report. The [analytics and privacy guide](research/user-analytics.md) covers time windows, exclusions, opt-out and limitations.
 
 ## Run locally
 
@@ -111,6 +111,7 @@ This is a playable recreation, **not a verified identical port**. The short refe
 - `src/ui.ts`, `src/style.css`: match menu, options, controls, HUD and scoreboard.
 - `src/introScene.ts`: the lit three-rifle tabletop menu scene.
 - `src/community.ts`: online count, leaderboard and feedback API client.
+- `src/visitors.ts`: optional anonymous page-open and visible-page heartbeat tracking.
 - `server/src/bots.rs`: authoritative multiplayer bot perception, navigation and input.
 - `tests/engine.test.ts`: occlusion, navigation, collision, weapons, replays, round lifecycle and AI simulations.
 - `tests/ai.test.ts`: seeded accuracy, delayed perception, reacquisition, threat information, field of view, and firing readiness.

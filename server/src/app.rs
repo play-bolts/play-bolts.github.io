@@ -1,4 +1,5 @@
 use crate::{
+    db::visitors::VisitRequest,
     hub::{Hub, error},
     sim::{DEFAULT_PLAYER_NAME, Faction, InputFrame},
 };
@@ -41,6 +42,10 @@ pub fn router(state: Shared) -> Router {
         .route("/api/lobbies", get(lobbies))
         .route("/api/status", get(status))
         .route("/api/leaderboard", get(leaderboard))
+        .route(
+            "/api/visits",
+            post(visit).layer(DefaultBodyLimit::max(256)),
+        )
         .route(
             "/api/feedback",
             post(feedback).layer(DefaultBodyLimit::max(12_288)),
@@ -208,6 +213,42 @@ async fn leaderboard(
         }
     }
 }
+
+async fn visit(
+    State(state): State<Shared>,
+    ConnectInfo(address): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Result<Json<VisitRequest>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let mut h = state.lock().await;
+    // Unlike read-only public endpoints, a visit requires one exact allowlisted
+    // browser Origin; reject absent and ambiguous origins as well. This is not
+    // authentication: non-browser clients can still forge an allowed Origin.
+    if headers.get_all("origin").iter().count() != 1
+        || origin(&headers).is_none()
+        || !h.allowed_origin(origin(&headers))
+    {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    if let Some(response) = community_access(&mut h, address, &headers, "visits", 60) {
+        return response;
+    }
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejection) => return rejection.into_response(),
+    };
+    let Some(visitor_id) = body.visitor_id() else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    match h.db.record_visit(&visitor_id, crate::db::now_ms()) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            // Analytics are optional: a failed heartbeat must never end games.
+            tracing::warn!(error=%e,"visitor persistence failed");
+            unavailable()
+        }
+    }
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FeedbackRequest {
@@ -332,6 +373,9 @@ async fn upgrade(
 #[cfg(test)]
 #[path = "community_api_tests.rs"]
 mod community_tests;
+#[cfg(test)]
+#[path = "visitor_api_tests.rs"]
+mod visitor_tests;
 async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: String) {
     let initial = tokio::time::timeout(Duration::from_secs(5), socket.recv()).await;
     let hello = match initial {

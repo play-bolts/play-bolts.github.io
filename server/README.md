@@ -1,6 +1,6 @@
 # Bolts multiplayer operations
 
-One Rust process owns every online lobby, player and combat decision. The TypeScript client remains a static web app. **Single player** runs the local AI simulation without a multiplayer connection. The main menu can fetch the public online count and leaderboard; feedback is submitted only on request.
+One Rust process owns every online lobby, player and combat decision. The TypeScript client remains a static web app. **Single player** runs the local AI simulation without a multiplayer connection. The main menu can fetch the public online count and leaderboard; feedback is submitted only on request. Optional visitor tracking also records page opens and visible-page heartbeats independently of game sessions; failure never prevents local play.
 
 The complete game and its assets are hosted at **https://play-bolts.github.io/**. Multiplayer uses **https://bolts-api.christopherkrapu.com** and its corresponding WSS endpoint. GitHub Pages serves the frontend; the existing Oregon AWS server handles the API, lobbies and persistence.
 
@@ -74,6 +74,8 @@ Connection metadata stores keyed HMAC-SHA256 values for the observed IP and user
 | `leaderboard_seeds` | Operator-created contribution ledger keyed by seed ID and canonical name. Tracks synthetic all-time launch scores independently of real combat and identities; created by the seed utility, not the gameplay migration. |
 | `feedback_requests` | Private required message, optional email, keyed network pseudonym and submission time. Indexed by network/time for a persistent hourly limit. |
 | `feedback_events` | Private append-only submitted event referencing its feedback request; committed with the request and containing no message/email copy. |
+| `visitors` | Random browser UUIDv4 with first/last server receipt times. No link to player identities, names or network metadata. |
+| `visitor_activity` | One row per visitor and UTC minute, preserving first/last receipt times within that minute. Indexed by last receipt and visitor ID for historical window queries. |
 | `schema_migrations` | Applied schema version metadata. |
 
 Event types cover server start/stop, player enter/leave/reconnect, profile/loadout changes, chat, kill/death and round end. Chat and its event commit together before broadcast. Kill/death pairs and their combat record commit in one transaction. Membership leave events are idempotent. A persistence failure stops the service instead of continuing matches without their event history.
@@ -81,6 +83,10 @@ Event types cover server start/stop, player enter/leave/reconnect, profile/loado
 Leaderboard rows aggregate by the name used at the time of combat. `^0`–`^9` color codes are removed, whitespace is collapsed, and lowercase keys group capitalization variants. The first plain spelling is retained for display. Equal names share a row; a name is not an account or proof of ownership. Renaming starts credit under the new name without moving historical totals. `Unknown Soldier`, blank names and bot rows are omitted. Human kills against bots and deaths to bots count. Self-kills, including faction changes, count as deaths and award no leaderboard kill. Both tables include named players with zero scores; ties sort by fewer deaths, then canonical name. The 24-hour table counts each role within the server's rolling UTC window, not a calendar day.
 
 Schema migration 2 is additive and transactional. It adds bot/name columns and indexes to existing player tables, then backfills scores from existing combat records using ordered join/profile names. If an old combat has no name event, it falls back to its recorded round name and then the preserved player name. It never invents combat records or infers missing kills/deaths from incomplete round totals. A unique combat/role key and migration marker prevent double counting on restart; original UUIDs, credentials and events remain intact.
+
+Schema migration 3 atomically adds the two visitor tables, their time index and migration marker. It preserves all existing game records and leaderboard seeds. Visitor writes are a separate transaction: a failure returns 503 without stopping matches. No historical visits are inferred or backfilled.
+
+The production frontend sends `{visitorId}` at startup, every 60 seconds while visible, and once on hiding/leaving when possible. It stores a random ID under `bolts.visitor.v1` in local storage; no fingerprint, IP, user agent, name, URL, referrer or multiplayer credential is included or stored in the visitor tables. Browser privacy signals disable tracking, as does `?visits=0`; development and QA pages are disabled by default. The endpoint requires an exact allowed Origin and limits requests to 60 per minute per network address in memory. This deters accidental traffic but is not authentication or proof of a human visitor. There is no public visitor-read API. See [analytics and privacy](../research/user-analytics.md).
 
 Feedback accepts 1–2000 trimmed Unicode characters and an optional validated email of at most 254 ASCII bytes. Requests are limited to three attempts per minute and five accepted submissions per hour per keyed network address, with the hourly limit surviving restarts. Browser origins use the same exact allowlist as multiplayer. No public API reads feedback or contact details, and responses return only the request UUID. Authorized operators can inspect these tables through the existing private database/backup path; no email is sent automatically.
 
@@ -90,14 +96,15 @@ Database rows currently have **no automatic expiry**. The S3 backup lifecycle is
 
 ## Operator analytics and leaderboard seeds
 
-Read unique non-bot browser identities with multiplayer connections overlapping the past N hours:
+Read unique visitor browser IDs with activity in the past N hours, including menu and single-player users:
 
 ```sh
 python3 scripts/user-analytics.py --aws --hours 24 --json
 python3 scripts/user-analytics.py --db server/data/bolts.sqlite --hours 6
+python3 scripts/user-analytics.py --aws --source multiplayer --hours 24 --json
 ```
 
-The production command uses existing AWS credentials and SSM to run a read-only SQLite query as `bolts`; only aggregate JSON returns. Reconnects deduplicate by UUID and connections carried into the time window count. `Unknown Soldier` and spectators count, while bots and leaderboard seeds do not. Known QA identities can be excluded with repeatable `--exclude-player-id` or `--exclude-file` options. This measures browser identities, not verified distinct people; unclassified QA clients can count, and local-only play/page visits are absent. See [the analytics guide](../research/user-analytics.md) for time boundaries, historical reports and limitations.
+The production command uses existing AWS credentials and SSM to run a read-only SQLite query as `bolts`; only aggregate JSON returns. Repeat visits and tabs deduplicate by the persisted visitor UUID. Use `--exclude-visitor-id` or `--exclude-file` for known test IDs. Counts include only successful receipts since tracking was deployed; privacy opt-outs and failed requests are absent, while automated browsers may count. Minute buckets approximate activity at window boundaries, and are not a play-duration metric. These are browser identities, not verified distinct people. Explicit `--source multiplayer` retains the original non-bot connection-overlap report and its `--exclude-player-id` option. See [the analytics guide](../research/user-analytics.md) for exact definitions and historical reports.
 
 The launch seed contains **bIG Dick Billy** (287 kills / 91 deaths), **GigaPatton** (263 / 76), and **Adolf Superfan** (241 / 88). Preview or apply it on an authorized database host:
 

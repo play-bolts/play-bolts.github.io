@@ -9,6 +9,9 @@ use std::{
 };
 use uuid::Uuid;
 
+#[path = "visitors.rs"]
+pub(crate) mod visitors;
+
 pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -528,6 +531,10 @@ impl Db {
 #[cfg(test)]
 #[path = "community_db_tests.rs"]
 mod community_tests;
+
+#[cfg(test)]
+#[path = "visitor_db_tests.rs"]
+mod visitor_tests;
 
 #[cfg(test)]
 mod tests {

@@ -31,3 +31,11 @@ CREATE TABLE IF NOT EXISTS feedback_requests(id TEXT PRIMARY KEY, message TEXT N
 CREATE INDEX IF NOT EXISTS feedback_rate ON feedback_requests(ip_hash,created_at);
 CREATE TABLE IF NOT EXISTS feedback_events(id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES feedback_requests(id), event_type TEXT NOT NULL CHECK(event_type='submitted'), at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS feedback_event_request ON feedback_events(request_id,at);
+-- Anonymous site visits are separate from authenticated players and game events.
+-- Keep the entire additive migration atomic, including its migration marker.
+BEGIN;
+CREATE TABLE IF NOT EXISTS visitors(id TEXT PRIMARY KEY, first_seen INTEGER NOT NULL CHECK(first_seen>=0), last_seen INTEGER NOT NULL CHECK(last_seen>=first_seen));
+CREATE TABLE IF NOT EXISTS visitor_activity(visitor_id TEXT NOT NULL REFERENCES visitors(id), bucket_start INTEGER NOT NULL CHECK(bucket_start>=0 AND bucket_start%60000=0), first_seen INTEGER NOT NULL CHECK(first_seen>=bucket_start), last_seen INTEGER NOT NULL CHECK(last_seen>=first_seen AND last_seen<bucket_start+60000), PRIMARY KEY(visitor_id,bucket_start));
+CREATE INDEX IF NOT EXISTS visitor_activity_time ON visitor_activity(last_seen,visitor_id);
+INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(3,unixepoch('subsec')*1000);
+COMMIT;

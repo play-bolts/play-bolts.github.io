@@ -18,6 +18,8 @@ import {NetworkClient,type Lobby} from './network';
 import {readLaunchAction} from './launch';
 import {CommunityClient} from './community';
 import {AdaptiveResolution} from './adaptiveResolution';
+import {startVisitorTracking} from './visitors';
+startVisitorTracking();
 const ui=new UI(),game=new Game(),sound=new Sound(),network=new NetworkClient(game),community=new CommunityClient();
 let launchAction=readLaunchAction(location.search);
 // Keep progress tied to completed asset requests, reserving the last step for

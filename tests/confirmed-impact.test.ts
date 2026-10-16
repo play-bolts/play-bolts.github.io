@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {decodeInput} from '../src/networkCodec.ts';
 import assert from 'node:assert/strict';
 import {Game,createActor,type Shot} from '../src/engine.ts';
 import {NetworkClient,type SocketLike,type WireActor,type WireEvent,type WireSnapshot} from '../src/network.ts';
@@ -15,7 +16,7 @@ function snapshot(tick:number,events:WireEvent[]=[]):WireSnapshot{
 }
 class Socket implements SocketLike{
  readyState=0;onopen:SocketLike['onopen']=null;onmessage:SocketLike['onmessage']=null;onerror:SocketLike['onerror']=null;onclose:SocketLike['onclose']=null;messages:any[]=[];
- send(raw:string){this.messages.push(JSON.parse(raw));}close(){this.readyState=3;}
+ send(raw:string|ArrayBuffer|ArrayBufferView<ArrayBuffer>){this.messages.push(typeof raw==='string'?JSON.parse(raw):decodeInput(raw));}close(){this.readyState=3;}
  receive(value:unknown){this.onmessage?.({data:JSON.stringify(value)});}
 }
 async function fixture(){
@@ -23,7 +24,7 @@ async function fixture(){
  const client=new NetworkClient(game,{origin:'https://impact.example.test',now:()=>now,storage:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}},fetch:async()=>new Response(JSON.stringify({token:'test-only-session-with-twenty-characters'})),socket:()=>socket});
  client.onImpact=shot=>impacts.push(shot);
  const joining=client.join(undefined,'Local','british');await new Promise(resolve=>setImmediate(resolve));
- socket.readyState=1;socket.onopen?.({});socket.receive({type:'welcome',version:2});socket.receive({type:'joined',actorId:42,lobbyId:'impacts',lobbyName:'Impacts',snapshot:snapshot(0)});await joining;
+ socket.readyState=1;socket.onopen?.({});socket.receive({type:'welcome',version:3});socket.receive({type:'joined',cueSeq:0,actorId:42,lobbyId:'impacts',lobbyName:'Impacts',snapshot:snapshot(0)});await joining;
  return{game,client,socket,impacts,setNow:(value:number)=>{now=value;}};
 }
 function confirmed(kind:Shot['kind'],seq:number,hit:number|null=7,source=42):WireEvent{

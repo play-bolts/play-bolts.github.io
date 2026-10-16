@@ -216,7 +216,7 @@ func (g *gameHost) connect(w http.ResponseWriter, q *http.Request) {
 		Version int    `json:"version"`
 		Token   string `json:"token"`
 	}
-	if c.ReadJSON(&hello) != nil || hello.Type != "hello" || hello.Version != 2 {
+	if c.ReadJSON(&hello) != nil || hello.Type != "hello" || hello.Version != 3 {
 		return
 	}
 	a, err := g.r.verify(hello.Token, session)
@@ -245,7 +245,7 @@ func (g *gameHost) connect(w http.ResponseWriter, q *http.Request) {
 	defer local.Close()
 	local.SetReadLimit(1 << 20)
 	_ = local.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	if local.WriteJSON(map[string]any{"type": "hello", "version": 2, "token": l.token}) != nil {
+	if local.WriteJSON(map[string]any{"type": "hello", "version": 3, "token": l.token}) != nil {
 		left.Store(true)
 		return
 	}

@@ -55,7 +55,7 @@ def prepare():
         *sorted((ROOT / 'server/src').glob('*.rs')),
         ROOT / 'src/generated/hitboxData.json',
         ROOT / 'src/generated/handCollisionData.json',
-        ROOT / 'shared/actor-fields.json',
+        ROOT / 'shared/actor-fields.json', ROOT / 'shared/wire-schema.json',
         *[ROOT / 'infra' / name for name in [
             'install-release.sh', 'backup.py', 'bolts.service', 'bolts-backup.service', 'bolts-backup.timer',
         ]],
@@ -303,7 +303,7 @@ def deploy_release(args, outputs, archive, digest):
         f'printf "%s  %s\\n" {quote(digest)} {quote(remote_archive)} | sha256sum --check --status',
         f'install -d -m 0700 -o bolts-build -g bolts-build {quote(source_dir)}',
         f'tar --extract --gzip --no-same-owner --no-same-permissions --file {quote(remote_archive)} --directory {quote(source_dir)}',
-        f'bash {quote(source_dir + "/infra/install-release.sh")} {quote(digest)} {quote(source_dir)} {quote(args.origins)}',
+        f'bash {quote(source_dir + "/infra/install-release.sh")} {quote(digest)} {quote(source_dir)} {quote(args.origins)} {quote(args.expected_release or "")}',
     ])
     parameters = STATE / 'ssm-parameters.json'
     parameters.write_text(json.dumps({'commands': [script], 'executionTimeout': ['3600']}))
@@ -340,7 +340,7 @@ def verify_edge(url):
         try:
             with urllib.request.urlopen(url + '/api/health', timeout=10) as response:
                 result = json.load(response)
-                if result.get('ok') is True and result.get('version') == 2:
+                if result.get('ok') is True and result.get('version') == 3:
                     print(f'Backend ready: {url}', flush=True)
                     return
         except (OSError, ValueError):
@@ -398,6 +398,8 @@ def main():
     parser.add_argument('--provision-only', action='store_true', help='With --apply, provision infrastructure without building the release')
     parser.add_argument('--domain-only', action='store_true', help='With --apply, configure only the reviewed custom domain, certificate and DNS; never deploy/restart the application')
     parser.add_argument('--origins-only', action='store_true', help='With --apply, atomically change browser origins and restart the existing binary; no build or infrastructure update')
+    parser.add_argument('--application-only', action='store_true', help='Update the Rust application on the existing instance without provisioning infrastructure')
+    parser.add_argument('--expected-release', help='Require this current backend release SHA-256 before building and immediately before replacement')
     parser.add_argument('--custom-domain', choices=[CUSTOM_DOMAIN], help='Exact approved custom backend domain; requires --domain-only')
     parser.add_argument('--stack', default='bolts-backend')
     parser.add_argument('--origins', default=DEFAULT_ORIGINS)
@@ -406,7 +408,13 @@ def main():
         raise DeploymentError('Use --domain-only --custom-domain ' + CUSTOM_DOMAIN + ' together, without --provision-only')
     if args.origins_only and (args.domain_only or args.provision_only):
         raise DeploymentError('--origins-only cannot be combined with other deployment modes')
+    if args.application_only and (args.origins_only or args.domain_only or args.provision_only):
+        raise DeploymentError('--application-only cannot be combined with other deployment modes')
     import re
+    if args.expected_release and not re.fullmatch(r'[a-f0-9]{64}', args.expected_release):
+        raise DeploymentError('Expected release must be a lowercase SHA-256')
+    if args.application_only and args.apply and not args.expected_release:
+        raise DeploymentError('--application-only --apply requires --expected-release')
     if not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9-]{0,127}', args.stack):
         raise DeploymentError('Invalid CloudFormation stack name')
     if not re.fullmatch(r'[A-Za-z0-9:/.,_-]+', args.origins):
@@ -426,7 +434,13 @@ def main():
     if args.domain_only:
         configure_domain(args, template)
         return
-    outputs = provision(args, template)
+    if args.application_only:
+        existing = describe(args.stack)
+        if not existing or existing['StackStatus'] not in {'CREATE_COMPLETE', 'UPDATE_COMPLETE'}:
+            raise DeploymentError('--application-only requires a stable existing backend stack')
+        outputs = {item['OutputKey']: item['OutputValue'] for item in existing['Outputs']}
+    else:
+        outputs = provision(args, template)
     if args.provision_only:
         print(f'Infrastructure ready; no application release deployed. Endpoint: {outputs["BackendUrl"]}')
         return

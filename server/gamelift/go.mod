@@ -11,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.79.3
 	github.com/aws/smithy-go v1.28.5
 	github.com/gorilla/websocket v1.5.3
+	github.com/vmihailenco/msgpack/v5 v5.4.1
 )
 
 require (
@@ -29,5 +30,6 @@ require (
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/sethvargo/go-retry v0.2.4 // indirect
+	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 )

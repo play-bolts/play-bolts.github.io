@@ -137,3 +137,15 @@ test('every rifle world flash follows the animated muzzle position and firing or
   assert.ok(flash.position.distanceTo(before)>.1,'flash follows subsequent animation rather than its stale event position');
  }
 });
+
+test('live remote shot cues start a fresh flash on arrival without changing replay timestamps',()=>{
+ const recorded=Object.freeze({...shot}),game=new Game(),view=Object.create(View.prototype) as View;
+ game.state='playing';game.time=recorded.time+.25;game.shots=[recorded];game.replayShots=[recorded];const arrivedAt=game.time;
+ Object.assign(view,{scene:new THREE.Scene(),effects:[],soldiers:[],camera:new THREE.PerspectiveCamera(),viewProjection:new THREE.Matrix4(),viewFrustum:new THREE.Frustum(),muzzle:new THREE.Group(),flash:new THREE.PointLight(),rifle:null,clock:0,weaponMeleeStart:-Infinity,weaponShotStart:-Infinity,renderer:{render(){},clearDepth(){}}});
+ view.effect(recorded,false,0,false,arrivedAt);const muzzle=view.effects.find(effect=>effect.kind==='muzzle')!;assert.ok(muzzle);assert.equal(muzzle.started,arrivedAt);
+ for(const elapsed of [0,1/60]){game.time=arrivedAt+elapsed;view.render(game,1/60,false);assert.equal(muzzle.mesh.getObjectByName('flash-core')?.visible,true,'network transit and prediction lead do not consume the luminous flash');}
+ assert.equal(recorded.time,shot.time);assert.equal(game.shots[0],recorded);assert.equal(game.replayShots[0],recorded);
+ game.state='killcam';game.replayTime=recorded.time+.01;view.render(game,1/60,false);const replayMuzzle=view.effects.find(effect=>effect.kind==='muzzle')!;
+ assert.equal(replayMuzzle.started,recorded.time,'killcam retains authoritative action timing');
+ view.clearEffects();(view as any).effectPool.clear();
+});

@@ -5,8 +5,19 @@ umask 077
 release=$1
 source_dir=$2
 origins=$3
+expected_release=${4:-}
 case "$release" in (*[!a-f0-9]*|'') echo 'Invalid release identifier' >&2; exit 2;; esac
-test "$#" -eq 3
+test "$#" -eq 3 -o "$#" -eq 4
+case "$expected_release" in (*[!a-f0-9]*) echo 'Invalid expected release' >&2; exit 2;; esac
+exec 9>/var/lock/bolts-release.lock
+flock -n 9 || { echo 'Another Bolts release is in progress.' >&2; exit 1; }
+verify_current_release() {
+  if [ -n "$expected_release" ] && [ "$(readlink /opt/bolts/current || true)" != "/opt/bolts/releases/$expected_release" ]; then
+    echo 'Current release changed; leaving the running service untouched.' >&2
+    exit 1
+  fi
+}
+verify_current_release
 test -f "$source_dir/server/Cargo.lock"
 test -f /var/lib/bolts-bootstrap.ready
 if [ -f /etc/systemd/system/bolts.service.d/gamelift.conf ]; then
@@ -34,7 +45,8 @@ runuser -u bolts-build -- env CARGO_HOME="$build_home/.cargo" RUSTUP_HOME="$buil
 
 # Building can take several minutes. Recheck the running service immediately
 # before installation so players who arrived during compilation are not kicked.
-if systemctl is-active --quiet bolts.service; then
+verify_empty_lobbies() {
+ if systemctl is-active --quiet bolts.service; then
   curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8080/api/lobbies | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
@@ -42,7 +54,10 @@ rooms = data.get("lobbies")
 if not isinstance(rooms, list) or any(not isinstance(room.get("players"), int) or room["players"] != 0 for room in rooms):
     raise SystemExit("Release deferred: a human seat is occupied; current service is unchanged.")
 '
-fi
+ fi
+}
+verify_empty_lobbies
+verify_current_release
 
 install -d -m 0755 -o root -g root "/opt/bolts/releases/$release" /usr/local/libexec
 install -m 0755 -o root -g root "$build_home/target/release/bolts-server" "/opt/bolts/releases/$release/bolts-server"
@@ -81,18 +96,23 @@ systemctl daemon-reload
 systemctl enable bolts.service bolts-backup.timer >/dev/null
 # A rollback checkpoint is taken before replacing a running binary.
 if [ -f /var/lib/bolts/bolts.sqlite ]; then systemctl start bolts-backup.service; fi
+verify_empty_lobbies
+verify_current_release
 previous=$(readlink /opt/bolts/current || true)
 ln -sfn "/opt/bolts/releases/$release" /opt/bolts/current.next
 mv -Tf /opt/bolts/current.next /opt/bolts/current
-systemctl restart bolts.service
 healthy=false
-for attempt in $(seq 1 30); do
-  if curl --fail --silent --max-time 2 http://127.0.0.1:8080/api/health | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("ok") is True and d.get("version")==2 else 1)' 2>/dev/null; then
-    healthy=true
-    break
-  fi
-  sleep 1
-done
+# A failed systemd start must enter the same rollback path as failed health
+# checks. An unguarded restart would exit under set -e after changing current.
+if systemctl restart bolts.service; then
+  for attempt in $(seq 1 30); do
+    if curl --fail --silent --max-time 2 http://127.0.0.1:8080/api/health | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("ok") is True and d.get("version")==3 else 1)' 2>/dev/null; then
+      healthy=true
+      break
+    fi
+    sleep 1
+  done
+fi
 if [ "$healthy" != true ]; then
   systemctl stop bolts.service || true
   if [ -n "$previous" ]; then

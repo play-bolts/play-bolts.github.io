@@ -1,13 +1,16 @@
 import test from 'node:test';
+import {decodeInput} from '../src/networkCodec.ts';
+import {encode} from '@msgpack/msgpack';
 import assert from 'node:assert/strict';
 import {Game,createActor} from '../src/engine.ts';
 import {NetworkClient,type SocketLike,type WireActor,type WireSnapshot} from '../src/network.ts';
 import {MELEE_SECONDS,WEAPONS,HEIGHTS} from '../src/config.ts';
 import actorFields from '../shared/actor-fields.json';
+import wireSchema from '../shared/wire-schema.json';
 
 class MockSocket implements SocketLike {
- readyState=0;onopen:SocketLike['onopen']=null;onmessage:SocketLike['onmessage']=null;onerror:SocketLike['onerror']=null;onclose:SocketLike['onclose']=null;messages:any[]=[];closed=false;
- send(raw:string){this.messages.push(JSON.parse(raw));}
+ readyState=0;binaryType='blob';onopen:SocketLike['onopen']=null;onmessage:SocketLike['onmessage']=null;onerror:SocketLike['onerror']=null;onclose:SocketLike['onclose']=null;messages:any[]=[];closed=false;rawMessages:unknown[]=[];
+ send(raw:string|ArrayBuffer|ArrayBufferView<ArrayBuffer>){this.rawMessages.push(raw);this.messages.push(typeof raw==='string'?JSON.parse(raw):decodeInput(raw));}
  close(){this.closed=true;this.readyState=3;this.onclose?.({});}
  open(){this.readyState=1;this.onopen?.({});}
  receive(message:unknown){this.onmessage?.({data:JSON.stringify(message)});}
@@ -24,14 +27,15 @@ const idle={forward:0,right:0,jump:false,walk:false,lean:0};
 async function fixture(spectator=false){
  const game=new Game(),sockets:MockSocket[]=[],urls:string[]=[],requests:{url:string;init?:RequestInit}[]=[],storage=new Map<string,string>();let now=0;
  const client=new NetworkClient(game,{origin:'https://multiplayer.example.test',now:()=>now,storage:{getItem:key=>storage.get(key)??null,setItem:(k,v)=>void storage.set(k,v),removeItem:k=>void storage.delete(k)},fetch:async(url,init)=>{requests.push({url:String(url),init});return new Response(JSON.stringify({playerId:'6e1b12b2-133f-407f-a882-53065c83139f',token:'opaque-session-token-at-least-twenty-characters'}),{status:200});},socket:url=>{urls.push(url);const ws=new MockSocket();sockets.push(ws);return ws;}});
- const joining=client.join(undefined,'^3Chris','british',spectator);await new Promise(resolve=>setImmediate(resolve));const socket=sockets[0];socket.open();socket.receive({type:'welcome',version:2,playerId:'6e1b12b2-133f-407f-a882-53065c83139f'});const initial=snapshot();if(spectator)Object.assign(initial.actors[1],{spectator:true,alive:false,hp:0});socket.receive({type:'joined',lobbyId:'room-one',lobbyName:'Rommel Alpha',actorId:42,snapshot:initial});await joining;
+ const joining=client.join(undefined,'^3Chris','british',spectator);await new Promise(resolve=>setImmediate(resolve));const socket=sockets[0];socket.open();socket.receive({type:'welcome',version:3,playerId:'6e1b12b2-133f-407f-a882-53065c83139f'});const initial=snapshot();if(spectator)Object.assign(initial.actors[1],{spectator:true,alive:false,hp:0});socket.receive({type:'joined',cueSeq:0,lobbyId:'room-one',lobbyName:'Rommel Alpha',actorId:42,snapshot:initial});await joining;
  return{client,game,socket,sockets,urls,requests,storage,setNow:(value:number)=>{now=value;}};
 }
 test('network authentication keeps opaque token out of URLs and maps self to actor zero',async()=>{
  const {client,game,socket,urls,requests,storage}=await fixture();
  try{
   assert.equal(urls[0],'wss://multiplayer.example.test/api/ws');assert.equal(requests[0].url,'https://multiplayer.example.test/api/session');assert.deepEqual(JSON.parse(String(requests[0].init?.body)),{});
-  assert.deepEqual(socket.messages[0],{type:'hello',version:2,token:'opaque-session-token-at-least-twenty-characters'});assert.deepEqual(socket.messages[1],{type:'join',name:'^3Chris',faction:'british'});assert.equal(storage.size,1);
+  assert.deepEqual(socket.messages[0],{type:'hello',version:3,token:'opaque-session-token-at-least-twenty-characters'});assert.deepEqual(socket.messages[1],{type:'join',name:'^3Chris',faction:'british'});assert.equal(storage.size,1);
+  assert.equal(socket.binaryType,'arraybuffer');
   assert.equal(game.player.id,0);assert.equal(game.player.name,'Player 42');assert.equal(game.actors[1].name,'Player 7');assert.equal(game.actors.length,2);assert.equal(game.state,'playing');
  }finally{client.disconnect();}
 });
@@ -369,7 +373,7 @@ test('spectator follow remaps participants, skips departures and returns through
  }finally{client.disconnect();}
 });
 
-test('v2 rejects legacy timing and malformed arrival diagnostics',async()=>{
+test('v3 rejects legacy timing and malformed arrival diagnostics',async()=>{
  const {client}=await fixture();
  try{
   for(const timing of [undefined,'tick-v1','tick-v3'])assert.equal(client.receiveSnapshot({...snapshot(2,.05),inputTiming:timing}),false);
@@ -423,19 +427,23 @@ test('outbound congestion does not accumulate stale movement or fire intent',asy
 });
 
 
-test('the v2 handshake fails clearly against an obsolete endpoint',async()=>{
- const game=new Game(),socket=new MockSocket();const client=new NetworkClient(game,{origin:'https://multiplayer.example.test',storage:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}},fetch:async()=>new Response(JSON.stringify({token:'test-only-session-token-long-enough'})),socket:()=>socket});
- const joining=client.join(undefined,'Version test','british');const rejected=assert.rejects(joining,/Incompatible server version/);
- await new Promise(resolve=>setImmediate(resolve));socket.open();socket.receive({type:'welcome',version:1});await rejected;assert.equal(client.online,false);assert.equal(socket.closed,true);
+for(const version of [1,2,4])test(`the v3 handshake rejects version ${version} clearly and retains browser identity`,async()=>{
+ const game=new Game(),socket=new MockSocket(),token='test-only-session-token-long-enough';let stored:string|null=token;
+ const client=new NetworkClient(game,{origin:'https://multiplayer.example.test',storage:{getItem:()=>stored,setItem:(_key,value)=>{stored=value;},removeItem:()=>{stored=null;}},fetch:async()=>new Response(JSON.stringify({token})),socket:()=>socket});
+ const joining=client.join(undefined,'Version test','british');const rejected=assert.rejects(joining,/Incompatible server version\. Reload Bolts to update/);
+ await new Promise(resolve=>setImmediate(resolve));socket.open();socket.receive({type:'welcome',version});await rejected;assert.equal(client.online,false);assert.equal(socket.closed,true);assert.equal(stored,token);
 });
 
 test('the actual client decodes independent compact state after intermediate snapshots were replaced',async()=>{
  const {client,game,socket,setNow}=await fixture();
  try{
   setNow(525);const state=snapshot(30,.5);Object.assign(state.actors[1],{kills:3,name:'^2Tuple Soldier',inputTiming:{received:10,late:0,missing:0,arrivalLead:3}});
-  const compact={...state,actorEncoding:'tuple-v1',actors:state.actors.map(actor=>actorFields.map(field=>(actor as any)[field]??null))};
-  socket.receive(compact);assert.equal(game.player.kills,3);assert.equal(game.player.name,'^2Tuple Soldier');assert.equal(client.diagnostics.inputTiming?.received,10);
-  assert.equal(client.receiveSnapshot({...compact,tick:33,time:.55,actorEncoding:'tuple-v0'}),false);
+  const actors=state.actors.map(actor=>actorFields.map(field=>field==='pose'?actor.pose?wireSchema.poseFields.map(key=>(actor.pose as any)[key]):null:field==='inputTiming'?wireSchema.timingFields.map(key=>(actor.inputTiming as any)?.[key]??0):(actor as any)[field]??null));
+  const compact=[3,1,'room-one',0,state.tick,state.time,state.remaining,state.roundNumber,state.ended,state.winner,actors];
+  const wire=encode(compact);socket.onmessage?.({data:wire.buffer.slice(wire.byteOffset,wire.byteOffset+wire.byteLength)});assert.equal(game.player.kills,3);assert.equal(game.player.name,'^2Tuple Soldier');assert.equal(client.diagnostics.inputTiming?.received,10);
+  assert.equal(client.receiveSnapshot({...state,actorEncoding:'tuple-v1'}),false);
+  socket.onmessage?.({data:new Uint8Array([0xc1]).buffer});assert.equal(game.player.kills,3,'malformed binary cannot mutate state');
+  setNow(542);client.update(1/60,idle);assert.ok(socket.rawMessages.at(-1) instanceof Uint8Array,'frequent commands use binary frames');
  }finally{client.disconnect();}
 });
 
@@ -470,5 +478,159 @@ test('a state coalesced across round rollover retains old killfeed but suppresse
   setNow(175);const round=snapshot(9,.15);round.roundNumber=2;socket.receive(round);game.events=[];
   socket.receive({type:'events',lobbyId:'room-one',roundNumber:1,tick:6,time:.1,eventSeq:1,events:[{type:'kill',actor:7,victim:42,actorGeneration:1,victimGeneration:1,actorName:'Player 7',victimName:'Player 42',actorFaction:'german'},{type:'reload',actor:7,actorGeneration:1}]});
   assert.deepEqual(game.events.map(event=>event.type),['kill']);assert.equal(game.state,'playing');assert.equal(game.replay.length,0);
+ }finally{client.disconnect();}
+});
+
+function cue(tick:number,events:any[],cueSeq=1,roundNumber=1){
+ return{type:'cues',lobbyId:'room-one',roundNumber,tick,time:tick/60,cueSeq,events:events.map(event=>({actor:7,actorGeneration:1,roundNumber,tick,time:tick/60,...event}))};
+}
+function cueShot(tick:number,overrides:Record<string,unknown>={}){
+ return{type:'shot',seq:tick,shot:{time:tick/60,actor:7,origin:{x:12,y:1.65,z:4},end:{x:12,y:1.65,z:8},kind:'shot',hit:null,headshot:false,seq:tick},...overrides};
+}
+
+for(const tick of [2,3,4])test(`combat cues at tick phase ${tick%3} play before the next authority snapshot`,async()=>{
+ const {client,game,socket}=await fixture();
+ try{
+  const before={time:game.time,hp:game.player.hp,kills:game.player.kills,reload:game.actors[1].reload,history:game.history.length,x:game.actors[1].x};game.events=[];
+  const batch=cue(tick,[cueShot(tick),{type:'hurt',actor:42,value:30},{type:'reload'},{type:'bolt'}]);socket.receive(batch);
+  assert.deepEqual(game.events.map(event=>event.type),['shot','hurt','reload','bolt']);assert.equal(game.events[0].actor,1);assert.equal(game.events[1].actor,0);
+  assert.deepEqual({time:game.time,hp:game.player.hp,kills:game.player.kills,reload:game.actors[1].reload,history:game.history.length,x:game.actors[1].x},before,'a cue cannot advance any authority or playback clock');
+  assert.equal(game.shots.length,1);assert.equal(client.hasPendingReloadCue(1),true);socket.receive(batch);assert.equal(game.events.length,4);assert.equal(game.shots.length,1);
+ }finally{client.disconnect();}
+});
+
+test('immediate predicted shot confirmation plays one contact and never repeats muzzle effects or killcam shots',async()=>{
+ const {client,game,socket,setNow}=await fixture();const impacts:any[]=[];client.onImpact=shot=>impacts.push(shot);
+ try{
+  client.fire();setNow(17);client.update(1/60,idle);const command=socket.messages.findLast(message=>message.type==='input');game.events=[];
+  const shot={type:'shot',actor:42,actorGeneration:1,seq:command.seq,hitGeneration:1,shot:{time:command.tick/60,actor:42,origin:{x:12,y:1.65,z:0},end:{x:12,y:1.65,z:4},kind:'shot',hit:7,headshot:true,seq:command.seq}};
+  const batch=cue(command.tick,[shot]);socket.receive(batch);socket.receive(batch);
+  assert.equal(impacts.length,1);assert.equal(impacts[0].hit,1);assert.equal(game.events.length,0);assert.equal(game.shots.length,1);assert.equal(game.player.kills,0);
+  const state=snapshot(command.tick,command.tick/60);state.actors[1].ack=command.seq;state.actors[0].hp=0;state.actors[0].alive=false;state.actors[1].kills=1;socket.receive(state);
+  // Defensive deduplication also covers a repeated cue in a later event lane.
+  socket.receive({...batch,type:'events',eventSeq:1});assert.equal(impacts.length,1);assert.equal(game.shots.length,1);assert.equal(game.events.length,0);
+ }finally{client.disconnect();}
+});
+
+test('new-life cues wait briefly for identity and cannot animate a previous or subsequent life',async()=>{
+ const {client,game,socket}=await fixture();
+ try{
+  game.events=[];socket.receive(cue(6,[{type:'reload',actorGeneration:2}]));assert.equal(game.events.length,0);assert.equal(client.hasPendingReloadCue(1),false);
+  socket.receive(snapshot(3,.05));assert.equal(game.events.length,0);
+  const respawn=snapshot(6,.1);respawn.actors[0].spawnGeneration=2;socket.receive(respawn);assert.equal(game.events.filter(event=>event.type==='reload').length,1);
+  game.events=[];socket.receive(cue(7,[{type:'reload',actorGeneration:1}],2));assert.equal(game.events.length,0);
+  socket.receive(cue(8,[{type:'reload',actorGeneration:2}],3));assert.equal(game.events.length,1);
+  const next=snapshot(9,.15);next.actors[0].spawnGeneration=3;socket.receive(next);assert.equal(game.events.length,0,'a pending render event is removed before the actor is replaced by another life');
+ }finally{client.disconnect();}
+});
+
+test('future-round cues wait for matching authority while old-round cues never replay',async()=>{
+ const {client,game,socket}=await fixture();
+ try{
+  game.events=[];socket.receive(cue(6,[cueShot(6)],1,2));assert.equal(game.events.length,0);socket.receive(snapshot(3,.05));assert.equal(game.events.length,0);
+  const next=snapshot(6,.1);next.roundNumber=2;socket.receive(next);assert.equal(game.events.filter(event=>event.type==='shot').length,1);assert.equal(game.shots.length,1);
+  game.events=[];socket.receive(cue(7,[cueShot(7)],2,1));assert.equal(game.events.length,0);assert.equal(game.shots.length,1);
+ }finally{client.disconnect();}
+});
+
+test('unknown actor cues wait for a future roster and expired holds cannot create delayed effects',async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  game.events=[];socket.receive(cue(6,[{type:'reload',actor:3}]));assert.equal(game.events.length,0);
+  socket.receive(snapshot(3,.05));assert.equal(game.events.length,0);socket.receive(snapshot(6,.1,[actor(3),actor(7,'german'),actor(42)]));assert.equal(game.events[0]?.actor,1);
+  game.events=[];socket.receive(cue(9,[{type:'reload',actor:5}],2));setNow(251);socket.receive(snapshot(9,.15,[actor(3),actor(5),actor(7,'german'),actor(42)]));assert.equal(game.events.length,0);
+  socket.receive(cue(8,[{type:'reload',actor:99}],3));assert.equal(client['pendingCues'].length,0,'a state at or beyond the cue confirms an absent actor is gone');
+ }finally{client.disconnect();}
+});
+
+test('confirmed hit cues are bound to the target life as well as the shooter',async()=>{
+ const {client,game,socket}=await fixture();
+ try{
+  const shot=cueShot(6);shot.shot.hit=42 as never;game.events=[];
+  socket.receive(cue(6,[{...shot,hitGeneration:2}]));assert.equal(game.events.length,0);
+  const state=snapshot(6,.1);state.actors[1].spawnGeneration=2;socket.receive(state);assert.equal(game.events.filter(event=>event.type==='shot').length,1);
+  game.events=[];socket.receive(cue(7,[{...shot,seq:7,hitGeneration:1,shot:{...shot.shot,time:7/60,seq:7}}],2));assert.equal(game.events.length,0,'old-life contact never follows the player through respawn');
+ }finally{client.disconnect();}
+});
+
+test('cosmetic cue validation rejects durable events, malformed metadata and mismatched envelopes',async()=>{
+ const {client,game}=await fixture();
+ try{
+  game.events=[];const good=cue(2,[cueShot(2)]);
+  const bad=[{...good,lobbyId:'other'},{...good,cueSeq:0},{...good,tick:-1},{...good,time:NaN},{...good,events:[{type:'kill',actor:7,actorGeneration:1}]},cue(2,[{type:'reload',actorGeneration:undefined}]),cue(2,[{type:'reload',actorGeneration:-1}]),cue(2,[{type:'reload',tick:3}]),cue(2,[{type:'reload',roundNumber:2}]),cue(2,[{type:'hurt',value:Infinity}]),cue(2,[{type:'shot'}]),cue(2,[{type:'shot',shot:{...good.events[0].shot,actor:42}}]),cue(2,[{...cueShot(2),shot:{...good.events[0].shot,hit:42}}])];
+  for(const batch of bad)assert.equal(client.receiveCues(batch),false,JSON.stringify(batch));assert.equal(game.events.length,0);
+  assert.equal(client.receiveCues(good),true);assert.equal(game.events.length,1);assert.equal(client.receiveCues(cue(3,[{type:'reload'}],1)),true);assert.equal(game.events.length,1,'replayed or reordered cue sequence numbers are ignored');
+ }finally{client.disconnect();}
+});
+
+test('future cue buffering is bounded and gets discarded on disconnect',async()=>{
+ const {client,game}=await fixture();
+ try{
+  game.events=[];for(let seq=1;seq<=140;seq++)client.receiveCues(cue(6,[{type:'reload',actorGeneration:2}],seq));assert.equal(client['pendingCues'].length,128);assert.equal(game.events.length,0);
+  client.disconnect();assert.equal(client['pendingCues'].length,0);assert.equal(client.hasPendingReloadCue(1),false);
+ }finally{client.disconnect();}
+});
+
+for(const cancel of ['snapshot','shot','switch','expiry','generation','death','disconnect']as const)test(`reload audio cue lease ends on ${cancel}`,async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  socket.receive(cue(3,[{type:'reload'}]));assert.equal(client.hasPendingReloadCue(1),true);assert.equal(game.actors[1].reload,0,'the lease cannot author the remote reload timer');
+  if(cancel==='snapshot'){socket.receive(snapshot(3,.05));}
+  else if(cancel==='shot')socket.receive(cue(4,[cueShot(4)],2));
+  else if(cancel==='switch')socket.receive(cue(4,[{type:'switch',weapon:'grenade'}],2));
+  else if(cancel==='expiry')setNow(251);
+  else if(cancel==='generation'){const state=snapshot(2,2/60);state.actors[0].spawnGeneration=2;socket.receive(state);}
+  else if(cancel==='death'){const state=snapshot(2,2/60);state.actors[0].alive=false;state.actors[0].hp=0;socket.receive(state);}
+  else client.disconnect();
+  assert.equal(client.hasPendingReloadCue(1),false);
+ }finally{client.disconnect();}
+});
+
+test('binary inputs keep the congestion cutoff tied to about twelve queued commands',async()=>{
+ const {client,socket,setNow}=await fixture();
+ try{
+  setNow(17);client.update(1/60,idle);const bytes=(socket.rawMessages.at(-1) as Uint8Array).byteLength;
+  assert.ok(bytes*12<4096,'the old byte cutoff would admit materially older binary intent');
+  Object.assign(socket,{bufferedAmount:bytes*12+1});client.fireOnce();setNow(34);client.update(1/60,idle);assert.equal(socket.messages.filter(message=>message.type==='input').length,1);assert.equal(client.diagnostics.congestedInputs,1);
+  Object.assign(socket,{bufferedAmount:0});setNow(51);client.update(1/60,idle);assert.equal(socket.messages.findLast(message=>message.type==='input').fire,false);
+ }finally{client.disconnect();}
+});
+
+test('an immediate shot is recorded once and the durable death still waits for authority before killcam',async()=>{
+ const {client,game,socket}=await fixture();
+ try{
+  game.events=[];socket.receive(cue(3,[{...cueShot(3),hitGeneration:1,shot:{...cueShot(3).shot,hit:42}}]));assert.equal(game.shots.length,1);assert.equal(game.state,'playing');
+  socket.receive({type:'events',lobbyId:'room-one',roundNumber:1,tick:3,time:.05,eventSeq:1,events:[{type:'kill',actor:7,victim:42,actorGeneration:1,victimGeneration:1,time:.05}]});assert.equal(game.state,'playing');
+  const dead=snapshot(3,.05);Object.assign(dead.actors[1],{alive:false,hp:0,deadAt:.05});socket.receive(dead);assert.equal(game.state,'killcam');assert.equal(game.killer,1);assert.equal(game.replayShots.length,1);assert.equal(game.replayShots[0].time,.05);
+ }finally{client.disconnect();}
+});
+
+for(const action of ['melee','switch']as const)test(`predicted ${action} cancels the local reload audio cue lease immediately`,async()=>{
+ const {client,game,socket,setNow}=await fixture();
+ try{
+  socket.receive(cue(3,[{type:'reload',actor:42}]));assert.equal(client.hasPendingReloadCue(0),true);
+  Object.assign(game.player,{reload:3,reloadTotal:3,ammo:0,reserve:10});if(action==='melee')client.fire(true);else client.selectWeapon('grenade');setNow(17);client.update(1/60,idle);
+  assert.equal(game.player.reload,0);assert.equal(client.hasPendingReloadCue(0),false);
+ }finally{client.disconnect();}
+});
+
+test('reload audio uses live authority through delayed idle poses and prompt cancel cues',async()=>{
+ const {client,game,socket}=await fixture();
+ try{
+  socket.receive(cue(3,[{type:'reload'}]));assert.equal(client.reloadAudioActive(1),true);assert.equal(game.actors[1].reload,0);
+  const reloading=snapshot(3,.05);Object.assign(reloading.actors[0],{reload:2.95,reloadTotal:3});socket.receive(reloading);sampleRemote(client,0);
+  assert.equal(game.actors[1].reload,0,'the remote pose still presents the earlier idle state');assert.equal(client.hasPendingReloadCue(1),false);assert.equal(client.reloadAudioActive(1),true,'the matching authority state preserves the sound after its lease ends');
+  socket.receive(cue(4,[{...cueShot(4),shot:{...cueShot(4).shot,kind:'melee'}}],2));assert.equal(client.reloadAudioActive(1),false,'a confirmed melee immediately cancels sound despite the older reload snapshot');
+  const canceled=snapshot(6,.1);socket.receive(canceled);sampleRemote(client,.05);assert.equal(game.actors[1].reload,2.95);assert.equal(client.reloadAudioActive(1),false,'the delayed loading pose cannot restart a canceled sound');
+ }finally{client.disconnect();}
+});
+
+test('lethal hurt cues preserve fatal feedback without predicting death or health',async()=>{
+ const {client,game,socket}=await fixture();
+ try{
+  const before=game.player.hp;game.events=[];socket.receive(cue(3,[{type:'hurt',actor:42,value:100,lethal:true}]));
+  assert.equal(game.events[0]?.type,'hurt');assert.equal(game.events[0]?.lethal,true);assert.equal(game.player.hp,before);assert.equal(game.player.alive,true);assert.equal(game.state,'playing');assert.equal(game.replay.length,0);
+  assert.equal(client.receiveCues(cue(4,[{type:'hurt',actor:42,lethal:'yes'}],2)),false);
+  const life=snapshot(6,.1);life.actors[1].spawnGeneration=2;socket.receive(life);game.events=[];socket.receive(cue(7,[{type:'hurt',actor:42,actorGeneration:1,lethal:true}],3));assert.equal(game.events.length,0,'fatal cues from an earlier life cannot stain the respawn');
  }finally{client.disconnect();}
 });

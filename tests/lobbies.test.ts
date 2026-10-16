@@ -60,7 +60,7 @@ test('location Play obtains a managed admission even when no lobby is running',a
   if(String(url).endsWith('/lobbies'))return new Response(JSON.stringify({version:2,lobbies:[],locations:['ca','ny','sp','par']}));
   if(String(url).endsWith('/session'))return new Response(JSON.stringify({token:'a'.repeat(64)}));
   requests.push(JSON.parse(String(options?.body)).lobbyId);return new Response(JSON.stringify({lobbyId:'game-sp',ticket:'temporary-ticket-'.repeat(8),websocketUrl:'wss://sp.amazongamelift.com:8080/api/ws'}));
- },socket:()=>{const socket:SocketLike={readyState:1,onopen:null,onmessage:null,onerror:null,onclose:null,send(raw){sent.push(JSON.parse(raw));},close(){}};queueMicrotask(()=>socket.onopen?.({}));return socket;}});
+ },socket:()=>{const socket:SocketLike={readyState:1,onopen:null,onmessage:null,onerror:null,onclose:null,send(raw){sent.push(JSON.parse(String(raw)));},close(){}};queueMicrotask(()=>socket.onopen?.({}));return socket;}});
  assert.deepEqual(await client.lobbies(),[]);const joining=client.join('new:sp','Alice','british');await new Promise(r=>setImmediate(r));
  assert.deepEqual(requests,['new:sp']);assert.equal(client.lobbyId,'game-sp');assert.equal(sent[0].token,'temporary-ticket-'.repeat(8));
  client.disconnect();await joining;
@@ -79,7 +79,7 @@ test('managed sockets receive only the temporary ticket; empty tickets fail clos
  for(const ticket of ['signed-ticket-'.repeat(8),'']){
   const sent:any[]=[];let opened=0;
   const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async(url)=>new Response(JSON.stringify(String(url).endsWith('/lobbies')?{lobbies:[{id:'game',name:'Paris',capacity:6,players:0,phase:'playing',managed:true}]}:String(url).endsWith('/session')?{token:'permanent-account-token-'.repeat(3)}:{lobbyId:'game',ticket,websocketUrl:'wss://par.amazongamelift.com:8080/api/ws'})),socket:()=>{
-   opened++;const socket:SocketLike={readyState:1,onopen:null,onmessage:null,onerror:null,onclose:null,send(raw){sent.push(JSON.parse(raw));},close(){}};queueMicrotask(()=>socket.onopen?.({}));return socket;
+   opened++;const socket:SocketLike={readyState:1,onopen:null,onmessage:null,onerror:null,onclose:null,send(raw){sent.push(JSON.parse(String(raw)));},close(){}};queueMicrotask(()=>socket.onopen?.({}));return socket;
   }});
   await client.lobbies();const joining=client.join('game','Alice','british');
   if(ticket){await new Promise(r=>setImmediate(r));assert.equal(sent[0]?.token,ticket);assert.ok(!JSON.stringify(sent).includes('permanent-account'));client.disconnect();await joining;}

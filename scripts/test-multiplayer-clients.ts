@@ -6,7 +6,7 @@
  * player enters. It creates durable QA events. No teleports or authority edits.
  */
 import assert from 'node:assert/strict';
-import {decodeSnapshot} from '../src/networkCodec.ts';
+import {decodeMessage,decodeSnapshot} from '../src/networkCodec.ts';
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {mkdtemp,mkdir,readFile,rm,writeFile} from 'node:fs/promises';
@@ -15,7 +15,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
-import {Game,type Input} from '../src/engine.ts';
+import {Game,type Input,type Event} from '../src/engine.ts';
 import {NetworkClient,type WireActor,type WireSnapshot} from '../src/network.ts';
 import {ARENA,blocked,visible,type Vec,type Faction} from '../src/config.ts';
 import {sampleHitVolumes,rayHitVolumes} from '../src/hitboxes.ts';
@@ -53,14 +53,14 @@ async function delayRelay(serverPort:number){
  await new Promise<void>((done,reject)=>{relay!.once('error',reject);relay!.listen(0,'127.0.0.1',done);});return (relay.address() as {port:number}).port;
 }
 function user(name:string,faction:Faction,relayPort?:number){
- const game=new Game(),storage=new Map<string,string>(),messages:any[]=[],chat:string[]=[],failures:string[]=[];
+ const game=new Game(),storage=new Map<string,string>(),messages:any[]=[],chat:string[]=[],failures:string[]=[],effects:Event[]=[];
  let actorId=-1,snapshot:WireSnapshot|undefined;
  const network=new NetworkClient(game,{origin:base,storage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>void storage.set(k,v),removeItem:k=>void storage.delete(k)},socket:url=>{
   const destination=new URL(url);if(relayPort)destination.port=String(relayPort);
-  const socket=new WebSocket(destination);socket.addEventListener('message',({data})=>{const message=JSON.parse(String(data));messages.push(message);if(message.type==='joined'){actorId=message.actorId;snapshot=message.snapshot;protectRoom(snapshot!);}if(message.type==='snapshot'){snapshot=decodeSnapshot(message) as WireSnapshot;protectRoom(snapshot!);}});return socket;
+  const socket=new WebSocket(destination);socket.binaryType='arraybuffer';socket.addEventListener('message',({data})=>{const message=decodeMessage(data) as any;messages.push(message);if(message.type==='joined'){actorId=message.actorId;snapshot=message.snapshot;protectRoom(snapshot!);}if(message.type==='snapshot'){snapshot=decodeSnapshot(message) as WireSnapshot;protectRoom(snapshot!);}});return socket;
  }});
  network.onChat=message=>chat.push(message.message);network.onFailure=message=>failures.push(message);
- return{name,faction,game,network,storage,messages,chat,failures,input:{...idle},get actorId(){return actorId;},get snapshot(){assert.ok(snapshot);return snapshot;},get authority(){assert.ok(snapshot);return snapshot.actors.find(actor=>actor.id===actorId)!;}};
+ return{name,faction,game,network,storage,messages,chat,failures,effects,input:{...idle},get actorId(){return actorId;},get snapshot(){assert.ok(snapshot);return snapshot;},get authority(){assert.ok(snapshot);return snapshot.actors.find(actor=>actor.id===actorId)!;}};
 }
 type User=ReturnType<typeof user>;
 function events(user:User,after=0){return user.messages.slice(after).flatMap(message=>message.events??[]);}
@@ -111,14 +111,15 @@ async function shoot(shooter:User,target:User,part:'head'|'leg'){
  await until(()=>shooter.authority.cooldown===0&&target.authority.spawnSafe===0,'weapon recovery and spawn protection');
  aim(shooter,aimPoint(shooter,target,part));await until(()=>shooter.authority.ads&&shooter.authority.moving<.01&&target.authority.moving<.01,'stationary authoritative ADS');await delay(500);const intended=aimPoint(shooter,target,part);aim(shooter,intended);
  const observer=users.find(u=>u!==shooter&&u!==target&&u.authority.spectator);assert.ok(observer,'an independent spectator observes authoritative effects');
- const effectMark=observer.game.events.length,shownShooter=actorOn(observer,shooter.name),shownTarget=actorOn(observer,target.name);
+ const effectMark=observer.effects.length,shownShooter=actorOn(observer,shooter.name),shownTarget=actorOn(observer,target.name);
  const marks=users.map(u=>u.messages.length),ammo=shooter.authority.ammo;shooter.network.fire();
  await until(()=>users.every((u,i)=>events(u,marks[i]).some(e=>e.type==='shot'&&e.actor===shooter.actorId)),`${shooter.name} shot delivered to all three adapters`);
  const shots=users.map((u,i)=>events(u,marks[i]).find(e=>e.type==='shot'&&e.actor===shooter.actorId).shot);
  // Raw delivery alone cannot prove that the strict adapter accepted the event.
  // A spectator generates no predicted attacks, so this observes the actual
- // application effect queue consumed by graphics/audio in the browser.
- const renderedShots=()=>observer.game.events.slice(effectMark).filter(event=>event.type==='shot'&&event.actor===shownShooter.id&&event.shot?.time===shots[0].time);
+ // application effects consumed once per simulated render, like graphics/audio
+ // in the browser. The pending queue is not a permanent append-only log.
+ const renderedShots=()=>observer.effects.slice(effectMark).filter(event=>event.type==='shot'&&event.actor===shownShooter.id&&event.shot?.time===shots[0].time);
  await until(()=>renderedShots().length>0,`${shooter.name} authoritative shot reaches spectator game.events`);
  check(`${shooter.name} ${part} shot reaches the frontend effect queue exactly once`,()=>{
   assert.equal(observer.game.player.spectator,true);assert.notEqual(shownShooter.id,0);
@@ -134,9 +135,9 @@ async function shoot(shooter:User,target:User,part:'head'|'leg'){
 async function reloadObserved(shooter:User,target:User){
  const observer=users.find(u=>u!==shooter&&u!==target&&u.authority.spectator);assert.ok(observer);
  await until(()=>shooter.authority.cooldown===0,'bolt recovery before reload');
- const actor=actorOn(observer,shooter.name),mark=observer.game.events.length,ammo=shooter.authority.ammo,total=ammo+shooter.authority.reserve;
+ const actor=actorOn(observer,shooter.name),mark=observer.effects.length,ammo=shooter.authority.ammo,total=ammo+shooter.authority.reserve;
  shooter.network.setADS(false);shooter.network.reload();
- const reloads=()=>observer.game.events.slice(mark).filter(event=>event.type==='reload'&&event.actor===actor.id);
+ const reloads=()=>observer.effects.slice(mark).filter(event=>event.type==='reload'&&event.actor===actor.id);
  await until(()=>reloads().length>0&&users.every(u=>actorOn(u,shooter.name).reload>0),`${shooter.name} authoritative reload reaches spectator game.events`);
  check(`${shooter.name} reload reaches the frontend effect queue exactly once`,()=>{
   assert.equal(observer.game.player.spectator,true);assert.notEqual(actor.id,0);assert.equal(reloads().length,1);assert.equal(reloads()[0].actorName,shooter.name);
@@ -185,7 +186,7 @@ try{
  await b.network.join(qaLobbyId,b.name,b.faction,true);
  check('two humans retain exactly two server AI',()=>{assert.equal(b.snapshot.actors.filter(actor=>actor.bot===true).length,2);assert.equal(b.snapshot.actors.filter(actor=>actor.bot!==true).length,2);});
  await observer.network.join(qaLobbyId,observer.name,observer.faction,true);
- timer=setInterval(()=>{for(const u of users){u.network.update(1/60,u.input);u.network.present();}},1000/60);
+ timer=setInterval(()=>{for(const u of users){u.network.update(1/60,u.input);u.network.present();u.effects.push(...u.game.events);u.game.events=[];}},1000/60);
  await until(()=>users.every(u=>u.snapshot.actors.length===3&&u.snapshot.actors.every(actor=>actor.bot!==true)&&u.game.actors.length===3),'third human removes both AI from all three adapters');
  check('three independent human sessions replace AI with correctly remapped IDs',()=>{for(const u of users){assert.equal(u.network.lobbyId,qaLobbyId);assert.equal(u.game.player.id,0);for(const peer of users)assert.equal(actorOn(u,peer.name).name,peer.name);}assert.equal(new Set(users.map(u=>[...u.storage.values()][0])).size,3,'independent browsers receive distinct credentials');});
  const fullRoom=(await lobbyInventory()).find(room=>room.id===qaLobbyId)!;check('three-human lobby no longer advertises any AI',()=>{assert.equal(fullRoom.players,3);assert.equal(fullRoom.bots,0);});

@@ -4,7 +4,7 @@
  * short idle/reconnection timeouts are used. No simulation or teleport hooks.
  */
 import assert from 'node:assert/strict';
-import {decodeSnapshot} from '../src/networkCodec.ts';
+import {decodeMessage,decodeSnapshot,encodeInput,PROTOCOL_VERSION} from '../src/networkCodec.ts';
 import {TestInputStream} from './test-input-stream.mjs';
 import {spawn} from 'node:child_process';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -34,13 +34,13 @@ async function unusedPort(){const server=createServer();await new Promise((resol
 class Client {
  constructor(session,label){this.session=session;this.label=label;this.messages=[];this.waiters=[];this.seq=0;this.joined=false;this.controls=new TestInputStream(message=>this.send(message),()=>this.self);}
  async connect(){
-  this.socket=new WebSocket(base.replace(/^http/,'ws')+'/api/ws');
-  this.socket.addEventListener('message',event=>{const raw=JSON.parse(String(event.data)),message=raw.type==='snapshot'?decodeSnapshot(raw):raw;if(!message)return;this.messages.push(message);if(message.type==='snapshot')this.snapshot=message;if(message.type==='joined'){this.snapshot=message.snapshot;this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.joined=true;}if(message.type==='snapshot'||message.type==='joined')this.controls.observe(this.snapshot);for(const waiter of [...this.waiters])if(waiter.predicate(message)){clearTimeout(waiter.timer);this.waiters.splice(this.waiters.indexOf(waiter),1);waiter.resolve(message);}});
+  this.socket=new WebSocket(base.replace(/^http/,'ws')+'/api/ws');this.socket.binaryType='arraybuffer';
+  this.socket.addEventListener('message',event=>{const raw=decodeMessage(event.data),message=raw.type==='snapshot'?decodeSnapshot(raw):raw;if(!message)return;this.messages.push(message);if(message.type==='snapshot')this.snapshot=message;if(message.type==='joined'){this.snapshot=message.snapshot;this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.joined=true;}if(message.type==='snapshot'||message.type==='joined')this.controls.observe(this.snapshot);for(const waiter of [...this.waiters])if(waiter.predicate(message)){clearTimeout(waiter.timer);this.waiters.splice(this.waiters.indexOf(waiter),1);waiter.resolve(message);}});
   await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(`${this.label}: socket open timed out`)),8000);this.socket.addEventListener('open',()=>{clearTimeout(timer);resolve();},{once:true});this.socket.addEventListener('error',()=>{clearTimeout(timer);reject(new Error(`${this.label}: socket connection failed`));},{once:true});});
-  const welcome=this.wait(message=>message.type==='welcome');this.send({type:'hello',version:2,token:this.session.token});const message=await welcome;assert.equal(message.playerId,this.session.playerId);this.heartbeat=setInterval(()=>{if(this.socket.readyState===WebSocket.OPEN)this.send({type:'ping',nonce:Date.now()});},5000);this.socket.addEventListener('close',()=>{clearInterval(this.heartbeat);this.controls.close();},{once:true});return this;
+  const welcome=this.wait(message=>message.type==='welcome');this.send({type:'hello',version:PROTOCOL_VERSION,token:this.session.token});const message=await welcome;assert.equal(message.playerId,this.session.playerId);this.heartbeat=setInterval(()=>{if(this.socket.readyState===WebSocket.OPEN)this.send({type:'ping',nonce:Date.now()});},5000);this.socket.addEventListener('close',()=>{clearInterval(this.heartbeat);this.controls.close();},{once:true});return this;
  }
  wait(predicate,timeout=5000){return new Promise((resolve,reject)=>{const waiter={predicate,resolve,timer:setTimeout(()=>{this.waiters.splice(this.waiters.indexOf(waiter),1);reject(new Error(`${this.label}: expected message timed out`));},timeout)};this.waiters.push(waiter);});}
- send(message){assert.equal(this.socket.readyState,WebSocket.OPEN,`${this.label}: socket not open`);this.socket.send(JSON.stringify(message));}
+ send(message){assert.equal(this.socket.readyState,WebSocket.OPEN,`${this.label}: socket not open`);this.socket.send(message.type==='input'?encodeInput(message):JSON.stringify(message));}
  async join(lobbyId){const result=this.wait(message=>message.type==='joined'||message.type==='error');this.send({type:'join',...(lobbyId?{lobbyId}:{}),name:`^${(Number(this.label.replace(/\D/g,''))%6)+1}${this.label}`,faction:'british'});return result;}
  input(overrides={}){return this.controls.input(overrides);}
  get self(){return this.snapshot?.actors.find(actor=>actor.id===this.actorId);}
@@ -114,7 +114,7 @@ try {
  const authority=clients[0],initialAmmo=authority.self.ammo,duplicate=authority.input({fire:true,ads:true});for(let i=0;i<8;i++)authority.send(duplicate);
  await eventually(()=>authority.self.ack>=duplicate.seq,5000,'first input acknowledgement');await delay(1250);authority.send(duplicate);await delay(250);
  check('replayed input sequence cannot fire twice',()=>assert.equal(authority.self.ammo,initialAmmo-1));
- const before={...authority.self};authority.send({...duplicate,seq:-1,forward:-100000,x:1e9,y:1e9,z:1e9,hp:100000});await delay(100);authority.input({forward:100000,right:-100000,lean:100000,fire:false});await delay(320);authority.input();await delay(300);
+ const before={...authority.self};authority.socket.send(JSON.stringify({...duplicate,seq:-1,forward:-100000,x:1e9,y:1e9,z:1e9,hp:100000}));await delay(100);authority.input({forward:100000,right:-100000,lean:100000,fire:false});await delay(320);authority.input();await delay(300);
  check('malformed input cannot teleport, modify health, or bypass speed bounds',()=>{const actor=authority.self;for(const key of ['x','y','z','yaw','pitch','hp'])assert.ok(Number.isFinite(actor[key]),key);assert.ok(Math.hypot(actor.x-before.x,actor.z-before.z)<=2.2);assert.ok(Math.abs(actor.x)<=ARENA.width/2&&Math.abs(actor.z)<=ARENA.depth/2);assert.equal(actor.hp,before.hp);});
  authority.input({forward:1});await delay(400);const stopped={...authority.self};await delay(350);check('stale input expires and motion stops',()=>assert.ok(Math.hypot(authority.self.x-stopped.x,authority.self.z-stopped.z)<.06));
 

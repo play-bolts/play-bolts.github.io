@@ -1,8 +1,9 @@
+use crate::transport::{Outbox, WirePayload};
 use crate::{
     bots::{BotBrain, Navigation},
     db::{self, EventRow},
-    storage::Storage,
     sim::{self, Faction, InputFrame, Simulation},
+    storage::Storage,
 };
 use hmac::{Hmac, Mac};
 use rusqlite::params;
@@ -14,7 +15,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
-use crate::transport::Outbox;
 
 pub struct Config {
     pub bind: String,
@@ -129,6 +129,9 @@ struct Room {
     ended_since: Option<Instant>,
     pending: Vec<Value>,
     event_seq: u64,
+    cue_seq: u64,
+    cues: Vec<Value>,
+    snapshot_due: bool,
     navigation: Navigation,
     participation: HashMap<String, [i64; 4]>,
     durable_pending: VecDeque<(u64, Value)>,
@@ -146,25 +149,38 @@ impl Room {
             })
             .count()
     }
-    fn snapshot(&self, connections: &HashMap<String, Endpoint>) -> Value {
+    fn snapshot(&self, connections: &HashMap<String, Endpoint>) -> crate::codec::Snapshot {
         let now = Instant::now();
-        let mut actors = serde_json::to_value(&self.sim.actors).expect("serializable actors");
-        for actor in actors.as_array_mut().expect("actor array") {
-            actor["bot"] = json!(
-                self.members
-                    .values()
-                    .any(|m| m.bot.is_some() && Some(u64::from(m.actor)) == actor["id"].as_u64())
-            );
-            let latency = self
-                .members
-                .iter()
-                .find(|(_, member)| Some(u64::from(member.actor)) == actor["id"].as_u64())
-                .and_then(|(player, _)| connections.get(player))
-                .and_then(|endpoint| endpoint.latency.value(now));
-            actor["ping"] = json!(latency);
-            actor["inputTiming"] = json!(self.sim.input_timing(actor["id"].as_u64().unwrap() as u32));
+        let actors = self
+            .sim
+            .actors
+            .iter()
+            .map(|actor| {
+                let member = self
+                    .members
+                    .iter()
+                    .find(|(_, member)| member.actor == actor.id);
+                crate::codec::SnapshotActor {
+                    actor: actor.clone(),
+                    bot: member.is_some_and(|(_, member)| member.bot.is_some()),
+                    ping: member
+                        .and_then(|(player, _)| connections.get(player))
+                        .and_then(|endpoint| endpoint.latency.value(now)),
+                    input_timing: self.sim.input_timing(actor.id),
+                }
+            })
+            .collect();
+        crate::codec::Snapshot {
+            lobby_id: self.id.clone(),
+            event_seq: self.event_seq,
+            tick: self.sim.tick_number,
+            time: self.sim.time,
+            remaining: self.sim.remaining,
+            round_number: self.sim.round_number,
+            ended: self.sim.ended,
+            winner: self.sim.winner,
+            actors,
         }
-        json!({"type":"snapshot","inputTiming":"tick-v2","lobbyId":self.id,"eventSeq":self.event_seq,"tick":self.sim.tick_number,"time":self.sim.time,"remaining":self.sim.remaining,"roundNumber":self.sim.round_number,"ended":self.sim.ended,"winner":self.sim.winner,"actors":actors,"events":[]})
     }
 }
 pub struct Hub {
@@ -236,10 +252,10 @@ impl Hub {
         }
     }
     fn broadcast(&self, room: &Room, message: Value) {
-        let encoded = message.to_string();
+        let payload = WirePayload::value(message);
         for player in room.members.keys() {
             if let Some(e) = self.connections.get(player)
-                && !e.tx.send_text(encoded.clone(), false)
+                && !e.tx.send_shared(payload.clone(), false)
             {
                 let _ = e.cancel.send(Some("slow_consumer".into()));
             }
@@ -363,6 +379,9 @@ impl Hub {
                 ended_since: None,
                 pending: vec![],
                 event_seq: 0,
+                cue_seq: 0,
+                cues: vec![],
+                snapshot_due: false,
                 navigation,
                 participation: HashMap::new(),
                 durable_pending: VecDeque::new(),
@@ -418,7 +437,9 @@ impl Hub {
         faction: Faction,
         spectator: bool,
     ) -> HResult<()> {
-        if self.shutting_down { return Err("server_busy".into()); }
+        if self.shutting_down {
+            return Err("server_busy".into());
+        }
         if let Some(room) = self
             .rooms
             .values_mut()
@@ -439,8 +460,17 @@ impl Hub {
                 target: None,
                 data: json!({"actorId":actor}),
             })?;
-            let packet = json!({"type":"joined","lobbyId":room.id,"lobbyName":room.name,"actorId":actor,"snapshot":room.snapshot(&self.connections)});
-            self.send(player, packet);
+            let payload = WirePayload::joined(
+                room.name.clone(),
+                actor,
+                room.cue_seq,
+                room.snapshot(&self.connections),
+            );
+            if let Some(endpoint) = self.connections.get(player) {
+                if !endpoint.tx.send_shared(payload, true) {
+                    let _ = endpoint.cancel.send(Some("slow_consumer".into()));
+                }
+            }
             return Ok(());
         }
         // Validate the destination before giving up an existing seat.
@@ -501,8 +531,17 @@ impl Hub {
         );
         room.empty_since = None;
         reconcile_bots(&mut self.db, room, &self.connections)?;
-        let packet = json!({"type":"joined","lobbyId":room.id,"lobbyName":room.name,"actorId":actor,"snapshot":room.snapshot(&self.connections)});
-        self.send(player, packet);
+        let payload = WirePayload::joined(
+            room.name.clone(),
+            actor,
+            room.cue_seq,
+            room.snapshot(&self.connections),
+        );
+        if let Some(endpoint) = self.connections.get(player) {
+            if !endpoint.tx.send_shared(payload, true) {
+                let _ = endpoint.cancel.send(Some("slow_consumer".into()));
+            }
+        }
         Ok(())
     }
     pub fn leave(&mut self, player: &str, reason: &str, notify: bool) -> HResult<()> {
@@ -651,7 +690,14 @@ impl Hub {
         Ok(())
     }
     pub fn tick(&mut self) -> HResult<()> {
-        if self.shutting_down { return Ok(()); }
+        self.tick_with_publication(true).map(|_| ())
+    }
+    /// Execute every authoritative step, but capture a due snapshot only at the
+    /// end of the caller's catch-up batch. Due state survives suppressed steps.
+    pub fn tick_with_publication(&mut self, publish_snapshot: bool) -> HResult<bool> {
+        if self.shutting_down {
+            return Ok(false);
+        }
         self.db.check()?;
         let committed = self.db.committed();
         let expired: Vec<_> = self
@@ -672,13 +718,23 @@ impl Hub {
             self.leave(&p, "timeout", false)?;
         }
         let mut packets = vec![];
+        let mut cues = vec![];
         let mut chats = vec![];
         let mut closed = vec![];
         for room in self.rooms.values_mut() {
-            while room.durable_pending.front().is_some_and(|(ticket, _)| *ticket <= committed) {
-                room.pending.push(room.durable_pending.pop_front().unwrap().1);
+            while room
+                .durable_pending
+                .front()
+                .is_some_and(|(ticket, _)| *ticket <= committed)
+            {
+                room.pending
+                    .push(room.durable_pending.pop_front().unwrap().1);
             }
-            while room.durable_chat.front().is_some_and(|(ticket, _)| *ticket <= committed) {
+            while room
+                .durable_chat
+                .front()
+                .is_some_and(|(ticket, _)| *ticket <= committed)
+            {
                 chats.push((room.id.clone(), room.durable_chat.pop_front().unwrap().1));
             }
             if room.members.is_empty() {
@@ -699,8 +755,13 @@ impl Hub {
             room.sim.tick(sim::TICK_SECONDS);
             record_sim_events(&mut self.db, room)?;
             let committed = self.db.committed();
-            while room.durable_pending.front().is_some_and(|(ticket, _)| *ticket <= committed) {
-                room.pending.push(room.durable_pending.pop_front().unwrap().1);
+            while room
+                .durable_pending
+                .front()
+                .is_some_and(|(ticket, _)| *ticket <= committed)
+            {
+                room.pending
+                    .push(room.durable_pending.pop_front().unwrap().1);
             }
             if room.sim.ended && room.ended_since.is_none() {
                 room.ended_since = Some(Instant::now());
@@ -733,27 +794,50 @@ impl Hub {
                     .create_match(&room.game, &room.id, room.sim.round_number)?;
                 sync_stats(&self.db, room)?;
             }
-            if room.sim.tick_number % 3 == 0 {
-                let events = crate::transport::event_batches(&room.id, room.sim.round_number,
-                    room.sim.tick_number, room.sim.time, &mut room.event_seq, std::mem::take(&mut room.pending));
+            if !room.cues.is_empty() {
+                for events in std::mem::take(&mut room.cues).chunks(128) {
+                    room.cue_seq += 1;
+                    cues.push((room.id.clone(), json!({"type":"cues","lobbyId":room.id,
+                        "roundNumber":room.sim.round_number,"tick":room.sim.tick_number,"time":room.sim.time,
+                        "cueSeq":room.cue_seq,"events":events})));
+                }
+            }
+            room.snapshot_due |= room.sim.tick_number % 3 == 0;
+            if publish_snapshot && room.snapshot_due {
+                room.snapshot_due = false;
+                let events = crate::transport::event_batches(
+                    &room.id,
+                    room.sim.round_number,
+                    room.sim.tick_number,
+                    room.sim.time,
+                    &mut room.event_seq,
+                    std::mem::take(&mut room.pending),
+                );
                 packets.push((room.id.clone(), events, room.snapshot(&self.connections)));
             }
         }
-        for (id, message) in chats { self.broadcast(&self.rooms[&id], message); }
+        for (id, message) in chats.into_iter().chain(cues) {
+            self.broadcast(&self.rooms[&id], message);
+        }
+        let published = !packets.is_empty();
         for (id, events, packet) in packets {
             let room = &self.rooms[&id];
-            for events in events { self.broadcast(room, events); }
-            let encoded = crate::codec::compact_snapshot(packet).to_string();
+            for events in events {
+                self.broadcast(room, events);
+            }
+            let payload = WirePayload::snapshot(packet);
             for player in room.members.keys() {
                 if let Some(endpoint) = self.connections.get(player) {
-                    if !endpoint.tx.snapshot(encoded.clone()) { let _ = endpoint.cancel.send(Some("slow_consumer".into())); }
+                    if !endpoint.tx.snapshot_shared(payload.clone()) {
+                        let _ = endpoint.cancel.send(Some("slow_consumer".into()));
+                    }
                 }
             }
         }
         for id in closed {
             self.close_room(&id, "inactive")?;
         }
-        Ok(())
+        Ok(published)
     }
     fn close_room(&mut self, id: &str, reason: &str) -> HResult<()> {
         if let Some(room) = self.rooms.remove(id) {
@@ -964,10 +1048,23 @@ fn record_sim_events(db: &Storage, room: &mut Room) -> HResult<()> {
             }
         }
         let wire = wire_sim_event(&room.sim, &event)?;
-        // Subsequent events cannot overtake an uncommitted kill. Other rooms
+        // Cosmetic combat cues are self-contained and generation-qualified.
+        // They need neither a future snapshot nor a durable kill's disk commit.
+        if matches!(
+            event.kind.as_str(),
+            "shot" | "hurt" | "reload" | "bolt" | "switch"
+        ) {
+            room.cues.push(wire);
+            continue;
+        }
+        // Lifecycle events cannot overtake an uncommitted kill. Other rooms
         // continue independently; the simulation itself never waits for disk.
-        let ticket = ticket.unwrap_or(0).max(room.durable_pending.back().map_or(0, |(ticket, _)| *ticket));
-        if room.durable_pending.len() >= 512 { return Err("durable event backlog exhausted".into()); }
+        let ticket = ticket
+            .unwrap_or(0)
+            .max(room.durable_pending.back().map_or(0, |(ticket, _)| *ticket));
+        if room.durable_pending.len() >= 512 {
+            return Err("durable event backlog exhausted".into());
+        }
         room.durable_pending.push_back((ticket, wire));
     }
     Ok(())
@@ -981,10 +1078,23 @@ fn wire_sim_event(sim: &Simulation, event: &sim::GameEvent) -> HResult<Value> {
         wire["actorName"] = json!(actor.name);
         wire["actorFaction"] = json!(actor.faction);
         wire["actorGeneration"] = json!(actor.spawn_generation);
+        if event.kind == "hurt" {
+            // A prompt damage cue can arrive before the death snapshot. Keep
+            // the existing lethal flash without granting the cue HP authority.
+            wire["lethal"] = json!(!actor.alive);
+        }
     }
     if let Some(victim) = event.victim.and_then(|id| sim.actor(id)) {
         wire["victimName"] = json!(victim.name);
         wire["victimGeneration"] = json!(victim.spawn_generation);
+    }
+    if let Some(hit) = event
+        .shot
+        .as_ref()
+        .and_then(|shot| shot.hit)
+        .and_then(|id| sim.actor(id))
+    {
+        wire["hitGeneration"] = json!(hit.spawn_generation);
     }
     wire["roundNumber"] = json!(sim.round_number);
     wire["tick"] = json!(sim.tick_number);
@@ -995,6 +1105,21 @@ fn wire_sim_event(sim: &Simulation, event: &sim::GameEvent) -> HResult<Value> {
 #[cfg(test)]
 mod event_metadata_tests {
     use super::*;
+
+    #[test]
+    fn damage_cue_carries_authoritative_lethality_before_the_next_snapshot() {
+        let mut sim = Simulation::new(51235);
+        sim.join(42, "Damage test".into(), Faction::British).unwrap();
+        let event: sim::GameEvent = serde_json::from_value(json!({
+            "type":"hurt", "actor":42, "value":100
+        })).unwrap();
+        assert_eq!(wire_sim_event(&sim, &event).unwrap()["lethal"], false);
+        sim.actor_mut(42).unwrap().alive = false;
+        let cue = wire_sim_event(&sim, &event).unwrap();
+        assert_eq!(cue["lethal"], true);
+        assert_eq!(cue["actorGeneration"], sim.actor(42).unwrap().spawn_generation);
+        assert!(cue.get("hp").is_none());
+    }
 
     #[test]
     fn ordinary_combat_and_step_batches_omit_absent_optional_metadata() {
@@ -1208,49 +1333,137 @@ mod persistence_boundary_tests {
     use super::*;
     #[tokio::test]
     async fn kill_notifications_wait_for_commit_while_both_lobbies_keep_simulating() {
-        let directory=tempfile::tempdir().unwrap();
-        let path=directory.path().join("events.sqlite");
-        let mut hub=Hub::new(Config {bind:"127.0.0.1:0".into(),database:path.clone(),origins:vec![],identity_salt:"storage-boundary-test-32-byte-salt".into(),empty_seconds:300.0,reconnect_seconds:30.0,max_rooms:2,proxy:false}).unwrap();
-        let mut peers=vec![];
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("events.sqlite");
+        let mut hub = Hub::new(Config {
+            bind: "127.0.0.1:0".into(),
+            database: path.clone(),
+            origins: vec![],
+            identity_salt: "storage-boundary-test-32-byte-salt".into(),
+            empty_seconds: 300.0,
+            reconnect_seconds: 30.0,
+            max_rooms: 2,
+            proxy: false,
+        })
+        .unwrap();
+        let mut peers = vec![];
         for index in 0..2 {
-            let (player,_)=hub.db.session(None).unwrap().unwrap();
-            let cid=db::id();
-            let (outbox, outgoing)=crate::transport::channel();
-            let (cancel,cancelled)=watch::channel(None);
-            hub.register(&player,cid.clone(),outbox,cancel,"test","test").unwrap();
-            let lobby=hub.create_room().unwrap();
-            hub.join(&player,&cid,Some(&lobby),&format!("Player {index}"),Faction::British,false).unwrap();
-            peers.push((player,lobby,outgoing,cancelled));
+            let (player, _) = hub.db.session(None).unwrap().unwrap();
+            let cid = db::id();
+            let (outbox, outgoing) = crate::transport::channel();
+            let (cancel, cancelled) = watch::channel(None);
+            hub.register(&player, cid.clone(), outbox, cancel, "test", "test")
+                .unwrap();
+            let lobby = hub.create_room().unwrap();
+            hub.join(
+                &player,
+                &cid,
+                Some(&lobby),
+                &format!("Player {index}"),
+                Faction::British,
+                false,
+            )
+            .unwrap();
+            peers.push((player, lobby, outgoing, cancelled));
         }
-        hub.db.request(|_|Ok(())).await.unwrap();
-        let lock=rusqlite::Connection::open(&path).unwrap();
+        hub.db.request(|_| Ok(())).await.unwrap();
+        let lock = rusqlite::Connection::open(&path).unwrap();
         lock.execute_batch("BEGIN IMMEDIATE").unwrap();
         // Changing faction legitimately produces a self-death record/kill event.
-        hub.loadout(&peers[0].0,Faction::German).unwrap();
-        let room=&hub.rooms[&peers[0].1];
-        assert!(room.durable_pending.iter().any(|(_,event)|event["type"]=="kill"));
-        let starts=peers.iter().map(|(_,id,_,_)|hub.rooms[id].sim.tick_number).collect::<Vec<_>>();
-        let before=Instant::now();
-        for _ in 0..18 { hub.tick().unwrap(); }
-        assert!(before.elapsed()<Duration::from_millis(150));
-        for ((_,id,_,_),start) in peers.iter().zip(starts) { assert_eq!(hub.rooms[id].sim.tick_number,start+18); }
-        for (_,_,outgoing,_) in &mut peers {
-            while let Ok(raw)=outgoing.try_recv() {
-                let packet:Value=serde_json::from_str(&raw).unwrap();
-                if packet["type"]=="events" { assert!(!packet["events"].as_array().unwrap().iter().any(|event|event["type"]=="kill")); }
+        hub.loadout(&peers[0].0, Faction::German).unwrap();
+        let room = hub.rooms.get_mut(&peers[0].1).unwrap();
+        assert!(
+            room.durable_pending
+                .iter()
+                .any(|(_, event)| event["type"] == "kill")
+        );
+        // A different actor firing while that kill waits for disk must still
+        // deliver its presentation cue on this tick, with no state publish.
+        let cue_player = room
+            .members
+            .iter()
+            .find(|(_, member)| member.bot.is_some())
+            .unwrap()
+            .0
+            .clone();
+        let cue_actor = room.members[&cue_player].actor;
+        room.members.get_mut(&cue_player).unwrap().bot = None;
+        let actor = room.sim.actor_mut(cue_actor).unwrap();
+        actor.cooldown = 0.0;
+        actor.spawn_safe = 0.0;
+        let generation = actor.spawn_generation;
+        hub.input(
+            &cue_player,
+            InputFrame {
+                seq: 1,
+                tick: Some(1),
+                generation: Some(generation),
+                fire: true,
+                ..Default::default()
+            },
+        );
+        let starts = peers
+            .iter()
+            .map(|(_, id, _, _)| hub.rooms[id].sim.tick_number)
+            .collect::<Vec<_>>();
+        let before = Instant::now();
+        for _ in 0..18 {
+            hub.tick().unwrap();
+        }
+        assert!(before.elapsed() < Duration::from_millis(150));
+        for ((_, id, _, _), start) in peers.iter().zip(starts) {
+            assert_eq!(hub.rooms[id].sim.tick_number, start + 18);
+        }
+        let mut prompt_shots = 0;
+        for (index, (_, _, outgoing, _)) in peers.iter_mut().enumerate() {
+            while let Ok(raw) = outgoing.try_recv() {
+                let packet: Value = serde_json::from_str(&raw).unwrap();
+                if packet["type"] == "events" {
+                    assert!(
+                        !packet["events"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .any(|event| event["type"] == "kill")
+                    );
+                }
+                if index == 0 && packet["type"] == "cues" {
+                    for event in packet["events"].as_array().unwrap() {
+                        if event["type"] == "shot" && event["actor"] == cue_actor {
+                            assert_eq!(event["tick"], 1);
+                            assert_eq!(event["actorGeneration"], generation);
+                            prompt_shots += 1;
+                        }
+                    }
+                }
             }
         }
+        assert_eq!(
+            prompt_shots, 1,
+            "combat presentation must bypass the unrelated durable kill gate"
+        );
         lock.execute_batch("ROLLBACK").unwrap();
-        hub.db.request(|_|Ok(())).await.unwrap();
-        for _ in 0..3 { hub.tick().unwrap(); }
-        let mut kills=0;
-        while let Ok(raw)=peers[0].2.try_recv() {
-            let packet:Value=serde_json::from_str(&raw).unwrap();
-            if packet["type"]=="events" {
-                for event in packet["events"].as_array().unwrap() { if event["type"]=="kill" {kills+=1;assert_eq!(event["roundNumber"],1);assert!(event["tick"].as_u64().unwrap()<hub.rooms[&peers[0].1].sim.tick_number);} }
+        hub.db.request(|_| Ok(())).await.unwrap();
+        for _ in 0..3 {
+            hub.tick().unwrap();
+        }
+        let mut kills = 0;
+        while let Ok(raw) = peers[0].2.try_recv() {
+            let packet: Value = serde_json::from_str(&raw).unwrap();
+            if packet["type"] == "events" {
+                for event in packet["events"].as_array().unwrap() {
+                    if event["type"] == "kill" {
+                        kills += 1;
+                        assert_eq!(event["roundNumber"], 1);
+                        assert!(
+                            event["tick"].as_u64().unwrap()
+                                < hub.rooms[&peers[0].1].sim.tick_number
+                        );
+                    }
+                }
             }
         }
-        assert_eq!(kills,1);
+        assert_eq!(kills, 1);
         hub.shutdown().unwrap();
         assert!(!hub.failed);
         assert!(hub.lobbies().is_err());

@@ -1,0 +1,9 @@
+{
+  "version": 3,
+  "inputKind": 0,
+  "snapshotKind": 1,
+  "inputFields": ["seq", "tick", "generation", "forward", "right", "jump", "walk", "lean", "yaw", "pitch", "ads", "stance", "weapon", "fire", "reload", "melee", "shotTime"],
+  "snapshotFields": ["lobbyId", "eventSeq", "tick", "time", "remaining", "roundNumber", "ended", "winner", "actors"],
+  "poseFields": ["phase", "crouch", "prone", "aim", "speed", "forward", "sideways"],
+  "timingFields": ["received", "late", "missing", "arrivalLead", "shots", "rewindClamped", "shotAgeMs"]
+}

@@ -22,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/gamelift/types"
 	"github.com/aws/smithy-go"
 	"github.com/gorilla/websocket"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 func testRuntime() *runtime {
@@ -361,7 +362,7 @@ func TestRealRustAdmissionHeartbeatReconnectAndReplication(t *testing.T) {
 	if identity.PlayerID == "" {
 		t.Fatal("no identity")
 	}
-	session := "test:ca"
+	session := "arn:aws:gamelift:us-west-2:123456789012:gamesession/fleet-11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222"
 	if err = remote.localCall(ctx, map[string]string{"op": "activate", "session": session, "name": "California"}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -404,11 +405,11 @@ func TestRealRustAdmissionHeartbeatReconnectAndReplication(t *testing.T) {
 		t.Cleanup(func() { c.Close() })
 		c.SetReadDeadline(time.Now().Add(6 * time.Second))
 		ticket := remote.ticket(admission{Player: identity.PlayerID, Session: session, PlayerSession: "ps-test", Expires: time.Now().Add(time.Minute).Unix()})
-		if err = c.WriteJSON(map[string]any{"type": "hello", "version": 2, "token": ticket}); err != nil {
+		if err = c.WriteJSON(map[string]any{"type": "hello", "version": 3, "token": ticket}); err != nil {
 			t.Fatal(err)
 		}
 		var m map[string]any
-		if err = c.ReadJSON(&m); err != nil || (m["type"] != "welcome" || m["version"] != float64(2)) {
+		if err = c.ReadJSON(&m); err != nil || (m["type"] != "welcome" || m["version"] != float64(3)) {
 			t.Fatalf("welcome: %v %v", m, err)
 		}
 		c.WriteJSON(map[string]any{"type": "join", "lobbyId": session, "name": "Alice", "faction": "british"})
@@ -449,20 +450,41 @@ func TestRealRustAdmissionHeartbeatReconnectAndReplication(t *testing.T) {
 		t.Fatal("missing actor fields")
 	}
 	for !measured {
-		var m map[string]any
-		if err = c.ReadJSON(&m); err != nil {
+		kind, data, err := c.ReadMessage()
+		if err != nil {
 			t.Fatal("no end-to-end heartbeat: ", err)
 		}
-		if m["type"] != "snapshot" {
+		if kind != websocket.BinaryMessage {
 			continue
 		}
-		if m["actorEncoding"] != "tuple-v1" {
-			t.Fatal("expected compact snapshot")
+		var snapshot []msgpack.RawMessage
+		if err := msgpack.Unmarshal(data, &snapshot); err != nil || len(snapshot) != 11 {
+			t.Fatalf("invalid binary snapshot: %v", err)
 		}
-		for _, item := range m["actors"].([]any) {
-			a := item.([]any)
-			ping, ok := a[pingIndex].(float64)
-			if a[nameIndex] == "Alice" && ok && ping >= 70 {
+		var version, messageKind uint64
+		if msgpack.Unmarshal(snapshot[0], &version) != nil || msgpack.Unmarshal(snapshot[1], &messageKind) != nil || version != 3 || messageKind != 1 {
+			t.Fatal("unexpected snapshot protocol")
+		}
+		var actors [][]msgpack.RawMessage
+		if err := msgpack.Unmarshal(snapshot[10], &actors); err != nil {
+			t.Fatal(err)
+		}
+		for _, actor := range actors {
+			if len(actor) != len(fields) {
+				t.Fatal("invalid actor tuple")
+			}
+			var name string
+			// A nil MessagePack value becomes an empty RawMessage slice.
+			if len(actor[pingIndex]) == 0 {
+				continue
+			}
+			var ping *uint16
+			nameErr := msgpack.Unmarshal(actor[nameIndex], &name)
+			pingErr := msgpack.Unmarshal(actor[pingIndex], &ping)
+			if nameErr != nil || pingErr != nil {
+				t.Fatalf("invalid actor metadata: name=%v ping=%v raw=%x", nameErr, pingErr, actor[pingIndex])
+			}
+			if name == "Alice" && ping != nil && *ping >= 70 {
 				measured = true
 			}
 		}

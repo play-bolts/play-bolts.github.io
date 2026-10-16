@@ -1,91 +1,200 @@
-//! Lossless, independently decodable full actor tuples. This is not a delta
-//! protocol: dropping any unsent intermediate snapshot never loses a baseline.
+//! Protocol 3: bounded MessagePack input tuples and independently decodable
+//! full snapshots. Capture these DTOs under the hub lock; serialize afterwards.
+use crate::sim::{Actor, InputFrame, InputTiming, MotionPose, Stance, WeaponSlot};
+use serde::{Deserialize, Serialize, Serializer, ser::{Error as _, SerializeTuple}};
 use serde_json::{Value, json};
-use std::sync::OnceLock;
+use std::io::Cursor;
 
-fn actor_fields() -> &'static [String] {
-    static FIELDS: OnceLock<Vec<String>> = OnceLock::new();
-    FIELDS.get_or_init(|| {
-        serde_json::from_str(include_str!("../../shared/actor-fields.json"))
-            .expect("actor field schema")
-    })
+pub const PROTOCOL_VERSION: u64 = 3;
+pub const MAX_INPUT_BYTES: usize = 256;
+pub const MAX_SNAPSHOT_BYTES: usize = 8192;
+const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+
+#[derive(Clone, Debug)]
+pub struct SnapshotActor {
+    pub actor: Actor,
+    pub bot: bool,
+    pub ping: Option<u16>,
+    pub input_timing: InputTiming,
 }
-pub fn compact_snapshot(mut snapshot: Value) -> Value {
-    let fields = actor_fields();
-    let Some(actors) = snapshot["actors"].as_array_mut() else {
-        return snapshot;
+#[derive(Clone, Debug)]
+pub struct Snapshot {
+    pub lobby_id: String,
+    pub event_seq: u64,
+    pub tick: u64,
+    pub time: f64,
+    pub remaining: f64,
+    pub round_number: u64,
+    pub ended: bool,
+    pub winner: Option<u32>,
+    pub actors: Vec<SnapshotActor>,
+}
+impl Snapshot {
+    /// Rare joined-state control message. Invoked by the socket writer outside
+    /// the game lock, never by the 20 Hz snapshot producer.
+    pub fn named(&self) -> Value {
+        let actors: Vec<Value> = self.actors.iter().map(|entry| {
+            let mut actor = serde_json::to_value(&entry.actor).expect("actor serialization");
+            actor["bot"] = json!(entry.bot);
+            actor["ping"] = json!(entry.ping);
+            actor["inputTiming"] = json!(entry.input_timing);
+            actor
+        }).collect();
+        json!({"type":"snapshot","inputTiming":"tick-v2","lobbyId":self.lobby_id,
+            "eventSeq":self.event_seq,"tick":self.tick,"time":self.time,"remaining":self.remaining,
+            "roundNumber":self.round_number,"ended":self.ended,"winner":self.winner,"actors":actors,"events":[]})
+    }
+}
+/// Integer-valued doubles have an exact shorter MessagePack representation.
+/// Preserve negative zero and every fractional/large value as IEEE-754 f64.
+struct Number(f64);
+impl Serialize for Number {
+    fn serialize<S:Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
+        let n=self.0;
+        if n.fract()==0.0 && n.abs()<=MAX_SAFE_INTEGER as f64 && !(n==0.0 && n.is_sign_negative()) {
+            serializer.serialize_i64(n as i64)
+        } else { serializer.serialize_f64(n) }
+    }
+}
+struct PoseTuple(MotionPose);
+impl Serialize for PoseTuple {
+    fn serialize<S: Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
+        let p=self.0;
+        [p.phase,p.crouch,p.prone,p.aim,p.speed,p.forward,p.sideways].map(Number).serialize(serializer)
+    }
+}
+struct TimingTuple(InputTiming);
+impl Serialize for TimingTuple {
+    fn serialize<S: Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
+        let p=self.0;
+        (p.received,p.late,p.missing,p.arrival_lead,p.shots,p.rewind_clamped,Number(p.shot_age_ms)).serialize(serializer)
+    }
+}
+impl Serialize for SnapshotActor {
+    fn serialize<S: Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
+        let a=&self.actor;
+        let finite=[a.cooldown,a.dead_at,a.death_yaw,a.eye_height,a.hip_spread,a.jump_started,
+            a.landed_at,a.landing_speed,a.last_hurt_time,a.last_melee_time,a.last_shot_time,a.lean,
+            a.left_ground_at,a.moving,a.pitch,a.recoil,a.reload,a.reload_total,a.spawn_safe,
+            a.switch_duration,a.switch_started,a.vy,a.x,a.y,a.yaw,a.z,self.input_timing.shot_age_ms];
+        if finite.iter().any(|v| !v.is_finite()) || a.pose.is_some_and(|p|
+            [p.phase,p.crouch,p.prone,p.aim,p.speed,p.forward,p.sideways].iter().any(|v|!v.is_finite())) {
+            return Err(S::Error::custom("non-finite snapshot number"));
+        }
+        if a.name.len()>256 || a.ack>MAX_SAFE_INTEGER || a.spawn_generation>MAX_SAFE_INTEGER {
+            return Err(S::Error::custom("snapshot actor out of bounds"));
+        }
+        let mut t=serializer.serialize_tuple(50)?;
+        // Keep the order in shared/actor-fields.json; schema tests verify every field.
+        t.serialize_element(&a.ack)?;
+        t.serialize_element(&a.ads)?;
+        t.serialize_element(&a.alive)?;
+        t.serialize_element(&a.ammo)?;
+        t.serialize_element(&self.bot)?;
+        t.serialize_element(&Number(a.cooldown))?;
+        t.serialize_element(&Number(a.dead_at))?;
+        t.serialize_element(&a.death_headshot)?;
+        t.serialize_element(&Number(a.death_yaw))?;
+        t.serialize_element(&a.deaths)?;
+        t.serialize_element(&Number(a.eye_height))?;
+        t.serialize_element(&a.faction)?;
+        t.serialize_element(&a.grounded)?;
+        t.serialize_element(&Number(a.hip_spread))?;
+        t.serialize_element(&a.hits)?;
+        t.serialize_element(&a.hp)?;
+        t.serialize_element(&a.id)?;
+        t.serialize_element(&TimingTuple(self.input_timing))?;
+        t.serialize_element(&Number(a.jump_started))?;
+        t.serialize_element(&a.kills)?;
+        t.serialize_element(&Number(a.landed_at))?;
+        t.serialize_element(&Number(a.landing_speed))?;
+        t.serialize_element(&Number(a.last_hurt_time))?;
+        t.serialize_element(&Number(a.last_melee_time))?;
+        t.serialize_element(&Number(a.last_shot_time))?;
+        t.serialize_element(&Number(a.lean))?;
+        t.serialize_element(&Number(a.left_ground_at))?;
+        t.serialize_element(&Number(a.moving))?;
+        t.serialize_element(&a.name)?;
+        t.serialize_element(&self.ping)?;
+        t.serialize_element(&Number(a.pitch))?;
+        t.serialize_element(&a.pose.map(PoseTuple))?;
+        t.serialize_element(&Number(a.recoil))?;
+        t.serialize_element(&Number(a.reload))?;
+        t.serialize_element(&Number(a.reload_total))?;
+        t.serialize_element(&a.reserve)?;
+        t.serialize_element(&a.selected_weapon)?;
+        t.serialize_element(&a.shots)?;
+        t.serialize_element(&a.spawn_generation)?;
+        t.serialize_element(&Number(a.spawn_safe))?;
+        t.serialize_element(&a.spectator)?;
+        t.serialize_element(&a.stance)?;
+        t.serialize_element(&Number(a.switch_duration))?;
+        t.serialize_element(&a.switch_from)?;
+        t.serialize_element(&Number(a.switch_started))?;
+        t.serialize_element(&Number(a.vy))?;
+        t.serialize_element(&Number(a.x))?;
+        t.serialize_element(&Number(a.y))?;
+        t.serialize_element(&Number(a.yaw))?;
+        t.serialize_element(&Number(a.z))?;
+        t.end()
+    }
+}
+impl Serialize for Snapshot {
+    fn serialize<S: Serializer>(&self, serializer:S)->Result<S::Ok,S::Error>{
+        if self.actors.is_empty() || self.actors.len()>6 || self.lobby_id.len()>512
+            || !self.time.is_finite() || !self.remaining.is_finite()
+            || [self.event_seq,self.tick,self.round_number].iter().any(|&n|n>MAX_SAFE_INTEGER) {
+            return Err(S::Error::custom("snapshot out of bounds"));
+        }
+        let mut t=serializer.serialize_tuple(11)?;
+        t.serialize_element(&PROTOCOL_VERSION)?;
+        t.serialize_element(&1u8)?;
+        t.serialize_element(&self.lobby_id)?;
+        t.serialize_element(&self.event_seq)?;
+        t.serialize_element(&self.tick)?;
+        t.serialize_element(&Number(self.time))?;
+        t.serialize_element(&Number(self.remaining))?;
+        t.serialize_element(&self.round_number)?;
+        t.serialize_element(&self.ended)?;
+        t.serialize_element(&self.winner)?;
+        t.serialize_element(&self.actors)?;
+        t.end()
+    }
+}
+pub fn encode_snapshot(snapshot:&Snapshot)->Result<Vec<u8>,rmp_serde::encode::Error>{
+    let bytes=rmp_serde::to_vec(snapshot)?;
+    if bytes.len()>MAX_SNAPSHOT_BYTES{return Err(rmp_serde::encode::Error::Syntax("snapshot too large".into()));}
+    Ok(bytes)
+}
+
+// A concrete flat tuple prevents nested containers, maps, strings, extension
+// values and attacker-controlled collection allocations before semantic checks.
+#[derive(Deserialize, Serialize)]
+struct InputTuple(u64,u8,u64,u64,u64,f64,f64,bool,bool,f64,f64,f64,bool,u8,u8,bool,bool,bool,f64);
+
+pub fn decode_input(bytes:&[u8])->Result<InputFrame,&'static str>{
+    if bytes.len()>MAX_INPUT_BYTES || bytes.len()<3 || bytes[..3]!=[0xdc,0,19] {
+        return Err("invalid input size or tuple");
+    }
+    let mut cursor=Cursor::new(bytes);
+    let input={
+        let mut decoder=rmp_serde::Deserializer::new(&mut cursor);
+        decoder.set_max_depth(2);
+        InputTuple::deserialize(&mut decoder).map_err(|_|"invalid input fields")?
     };
-    // A future server field must never silently disappear. If a producer has a
-    // different shape it remains a named full snapshot until schema is updated.
-    if actors.iter().any(|actor| {
-        actor.as_object().is_none_or(|object| {
-            object.len() != fields.len() || fields.iter().any(|field| !object.contains_key(field))
-        })
-    }) {
-        return snapshot;
+    if cursor.position()!=bytes.len() as u64{return Err("trailing input bytes");}
+    let InputTuple(version,kind,seq,tick,generation,forward,right,jump,walk,lean,yaw,pitch,ads,stance,weapon,fire,reload,melee,shot_time)=input;
+    if version!=PROTOCOL_VERSION || kind!=0{return Err("incompatible input protocol");}
+    if [seq,tick,generation].iter().any(|&n|n>MAX_SAFE_INTEGER)
+        || [forward,right,lean,yaw,pitch,shot_time].iter().any(|n|!n.is_finite()) {
+        return Err("input number out of bounds");
     }
-    for actor in actors {
-        let Value::Object(mut object) = std::mem::take(actor) else {
-            unreachable!("checked actor")
-        };
-        *actor = Value::Array(
-            fields
-                .iter()
-                .map(|field| object.remove(field).expect("checked field"))
-                .collect(),
-        );
-    }
-    snapshot["actorEncoding"] = json!("tuple-v1");
-    snapshot
+    let stance=match stance {0=>Stance::Stand,1=>Stance::Crouch,2=>Stance::Prone,_=>return Err("invalid stance")};
+    let weapon=match weapon {0=>WeaponSlot::Rifle,1=>WeaponSlot::Grenade,_=>return Err("invalid weapon")};
+    Ok(InputFrame{seq,tick:Some(tick),generation:Some(generation),forward,right,yaw,pitch,jump,walk,lean,ads,
+        stance:Some(stance),weapon:Some(weapon),fire,reload,melee,shot_time:Some(shot_time)})
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::sim::{Faction, Simulation};
-    fn snapshot() -> Value {
-        let mut sim = Simulation::new(72);
-        for id in 1..=6 {
-            sim.join(id, format!("Player {id}"), Faction::British)
-                .unwrap();
-        }
-        let mut actors = serde_json::to_value(&sim.actors).unwrap();
-        for actor in actors.as_array_mut().unwrap() {
-            actor["bot"] = json!(false);
-            actor["ping"] = json!(57);
-            actor["inputTiming"] = json!(sim.input_timing(actor["id"].as_u64().unwrap() as u32));
-        }
-        json!({"type":"snapshot","inputTiming":"tick-v2","actors":actors,"events":[],"tick":1,"time":1.0/60.0})
-    }
-    #[test]
-    fn tuple_roundtrip_preserves_every_authoritative_field_and_reduces_payload() {
-        let full = snapshot();
-        let compact = compact_snapshot(full.clone());
-        assert_eq!(compact["actorEncoding"], "tuple-v1");
-        let mut restored = compact.clone();
-        restored.as_object_mut().unwrap().remove("actorEncoding");
-        for actor in restored["actors"].as_array_mut().unwrap() {
-            *actor = Value::Object(
-                actor_fields()
-                    .iter()
-                    .cloned()
-                    .zip(actor.as_array().unwrap().iter().cloned())
-                    .collect(),
-            );
-        }
-        assert_eq!(restored, full);
-        assert!(compact.to_string().len() < full.to_string().len() * 3 / 4);
-    }
-    #[test]
-    fn unexpected_or_missing_fields_keep_the_full_snapshot_instead_of_losing_data() {
-        let mut full = snapshot();
-        full["actors"][0]["futureField"] = json!(123.456789123456789);
-        assert_eq!(compact_snapshot(full.clone()), full);
-        full["actors"][0]
-            .as_object_mut()
-            .unwrap()
-            .remove("futureField");
-        full["actors"][0].as_object_mut().unwrap().remove("pose");
-        assert_eq!(compact_snapshot(full.clone()), full);
-    }
-}
+#[path="codec_tests.rs"]
+mod tests;

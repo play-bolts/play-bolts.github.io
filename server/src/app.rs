@@ -70,11 +70,11 @@ async fn health(State(state): State<Shared>) -> Response {
     if h.failed || h.shutting_down {
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"ok":false,"version":2})),
+            Json(json!({"ok":false,"version":crate::codec::PROTOCOL_VERSION})),
         )
             .into_response()
     } else {
-        Json(json!({"ok":true,"version":2})).into_response()
+        Json(json!({"ok":true,"version":crate::codec::PROTOCOL_VERSION})).into_response()
     }
 }
 fn peer(h: &Hub, address: SocketAddr, headers: &HeaderMap) -> String {
@@ -436,6 +436,96 @@ mod community_tests;
 #[cfg(test)]
 #[path = "visitor_api_tests.rs"]
 mod visitor_tests;
+
+/// Decode bounded control messages once, before taking the shared simulation
+/// lock. High-rate inputs have a separate compact binary representation.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
+enum ClientControl {
+    Join {
+        #[serde(rename = "lobbyId")]
+        lobby_id: Option<String>,
+        name: Option<String>,
+        faction: Faction,
+        #[serde(default)]
+        spectator: bool,
+    },
+    Chat { text: String },
+    Profile { name: String },
+    Loadout { faction: Faction },
+    Spectate {},
+    Leave {},
+    Ping { nonce: PingNonce },
+}
+
+#[derive(Debug, Deserialize, serde::Serialize)]
+#[serde(untagged)]
+enum PingNonce {
+    Number(f64),
+    Text(String),
+}
+
+enum ClientMessage {
+    Control(ClientControl),
+    Input(InputFrame),
+}
+
+fn decode_client_message(message: Message) -> Result<ClientMessage, ()> {
+    match message {
+        Message::Binary(bytes) => crate::codec::decode_input(&bytes)
+            .map(ClientMessage::Input)
+            .map_err(|_| ()),
+        Message::Text(text) => {
+            if text.len() > 8192 { return Err(()); }
+            let control: ClientControl = serde_json::from_str(&text).map_err(|_| ())?;
+            if let ClientControl::Ping { nonce } = &control {
+                match nonce {
+                    PingNonce::Number(value) if !value.is_finite() => return Err(()),
+                    PingNonce::Text(value) if value.len() > 64 => return Err(()),
+                    _ => {},
+                }
+            }
+            Ok(ClientMessage::Control(control))
+        },
+        _ => Err(()),
+    }
+}
+
+#[cfg(test)]
+mod control_decode_tests {
+    use super::*;
+
+    fn decode(value: Value) -> Result<ClientMessage, ()> {
+        decode_client_message(Message::Text(value.to_string().into()))
+    }
+
+    #[test]
+    fn typed_controls_preserve_optional_join_defaults_and_color_names() {
+        let message = decode(json!({"type":"join","name":"^3Ålex","faction":"russian"})).unwrap();
+        assert!(matches!(message, ClientMessage::Control(ClientControl::Join {
+            lobby_id: None, name: Some(name), faction: Faction::Russian, spectator: false
+        }) if name == "^3Ålex"));
+        assert!(matches!(decode(json!({"type":"spectate"})), Ok(ClientMessage::Control(ClientControl::Spectate {}))));
+    }
+
+    #[test]
+    fn rejects_old_json_inputs_unknown_fields_and_non_scalar_ping_nonces() {
+        for value in [
+            json!({"type":"input","seq":1,"tick":10,"generation":1}),
+            json!({"type":"join","faction":"german","spectator":"false"}),
+            json!({"type":"loadout","faction":"other"}),
+            json!({"type":"leave","health":100}),
+            json!({"type":"ping","nonce":{"large":"object"}}),
+            json!({"type":"ping","nonce":"x".repeat(65)}),
+            json!({"type":"chat","text":"x".repeat(8192)}),
+        ] {
+            assert!(decode(value.clone()).is_err(), "accepted malformed control: {value}");
+        }
+        assert!(decode(json!({"type":"ping","nonce":123.25})).is_ok());
+        assert!(decode(json!({"type":"ping","nonce":"bounded-probe"})).is_ok());
+    }
+}
+
 async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: String) {
     let initial = tokio::time::timeout(Duration::from_secs(5), socket.recv()).await;
     let hello = match initial {
@@ -445,7 +535,7 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
     let Some(hello) = hello else {
         return;
     };
-    if hello["type"] != "hello" || hello["version"] != 2 {
+    if hello["type"] != "hello" || hello["version"] != crate::codec::PROTOCOL_VERSION {
         let _ = socket
             .send(Message::Text(
                 error("protocol_mismatch", "Reload Bolts to update.")
@@ -488,7 +578,7 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
             h.fail();
             return;
         }
-        h.send(&player, json!({"type":"welcome","version":2,"playerId":player}));
+        h.send(&player, json!({"type":"welcome","version":crate::codec::PROTOCOL_VERSION,"playerId":player}));
     }
     let (sink, mut incoming) = socket.split();
     let mut writer = tokio::spawn(crate::transport::write_socket(sink, outgoing, cancelled.clone()));
@@ -508,20 +598,20 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
          },
          received=incoming.next()=>{
           idle.as_mut().reset(tokio::time::Instant::now()+Duration::from_secs(30));
-          let text=match received {Some(Ok(Message::Text(text)))=>text,Some(Ok(Message::Ping(v)))=>{if !tx.control(Message::Pong(v)){break;}continue;},Some(Ok(Message::Pong(v)))=>{state.lock().await.pong(&player,&cid,&v,Instant::now());continue;},_=>break};
+          let frame=match received {Some(Ok(frame @ (Message::Text(_) | Message::Binary(_))))=>frame,Some(Ok(Message::Ping(v)))=>{if !tx.control(Message::Pong(v)){break;}continue;},Some(Ok(Message::Pong(v)))=>{state.lock().await.pong(&player,&cid,&v,Instant::now());continue;},_=>break};
+          let decoded=decode_client_message(frame);
           let mut h=state.lock().await;if h.failed||h.shutting_down||!h.connections.get(&player).is_some_and(|e|e.cid==cid){break;}
           if !h.allow(format!("ws:{cid}"),150,1){h.send(&player,error("rate_limited","Too many messages."));break;}
-          let value=match serde_json::from_str::<Value>(&text){Ok(v)=>v,Err(_)=>{h.send(&player,error("invalid_message","Invalid message."));continue;}};
-          let result:crate::hub::HResult<()>=match value["type"].as_str(){
-           Some("join")=>{if h.allow(format!("join:{player}"),10,10){let faction=serde_json::from_value::<Faction>(value["faction"].clone());let spectator=serde_json::from_value::<bool>(value.get("spectator").cloned().unwrap_or(json!(false)));match (faction,spectator){(Ok(faction),Ok(spectator))=>h.join(&player,&cid,value["lobbyId"].as_str(),value["name"].as_str().unwrap_or(DEFAULT_PLAYER_NAME),faction,spectator),_=>Err("invalid_message".into())}}else{Err("rate_limited".into())}},
-           Some("input")=>match serde_json::from_value::<InputFrame>(value){Ok(input) if input.tick.is_some() && input.generation.is_some()=>{h.input(&player,input);Ok(())},_=>Err("invalid_message".into())},
-           Some("chat")=>h.chat(&player,&cid,value["text"].as_str().unwrap_or("")),
-           Some("profile")=>if h.allow(format!("profile:{player}"),6,10){h.profile(&player,value["name"].as_str().unwrap_or(DEFAULT_PLAYER_NAME))}else{Err("rate_limited".into())},
-           Some("loadout")=>if h.allow(format!("loadout:{player}"),3,10){match serde_json::from_value::<Faction>(value["faction"].clone()){Ok(f)=>h.loadout(&player,f),Err(_)=>Err("invalid_message".into())}}else{Err("rate_limited".into())},
-           Some("spectate")=>if h.allow(format!("loadout:{player}"),3,10){h.spectate(&player)}else{Err("rate_limited".into())},
-           Some("leave")=>h.leave(&player,"left",true),
-           Some("ping")=>{h.send(&player,json!({"type":"pong","nonce":value["nonce"]}));Ok(())},
-           _=>Err("invalid_message".into())
+          let message=match decoded {Ok(message)=>message,Err(())=>{h.send(&player,error("invalid_message","Invalid message."));continue;}};
+          let result:crate::hub::HResult<()>=match message {
+           ClientMessage::Input(input)=>{h.input(&player,input);Ok(())},
+           ClientMessage::Control(ClientControl::Join{lobby_id,name,faction,spectator})=>if h.allow(format!("join:{player}"),10,10){h.join(&player,&cid,lobby_id.as_deref(),name.as_deref().unwrap_or(DEFAULT_PLAYER_NAME),faction,spectator)}else{Err("rate_limited".into())},
+           ClientMessage::Control(ClientControl::Chat{text})=>h.chat(&player,&cid,&text),
+           ClientMessage::Control(ClientControl::Profile{name})=>if h.allow(format!("profile:{player}"),6,10){h.profile(&player,&name)}else{Err("rate_limited".into())},
+           ClientMessage::Control(ClientControl::Loadout{faction})=>if h.allow(format!("loadout:{player}"),3,10){h.loadout(&player,faction)}else{Err("rate_limited".into())},
+           ClientMessage::Control(ClientControl::Spectate{})=>if h.allow(format!("loadout:{player}"),3,10){h.spectate(&player)}else{Err("rate_limited".into())},
+           ClientMessage::Control(ClientControl::Leave{})=>h.leave(&player,"left",true),
+           ClientMessage::Control(ClientControl::Ping{nonce})=>{h.send(&player,json!({"type":"pong","nonce":nonce}));Ok(())},
           };
           if let Err(e)=result{let code=e.to_string();let message=match code.as_str(){"lobby_full"=>"Lobby full.","lobby_missing"=>"Lobby closed.","not_joined"=>"Join a lobby first.","rate_limited"=>"Try again shortly.","server_busy"=>"Server full.","invalid_message"=>"Invalid message.",_=>{tracing::error!(error=%e,"persistent game operation failed");h.fail();break;}};h.send(&player,error(&code,message));}
          }

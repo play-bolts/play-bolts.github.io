@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {decodeInput} from '../src/networkCodec.ts';
 import assert from 'node:assert/strict';
 import {Game,createActor,type Input} from '../src/engine.ts';
 import {NetworkClient,type NetworkInput,type SocketLike,type WireActor,type WireSnapshot} from '../src/network.ts';
@@ -17,7 +18,7 @@ function snapshot(tick:number,actors:WireActor[]):WireSnapshot{return{type:'snap
 class Socket implements SocketLike{
  readyState=0;onopen:SocketLike['onopen']=null;onmessage:SocketLike['onmessage']=null;onerror:SocketLike['onerror']=null;onclose:SocketLike['onclose']=null;
  messages:any[]=[];onSend=(message:any)=>{};
- send(raw:string){const message=JSON.parse(raw);this.messages.push(message);this.onSend(message);}
+ send(raw:string|ArrayBuffer|ArrayBufferView<ArrayBuffer>){const message=typeof raw==='string'?JSON.parse(raw):decodeInput(raw);this.messages.push(message);this.onSend(message);}
  close(){this.readyState=3;}
  receive(message:unknown){this.onmessage?.({data:JSON.stringify(message)});}
 }
@@ -25,7 +26,7 @@ async function fixture(rtt=50){
  let now=0;const game=new Game(),socket=new Socket(),self=actor();self.ping=rtt;
  const client=new NetworkClient(game,{origin:'https://timing.example.test',now:()=>now,storage:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}},fetch:async()=>new Response(JSON.stringify({token:'test-only-session-with-twenty-characters'})),socket:()=>socket});
  const joining=client.join(undefined,'Timing','british');await new Promise(resolve=>setImmediate(resolve));
- socket.readyState=1;socket.onopen?.({});socket.receive({type:'welcome',version:2});socket.receive({type:'joined',actorId:42,lobbyId:'timing',lobbyName:'Timing',snapshot:snapshot(0,[self])});await joining;
+ socket.readyState=1;socket.onopen?.({});socket.receive({type:'welcome',version:3});socket.receive({type:'joined',cueSeq:0,actorId:42,lobbyId:'timing',lobbyName:'Timing',snapshot:snapshot(0,[self])});await joining;
  return{game,client,socket,setNow:(value:number)=>{now=value;}};
 }
 

@@ -2,6 +2,7 @@ use bolts_server::{
     app,
     hub::{Config, Hub},
     tick_clock::{STEP, TickClock},
+    transport::SnapshotPacer,
 };
 use std::{net::SocketAddr, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
@@ -37,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut previous = Instant::now();
         let mut clock = TickClock::default();
+        let mut snapshots = SnapshotPacer::default();
         let mut report_at = previous;
         let (mut catch_up, mut dropped, mut maximum_lock_ms, mut maximum_tick_ms) =
             (0_u64, 0_u64, 0.0_f64, 0.0_f64);
@@ -51,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             previous = now;
             catch_up += u64::from(batch.steps.saturating_sub(1));
             dropped += batch.dropped;
-            for _ in 0..batch.steps {
+            for step in 0..batch.steps {
                 if *stopping.borrow() {
                     return;
                 }
@@ -64,11 +66,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     tick_fatal.notify_one();
                     return;
                 }
-                if let Err(error) = h.tick() {
-                    tracing::error!(%error,"persistent event failure; game service stopped");
-                    h.fail();
-                    tick_fatal.notify_one();
-                    return;
+                // Capture only the newest state once the batch has caught up;
+                // a wall-clock gate also bounds publication across batches.
+                let publish = step + 1 == batch.steps && snapshots.ready(Instant::now());
+                match h.tick_with_publication(publish) {
+                    Ok(true) => snapshots.published(Instant::now()),
+                    Ok(false) => {}
+                    Err(error) => {
+                        tracing::error!(%error,"persistent event failure; game service stopped");
+                        h.fail();
+                        tick_fatal.notify_one();
+                        return;
+                    }
                 }
                 maximum_tick_ms = maximum_tick_ms.max(started.elapsed().as_secs_f64() * 1000.0);
                 drop(h);

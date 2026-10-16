@@ -6,37 +6,42 @@ import {advanceLean} from './lean';
 import {DEFAULT_PLAYER_NAME,sanitizePlayerName} from './names';
 import {LocalPredictionView,clipPredictionView} from './localPredictionView';
 import {AdaptiveInputLead,RemotePlaybackClock,type InputTimingSample} from './networkTiming';
-import {decodeSnapshot} from './networkCodec';
+import {decodeSnapshot,decodeMessage,encodeInput,PROTOCOL_VERSION} from './networkCodec';
 import {sampleNetworkColliders} from './networkCollision';
 import {gameEndpoint,locationLabel,probeLobby,type Lobby,type LobbyLocation} from './lobbies';
 export type {Lobby} from './lobbies';
 
 export type WireActor=Omit<Actor,'ai'>&{ack:number;hipSpread:number;bot?:boolean;spawnGeneration?:number;inputTiming?:InputTimingSample};
-export interface WireEvent extends Omit<Event,'shot'> {seq?:number;actorGeneration?:number;victimGeneration?:number;roundNumber?:number;tick?:number;time?:number;shot?:(Shot&{seq?:number})}
+export interface WireEvent extends Omit<Event,'shot'> {seq?:number;actorGeneration?:number;victimGeneration?:number;hitGeneration?:number;roundNumber?:number;tick?:number;time?:number;shot?:(Shot&{seq?:number})}
 export interface WireEventBatch {type:'events';lobbyId:string;roundNumber:number;tick:number;time:number;eventSeq:number;events:WireEvent[]}
+export interface WireCueBatch {type:'cues';lobbyId:string;roundNumber:number;tick:number;time:number;cueSeq:number;events:WireEvent[]}
+interface PendingCue {event:WireEvent;expiresAt:number}
+interface ReloadCue {generation:number;roundNumber:number;tick:number;expiresAt:number;active:boolean}
 export interface WireSnapshot {type:'snapshot';inputTiming:'tick-v2';lobbyId?:string;eventSeq?:number;tick:number;time:number;remaining:number;roundNumber:number;ended:boolean;winner:number|null;actors:WireActor[];events:WireEvent[]}
 export interface NetworkInput extends Input {type:'input';seq:number;tick:number;generation:number;yaw:number;pitch:number;ads:boolean;stance:Stance;weapon:WeaponSlot;fire:boolean;reload:boolean;melee:boolean;shotTime:number}
 interface PendingInput {input:NetworkInput}
 export interface ChatMessage {id?:string;name:string;message:string}
-export interface SocketLike {readyState:number;readonly bufferedAmount?:number;onopen:((event:any)=>void)|null;onmessage:((event:any)=>void)|null;onerror:((event:any)=>void)|null;onclose:((event:any)=>void)|null;send(data:string):void;close():void}
+export interface SocketLike {readyState:number;binaryType?:string;readonly bufferedAmount?:number;onopen:((event:any)=>void)|null;onmessage:((event:any)=>void)|null;onerror:((event:any)=>void)|null;onclose:((event:any)=>void)|null;send(data:string|ArrayBuffer|ArrayBufferView<ArrayBuffer>):void;close():void}
 interface NetworkOptions {origin?:string;fetch?:typeof fetch;socket?:(url:string)=>SocketLike;storage?:Pick<Storage,'getItem'|'setItem'|'removeItem'>;now?:()=>number}
 const EMPTY_INPUT:Input={forward:0,right:0,jump:false,walk:false,lean:0};
 const TOKEN_KEY='bolts-multiplayer-session-v1';
-const STEP=1/60,MAX_PREDICTION_TICKS=120,MAX_BUFFERED_INPUT_BYTES=4096;
+const STEP=1/60,MAX_PREDICTION_TICKS=120,MAX_BUFFERED_INPUT_TICKS=12,MAX_PENDING_CUES=128,CUE_HOLD_MS=250;
 const poseFields=['phase','crouch','prone','aim','speed','forward','sideways'] as const;
 const timestampFields=['leftGroundAt','jumpStarted','landedAt','deadAt','lastShotTime','lastHurtTime','lastMeleeTime','switchStarted'] as const;
 const actorNumericFields=['x','y','z','yaw','pitch','eyeHeight','hp','ammo','reserve','kills','deaths','shots','hits','cooldown','reload','reloadTotal','vy','landingSpeed','moving','lean','recoil','spawnSafe','switchDuration','deathYaw','ack','hipSpread',...timestampFields] as const;
 const authoritativeRemoteFields=['spectator','name','faction','hp','ammo','reserve','kills','deaths','shots','hits','ping'] as const;
 const eventTypes=new Set(['shot','kill','reload','bolt','hurt','spawn','end','step','switch']);
+const cueTypes=new Set(['shot','hurt','reload','bolt','switch']);
 function validEvents(value:unknown):value is WireEvent[]{
  if(!Array.isArray(value)||value.length>128)return false;
  return value.every(event=>{
   if(!event||!eventTypes.has(event.type)||!Number.isSafeInteger(event.actor)||event.actor<0)return false;
-  for(const key of ['victim','seq','actorGeneration','victimGeneration','roundNumber','tick'])if(event[key]!==undefined&&(!Number.isSafeInteger(event[key])||event[key]<0))return false;
+  for(const key of ['victim','seq','actorGeneration','victimGeneration','hitGeneration','roundNumber','tick'])if(event[key]!==undefined&&(!Number.isSafeInteger(event[key])||event[key]<0))return false;
   if(event.time!==undefined&&!Number.isFinite(event.time))return false;
+  if(event.value!==undefined&&!Number.isFinite(event.value)||event.headshot!==undefined&&typeof event.headshot!=='boolean'||event.lethal!==undefined&&typeof event.lethal!=='boolean'||event.weapon!==undefined&&!['rifle','grenade','melee'].includes(event.weapon))return false;
   if(['actorName','victimName'].some(key=>event[key]!==undefined&&typeof event[key]!=='string'))return false;
   if(event.actorFaction!==undefined&&!['british','russian','german'].includes(event.actorFaction))return false;
-  if(event.shot){const shot=event.shot;if(!Number.isSafeInteger(shot.actor)||!Number.isFinite(shot.time)||!['shot','melee'].includes(shot.kind)||shot.hit!==null&&!Number.isSafeInteger(shot.hit))return false;for(const point of [shot.origin,shot.end])if(!point||['x','y','z'].some(key=>!Number.isFinite(point[key])))return false;}
+  if(event.shot){const shot=event.shot;if(!Number.isSafeInteger(shot.actor)||shot.actor!==event.actor||!Number.isFinite(shot.time)||!['shot','melee'].includes(shot.kind)||typeof shot.headshot!=='boolean'||shot.hit!==null&&(!Number.isSafeInteger(shot.hit)||shot.hit<0)||shot.seq!==undefined&&(!Number.isSafeInteger(shot.seq)||shot.seq<0))return false;for(const point of [shot.origin,shot.end])if(!point||['x','y','z'].some(key=>!Number.isFinite(point[key])))return false;}
   return true;
  });
 }
@@ -56,6 +61,8 @@ export class NetworkClient {
  private presentationTime=0;private presentationAt=0;private clockReady=false;
  private playback=new RemotePlaybackClock();private inputLead=new AdaptiveInputLead();private leadDrain=0;
  private eventSeq=0;private eventBatches:WireEventBatch[]=[];
+ private cueSeq=0;private pendingCues:PendingCue[]=[];private queuedCueEvents=new WeakMap<Event,WireEvent>();private reloadCues=new Map<number,ReloadCue>();
+ private presentedCueKeys=new Set<string>();
  private correctionCount=0;private maximumCorrection=0;private inputStarvations=0;private skippedInputTicks=0;private congestedInputs=0;
  private latestTick=0;private predictionTick=0;private playerGeneration:number|undefined;private roundTrip=0;private rttSampleAt=-Infinity;private openedAt=0;
  private predictionView=new LocalPredictionView();private renderedPosition:Vec|null=null;
@@ -123,24 +130,26 @@ export class NetworkClient {
  private openSocket():Promise<void>{
   const previous=this.socket;if(previous){previous.onclose=null;previous.onmessage=null;previous.onerror=null;previous.onopen=null;previous.close();}
   const generation=this.generation,url=new URL(this.gameUrl||this.endpoint('/api/ws'));if(url.protocol==='https:'||url.protocol==='http:')url.protocol=url.protocol==='https:'?'wss:':'ws:';
-  const socket=this.socketFactory(url.href);this.socket=socket;
+  const socket=this.socketFactory(url.href);socket.binaryType='arraybuffer';this.socket=socket;
   this.connectionPromise=new Promise((resolve,reject)=>{
    let joined=false,settled=false;const timeout=setTimeout(()=>{if(settled)return;settled=true;reject(new Error('Connection timed out.'));socket.close();},10000);
    const fail=(message:string)=>{if(!settled){settled=true;clearTimeout(timeout);reject(new Error(message));}};this.cancelOpening=()=>fail('Connection cancelled.');
-   socket.onopen=()=>{if(generation===this.generation){this.openedAt=this.now();this.send({type:'hello',version:2,token:this.managed?this.admission:this.token});}};
+   socket.onopen=()=>{if(generation===this.generation){this.openedAt=this.now();this.send({type:'hello',version:PROTOCOL_VERSION,token:this.managed?this.admission:this.token});}};
    socket.onmessage=event=>{
-    if(generation!==this.generation)return;let message:any;try{message=JSON.parse(String(event.data));}catch{return;}
+    if(generation!==this.generation)return;let message:any;try{message=decodeMessage(event.data);}catch{return;}if(!message||typeof message!=='object'||Array.isArray(message))return;
     this.lastMessageAt=this.now();
-    if(message.type==='welcome'){if(message.version!==2){fail('Incompatible server version.');socket.close();return;}this.roundTrip=Math.max(0,this.now()-this.openedAt);this.send({type:'join',...(this.lobbyId?{lobbyId:this.lobbyId}:{}),name:this.profile.name,faction:this.profile.faction,...(this.profile.spectator?{spectator:true}:{})});return;}
+    if(message.type==='welcome'){if(message.version!==PROTOCOL_VERSION){fail('Incompatible server version. Reload Bolts to update.');socket.close();return;}this.roundTrip=Math.max(0,this.now()-this.openedAt);this.send({type:'join',...(this.lobbyId?{lobbyId:this.lobbyId}:{}),name:this.profile.name,faction:this.profile.faction,...(this.profile.spectator?{spectator:true}:{})});return;}
     if(message.type==='joined'){
-     if(!Number.isSafeInteger(message.actorId)||typeof message.lobbyId!=='string'||typeof message.lobbyName!=='string'){fail('Invalid server response.');socket.close();return;}
+     if(!Number.isSafeInteger(message.actorId)||typeof message.lobbyId!=='string'||typeof message.lobbyName!=='string'||!Number.isSafeInteger(message.cueSeq)||message.cueSeq<0){fail('Invalid server response.');socket.close();return;}
      this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.lobbyName=message.lobbyName;this.connected=true;this.reconnecting=false;this.reconnectAttempt=0;this.seq=0;this.pending=[];this.snapshots=[];this.ids=[];this.predictedEffects.clear();this.actions={fire:false,singleFire:false,reload:false,melee:false};this.replaying=false;
      this.predictionTick=0;this.playerGeneration=undefined;this.clockReady=false;this.eventSeq=Number.isSafeInteger(message.snapshot?.eventSeq)?message.snapshot.eventSeq:0;this.eventBatches=[];this.inputLead.reset(this.now());this.leadDrain=0;
+     this.cueSeq=message.cueSeq;this.pendingCues=[];this.reloadCues.clear();this.queuedCueEvents=new WeakMap();this.presentedCueKeys.clear();
      if(!this.receiveSnapshot(message.snapshot)){fail('Invalid game state.');socket.close();return;}
      joined=true;settled=true;clearTimeout(timeout);this.onStatus('');this.onJoined(this.lobbyName);if(this.profile.name!==this.game.player.name)this.send({type:'profile',name:this.profile.name});resolve();return;
     }
     if(message.type==='snapshot'&&joined){this.receiveSnapshot(message);return;}
     if(message.type==='events'&&joined){this.receiveEvents(message);return;}
+    if(message.type==='cues'&&joined){this.receiveCues(message);return;}
     if(message.type==='chat'&&joined&&typeof message.text==='string'&&typeof message.name==='string'){this.onChat({id:typeof message.id==='string'?message.id:undefined,name:sanitizePlayerName(message.name),message:message.text.slice(0,2048)});return;}
     if(message.type==='pong'&&typeof message.nonce==='number'){const sent=this.pingSent.get(message.nonce);if(sent!==undefined){this.ping=Math.round(this.now()-sent);this.roundTrip=this.ping;this.rttSampleAt=this.now();this.pingSent.delete(message.nonce);}return;}
     if(message.type==='error'){
@@ -170,6 +179,7 @@ export class NetworkClient {
   const socket=this.socket;this.socket=null;if(socket){socket.onclose=null;socket.onmessage=null;socket.onerror=null;socket.onopen=null;if(socket.readyState===1)try{socket.send(JSON.stringify({type:'leave'}));}catch{}socket.close();}
   this.pending=[];this.snapshots=[];this.predictedEffects.clear();this.actions={fire:false,singleFire:false,reload:false,melee:false};this.ids=[];this.actorId=-1;this.replaying=false;this.uiPaused=false;this.pingSent.clear();this.clockReady=false;for(const actor of this.game.actors)actor.ping=null;
   this.predictionTick=0;this.renderedPosition=null;this.playerGeneration=undefined;this.eventBatches=[];this.eventSeq=0;this.inputLead.reset(this.now());this.leadDrain=0;
+  this.cueSeq=0;this.pendingCues=[];this.reloadCues.clear();this.queuedCueEvents=new WeakMap();this.presentedCueKeys.clear();
  }
  private send(message:unknown){if(this.socket?.readyState===1){this.socket.send(JSON.stringify(message));return true;}return false;}
  setName(name:string){const safe=sanitizePlayerName(name);if(this.profile.name===safe)return;this.profile.name=safe;if(this.profileTimer)clearTimeout(this.profileTimer);if(this.online)this.profileTimer=setTimeout(()=>{this.profileTimer=null;if(this.connected)this.send({type:'profile',name:this.profile.name});},450);}
@@ -215,6 +225,7 @@ export class NetworkClient {
  /** Call once before each rendered frame, including frames between 60 Hz ticks. */
  present(alpha=1){
   if(!this.online||!this.game.player||!this.snapshots.length)return;const now=this.now();this.advancePresentation(now);this.interpolate();
+  this.flushCues();
   this.renderedPosition=this.predictionView.sample(alpha,now);
   this.game.time=this.predictionTime+clamp(alpha,0,1)*STEP;
  }
@@ -256,14 +267,18 @@ export class NetworkClient {
    if(this.predictionTick>=limit||this.leadDrain>0){if(this.leadDrain>0)this.leadDrain--;p.moving=0;this.predictionView.step(p,p);return;}
    this.predictionTick++;this.game.time=this.predictionTime;
   }
-  if((this.socket?.bufferedAmount??0)>MAX_BUFFERED_INPUT_BYTES){
+  const command:NetworkInput={type:'input',seq:this.seq+1,tick:this.predictionTick,generation:this.playerGeneration!,...movement,yaw:p.yaw,pitch:p.pitch,ads:active&&this.desiredADS,stance:this.desiredStance,weapon:this.desiredWeapon,fire:active&&(this.actions.fire||this.actions.singleFire),reload:active&&this.actions.reload,melee:active&&this.actions.melee,shotTime:Math.max(0,this.remoteTime)};
+  const encoded=encodeInput(command);
+  // Preserve the former roughly 200 ms local queue limit after binary encoding
+  // shrinks each input. A fixed 4 KiB allowance would now hold far older intent.
+  if((this.socket?.bufferedAmount??0)>encoded.byteLength*MAX_BUFFERED_INPUT_TICKS){
    this.congestedInputs++;this.actions={fire:false,singleFire:false,reload:false,melee:false};
    const before={x:p.x,y:p.y,z:p.z};if(!latest.ended)this.predict(this.neutralCommand(),STEP,false);this.predictionView.step(before,p);return;
   }
-  const command:NetworkInput={type:'input',seq:++this.seq,tick:this.predictionTick,generation:this.playerGeneration!,...movement,yaw:p.yaw,pitch:p.pitch,ads:active&&this.desiredADS,stance:this.desiredStance,weapon:this.desiredWeapon,fire:active&&(this.actions.fire||this.actions.singleFire),reload:active&&this.actions.reload,melee:active&&this.actions.melee,shotTime:Math.max(0,this.remoteTime)};
+  this.seq=command.seq;
   this.actions={fire:false,singleFire:false,reload:false,melee:false};
   if(command.jump&&command.stance!=='stand')this.desiredStance='stand';
-  if(this.send(command)){this.pending.push({input:command});if(this.pending.length>120)this.pending.shift();}
+  if(this.socket?.readyState===1){this.socket.send(encoded);this.pending.push({input:command});if(this.pending.length>120)this.pending.shift();}
   const before={x:p.x,y:p.y,z:p.z};
   if(!latest.ended)this.predict(command,STEP,active);else{p.moving=0;p.ads=false;}
   this.predictionView.step(before,p);
@@ -275,7 +290,7 @@ export class NetworkClient {
   // HP, hit detection, deaths, score and respawning have no prediction path.
   p.cooldown=Math.max(0,p.cooldown-dt);p.spawnSafe=Math.max(0,p.spawnSafe-dt);p.recoil*=Math.exp(-dt*4.2);
   if(p.reload>0){p.reload=Math.max(0,p.reload-dt);if(!p.reload){const amount=Math.min(WEAPONS[p.faction].capacity-p.ammo,p.reserve);p.ammo+=amount;p.reserve-=amount;}}
-  const emit=(event:Event)=>{if(effects){game.events.push(event);this.predictedEffects.add(`${event.type}:${input.seq}`);}};
+  const emit=(event:Event)=>{if(effects){if(event.type==='shot'||event.type==='switch')this.reloadCues.delete(this.actorId);game.events.push(event);this.predictedEffects.add(`${event.type}:${input.seq}`);}};
   if(input.weapon!==p.selectedWeapon&&!game.isSwitching(p)){p.switchFrom=p.selectedWeapon;p.selectedWeapon=input.weapon;p.switchStarted=game.time;p.switchDuration=WEAPON_SWITCH_SECONDS;p.reload=0;p.reloadTotal=0;p.ads=false;emit({type:'switch',actor:0,weapon:p.selectedWeapon});}
   let startedReload=false;
   if(input.reload&&p.selectedWeapon==='rifle'&&!game.isSwitching(p)&&!game.isMeleeRecovery(p)&&!p.reload&&p.ammo<WEAPONS[p.faction].capacity&&p.reserve>0){p.reloadTotal=WEAPONS[p.faction].reload*(p.faction==='british'&&p.ammo>=5?.66:1);p.reload=p.reloadTotal;p.ads=false;startedReload=true;}
@@ -358,9 +373,13 @@ export class NetworkClient {
   // Never expose the newest remote position between a socket callback and the
   // next render. The same buffered sample is used on arrival and on every RAF.
   this.interpolate();
-  if(newRound){this.replaying=false;game.replay=[];game.replayShots=[];game.shots=[];game.winner=null;this.onRound();}
+  if(newRound){this.replaying=false;game.replay=[];game.replayShots=[];game.shots=[];game.winner=null;this.presentedCueKeys.clear();this.onRound();}
+  // A cue can be queued for rendering when the authority callback replaces a
+  // body. Never apply that old-life effect to the newly spawned actor array.
+  game.events=game.events.filter(event=>{const source=this.queuedCueEvents.get(event);return !source||this.cueDisposition(source,s)==='ready';});
   this.applyEvents(s.events,s.time,s);
   this.flushEvents();
+  this.flushCues();
   const mapId=(id:number)=>this.ids.indexOf(id);
   if(self.alive||self.spectator||s.ended){this.replaying=false;game.replay=[];game.replayShots=[];}
   else if(!this.replaying){
@@ -381,6 +400,49 @@ export class NetworkClient {
   if(this.eventBatches.length>=128){this.socket?.close();return false;}
   this.eventBatches.push(batch);this.eventBatches.sort((a,b)=>a.eventSeq-b.eventSeq);this.flushEvents();return true;
  }
+ /** Cosmetic cues do not wait for a replaceable authority snapshot. Identity
+  * tags keep them bound to the known life; unknown/new lives get a short hold.
+  * HP, positions, scores, respawns and replay transitions remain snapshot-led. */
+ receiveCues(value:unknown):boolean{
+  const batch=value as WireCueBatch;
+  if(!batch||batch.type!=='cues'||batch.lobbyId!==this.lobbyId||!Number.isSafeInteger(batch.cueSeq)||batch.cueSeq<1||!Number.isSafeInteger(batch.tick)||batch.tick<0||!Number.isSafeInteger(batch.roundNumber)||batch.roundNumber<0||!Number.isFinite(batch.time)||batch.time<0||!validEvents(batch.events))return false;
+  if(batch.events.some(event=>!cueTypes.has(event.type)||!Number.isSafeInteger(event.actorGeneration)||event.victim!==undefined&&!Number.isSafeInteger(event.victimGeneration)||event.type==='shot'&&!event.shot||event.shot?.hit!=null&&!Number.isSafeInteger(event.hitGeneration)||event.roundNumber!==undefined&&event.roundNumber!==batch.roundNumber||event.tick!==undefined&&event.tick!==batch.tick||event.time!==undefined&&event.time!==batch.time))return false;
+  if(batch.cueSeq<=this.cueSeq)return true;
+  this.cueSeq=batch.cueSeq;
+  this.flushCues();
+  // Only this cosmetic stream is lossy at the bounded hold limit. A malicious
+  // or stalled future life cannot accumulate unbounded sounds or animations.
+  for(const event of batch.events){if(this.pendingCues.length>=MAX_PENDING_CUES)this.pendingCues.shift();this.pendingCues.push({event:{...event,roundNumber:batch.roundNumber,tick:batch.tick,time:batch.time},expiresAt:this.now()+CUE_HOLD_MS});}
+  this.flushCues();return true;
+ }
+ private cueDisposition(event:WireEvent,s:WireSnapshot):'ready'|'wait'|'drop'{
+  if(event.roundNumber!<s.roundNumber||s.time-event.time!>CUE_HOLD_MS/1000)return'drop';
+  if(event.roundNumber!>s.roundNumber)return'wait';
+  const identities:[[number,number],...Array<[number,number]>]=[[event.actor,event.actorGeneration!]];
+  if(event.victim!==undefined)identities.push([event.victim,event.victimGeneration!]);
+  if(event.shot?.hit!=null)identities.push([event.shot.hit,event.hitGeneration!]);
+  let wait=false;
+  for(const [id,generation]of identities){const actor=s.actors.find(actor=>actor.id===id);if(!actor){if(event.tick!<=s.tick)return'drop';wait=true;continue;}if(generation<actor.spawnGeneration!)return'drop';if(generation>actor.spawnGeneration!){if(event.tick!<=s.tick)return'drop';wait=true;}}
+  return wait?'wait':'ready';
+ }
+ private flushCues(){
+  const latest=this.snapshots.at(-1);if(!latest)return;const now=this.now(),remaining:PendingCue[]=[];
+  for(const pending of this.pendingCues){if(now>=pending.expiresAt)continue;const state=this.cueDisposition(pending.event,latest);if(state==='wait'){remaining.push(pending);continue;}if(state==='drop')continue;
+   const event=pending.event;
+   if(event.type==='reload'||event.type==='shot'||event.type==='switch')this.reloadCues.set(event.actor,{generation:event.actorGeneration!,roundNumber:event.roundNumber!,tick:event.tick!,expiresAt:pending.expiresAt,active:event.type==='reload'});
+   const count=this.game.events.length;this.applyEvents([event],event.time!,latest,true);
+   for(let index=count;index<this.game.events.length;index++)this.queuedCueEvents.set(this.game.events[index],event);
+  }
+  this.pendingCues=remaining;
+  for(const [id,hint]of this.reloadCues){const actor=latest.actors.find(actor=>actor.id===id);if(now>=hint.expiresAt||hint.roundNumber!==latest.roundNumber||actor?.spawnGeneration!==hint.generation||!actor.alive||latest.tick>=hint.tick)this.reloadCues.delete(id);}
+ }
+ /** A short presentation lease prevents audio cleanup from stopping a remote
+  * reload cue before its matching state arrives. It never changes ammo/timers. */
+ private reloadAudioHint(actorIndex:number){const id=this.ids[actorIndex],hint=this.reloadCues.get(id);if(hint&&this.now()>=hint.expiresAt)this.reloadCues.delete(id);return this.connected?this.reloadCues.get(id):undefined;}
+ hasPendingReloadCue(actorIndex:number){return this.reloadAudioHint(actorIndex)?.active===true;}
+ /** Remote poses intentionally trail authority. Audio follows the newest
+  * accepted action/state, so a delayed idle pose cannot cancel a new sound. */
+ reloadAudioActive(actorIndex:number){const actor=this.game.actors[actorIndex];if(!this.connected||!actor?.alive)return false;const hint=this.reloadAudioHint(actorIndex);if(hint)return hint.active;return actorIndex===0?actor.reload>0:(this.snapshots.at(-1)?.actors.find(actor=>actor.id===this.ids[actorIndex])?.reload??0)>0;}
  private flushEvents(){
   const latest=this.snapshots.at(-1);if(!latest)return;
   while(this.eventBatches.length){
@@ -391,10 +453,12 @@ export class NetworkClient {
   }
   this.applyState();
  }
- private applyEvents(events:WireEvent[],eventTime:number,s:WireSnapshot){
+ private applyEvents(events:WireEvent[],eventTime:number,s:WireSnapshot,immediate=false){
   const game=this.game,self=s.actors.find(a=>a.id===this.actorId);if(!self)return;
   const mapId=(id:number)=>this.ids.indexOf(id);
   for(const source of events){
+   const cueKey=cueTypes.has(source.type)&&source.actorGeneration!==undefined&&source.roundNumber!==undefined&&source.tick!==undefined?`${source.roundNumber}:${source.tick}:${source.actor}:${source.actorGeneration}:${source.type}:${source.seq??source.shot?.seq??-1}:${source.victim??-1}:${source.value??''}`:null;
+   if(cueKey&&this.presentedCueKeys.has(cueKey))continue;
    const sourceActor=s.actors.find(a=>a.id===source.actor),sourceVictim=s.actors.find(a=>a.id===source.victim);
    const staleActor=source.actorGeneration!==undefined&&source.actorGeneration!==sourceActor?.spawnGeneration;
    const staleVictim=source.victimGeneration!==undefined&&source.victimGeneration!==sourceVictim?.spawnGeneration;
@@ -404,6 +468,7 @@ export class NetworkClient {
    if(victim!==undefined&&victim<0&&source.type!=='kill')continue;
    const shot=source.shot?{...source.shot,actor:mapId(source.shot.actor),hit:source.shot.hit===null?null:mapId(source.shot.hit)}:undefined;
    const event:Event={...source,actor,victim,shot};
+   if(immediate&&cueKey){this.presentedCueKeys.add(cueKey);if(this.presentedCueKeys.size>512)this.presentedCueKeys.delete(this.presentedCueKeys.values().next().value!);}
    if(shot){game.shots.push(shot);if(game.shots.length>200)game.shots.shift();}
    const effectKey=`${event.type}:${source.seq??source.shot?.seq??-1}`,predicted=actor===0&&this.predictedEffects.delete(effectKey);
    // The attack already played locally; its confirmed hit still needs blood

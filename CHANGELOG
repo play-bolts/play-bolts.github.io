@@ -1,3 +1,4 @@
+v1.0.4 - Documents verified protocol 3 rollout and production multiplayer checks
 v1.0.3 - Reduces multiplayer traffic, paces snapshots after stalls, delivers combat cues immediately, and moves encoding outside the game lock
 v1.0.2 - Ignores temporary artifacts and verification output
 v1.0.1 - Adds optional crosshair hit indicators with a saved, default-off menu setting

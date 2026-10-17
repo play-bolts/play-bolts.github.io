@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import {configureRifleHand,handContactLocal,makeAnatomicalHand,poseAnatomicalHand} from './hands';
 import type {WeaponPose} from './weaponAnimation';
+import {prepareDeathHandEnvelopes,type DeathHandEnvelopes} from './soldierDeathEnvelope';
 
 export interface SoldierHand {
  hand:THREE.Group;frame:THREE.Group;normal:THREE.Vector3;
  palm:{mesh:THREE.SkinnedMesh;index:number};
  thumbWeight?:number;
+ deathEnvelopes:DeathHandEnvelopes;
 }
 const DOWN=new THREE.Vector3(0,-1,0);
 function basis(normal:THREE.Vector3,fingers:THREE.Vector3){
@@ -38,7 +40,7 @@ export function makeSoldierHand(side:'left'|'right'):SoldierHand|undefined {
    if(candidate<distance){distance=candidate;palm={mesh:object,index};}
   }
  });
- return palm?{hand,frame,normal,palm}:undefined;
+ return palm?{hand,frame,normal,palm,deathEnvelopes:prepareDeathHandEnvelopes(hand,frame,side)}:undefined;
 }
 
 export function poseSoldierHand(binding:SoldierHand,side:'left'|'right',weapon:WeaponPose,slot:'rifle'|'grenade',released:number){

@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import {ConvexHull} from 'three/addons/math/ConvexHull.js';
 import {WEAPONS,WEAPON_SWITCH_SECONDS,clamp,lerp,type Faction,type Stance,type WeaponSlot} from './config';
 import {applyWeaponAnimation,sampleWeaponAnimation,sampleWeaponSwitch,sampleGrenadeMelee,MELEE_ANIMATION_SECONDS,type WeaponPose,type WeaponAction} from './weaponAnimation';
 import {sampleBodyMotion,sourceGaitRate,proceduralBootClearance} from './soldierMotion';
@@ -251,7 +250,7 @@ function applyArmGrip(model:THREE.Group,chain:JointChain,grip:ReturnType<typeof 
  * rotates onto its back. Keep both physical segments and a neutral wrist,
  * with continuous floor clearance applied to each fixed-length segment. This is
  * presentation of a non-damageable corpse; live held-prop IK is unchanged. */
-function settleDeathArm(model:THREE.Group,chain:JointChain,side:'left'|'right',release:number,death:number,weapon:WeaponPose,hand?:SoldierHand,slot:WeaponSlot='rifle'){
+function settleDeathArm(model:THREE.Group,chain:JointChain,side:'left'|'right',release:number,death:number,hand?:SoldierHand,slot:WeaponSlot='rifle'){
  if(release<=0)return;
  const shoulder=model.worldToLocal(chain.root.getWorldPosition(new THREE.Vector3()));
  const elbow=model.worldToLocal(chain.middle.getWorldPosition(new THREE.Vector3())),wrist=model.worldToLocal(chain.end.getWorldPosition(new THREE.Vector3()));
@@ -291,30 +290,14 @@ function settleDeathArm(model:THREE.Group,chain:JointChain,side:'left'|'right',r
  if(hand){
    // Fit the released hand's actual skinned envelope, not just its wrist.
    // A neutral downward forearm otherwise leaves fingertips below the floor.
-   // Cache the actual relaxed skin hull once per held item. Its support plane
-   // is tighter than a box, which visibly suspends diagonal fingers in the air.
-   const cache=hand.hand.userData.deathHull??={};
-   let corners=cache[slot] as THREE.Vector3[]|undefined;
-   if(!corners){
-     poseSoldierHand(hand,side,weapon,slot,1);
-     hand.frame.updateWorldMatrix(true,true);hand.frame.updateMatrixWorld(true);
-     const points:THREE.Vector3[]=[];
-     hand.hand.traverse(object=>{
-       if(!(object instanceof THREE.SkinnedMesh))return;object.skeleton.update();
-       const count=object.geometry.getAttribute('position').count;
-       for(let i=0;i<count;i++)points.push(chain.end.worldToLocal(object.localToWorld(object.getVertexPosition(i,new THREE.Vector3()))));
-     });
-     const hull=new ConvexHull().setFromPoints(points),unique=new Set<THREE.Vector3>();
-     for(const face of hull.faces){let edge=face.edge;do{unique.add(edge.head().point);edge=edge.next;}while(edge!==face.edge);}
-     corners=[...unique];
-     cache[slot]=corners;
-     poseSoldierHand(hand,side,weapon,slot,release);
-   }
+   // Exact wrist-local hulls were prepared before the hand joined an actor.
+   // Every rig shares only frozen numeric envelopes, never mutable skin/bones.
+   const corners=hand.deathEnvelopes[slot];
    const horizontal=new THREE.Vector3(forearm.x,0,forearm.z).normalize();
    const direction=(y:number)=>horizontal.clone().multiplyScalar(Math.sqrt(Math.max(0,1-y*y))).setY(y);
    const clearance=(y:number)=>{
      const up=new THREE.Vector3(0,1,0).applyQuaternion(neutral(direction(y)).invert());let lowest=Infinity;
-     for(const point of corners!)lowest=Math.min(lowest,point.dot(up));
+     for(const point of corners)lowest=Math.min(lowest,point[0]*up.x+point[1]*up.y+point[2]*up.z);
      return middle.y+chain.lowerLength*y+lowest-.003;
    };
    if(clearance(forearm.y)<0){
@@ -518,7 +501,7 @@ export function applySoldierPose(model:THREE.Group,pose:SoldierPose) {
     rig.riflePivot.position.copy(fitted.riflePosition);
     if(pose.death>0)rig.riflePivot.position.lerp(new THREE.Vector3(...pose.riflePosition).add(new THREE.Vector3(.03,0,-.055)),pose.handRelease);
     applyArmGrip(model,rig.leftArm,fitted.left);applyArmGrip(model,rig.rightArm,fitted.right);
-    if(pose.death>0){settleDeathArm(model,rig.leftArm,'left',pose.handRelease,pose.death,pose.weapon,rig.hands?.left,pose.heldWeapon);settleDeathArm(model,rig.rightArm,'right',pose.handRelease,pose.death,pose.weapon,rig.hands?.right,pose.heldWeapon);}
+    if(pose.death>0){settleDeathArm(model,rig.leftArm,'left',pose.handRelease,pose.death,rig.hands?.left,pose.heldWeapon);settleDeathArm(model,rig.rightArm,'right',pose.handRelease,pose.death,rig.hands?.right,pose.heldWeapon);}
     grenadePalm=fitted.right.palm.clone();grenadeSwing=fitted.right.swing;
     if(pose.deathStart){
       const palm=getSoldierPalmContact(model,'right')??rig.rightArm.end.getWorldPosition(new THREE.Vector3());

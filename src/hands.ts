@@ -2,8 +2,14 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone} from 'three/addons/utils/SkeletonUtils.js';
 import {makeHandSkin} from './handSkin';
+import {rememberLodGeometryClone} from './lodGeometryIdentity';
 
 const assets:Partial<Record<'left'|'right',THREE.Group>>={};
+// Immutable loaded asset identity, kept outside serializable/mutable userData.
+// A replacement asset gets a new key; independently cloned rigs retain no
+// reference to another actor's mutable bones or disposable geometry.
+const handSources=new WeakMap<THREE.Group,THREE.Group>();
+export const anatomicalHandSource=(hand:THREE.Group)=>handSources.get(hand);
 let loading:Promise<void>|undefined;
 export async function loadHandAssetFromBuffer(side:'left'|'right',buffer:ArrayBuffer,loader=new GLTFLoader()){
  const source=(await loader.parseAsync(buffer,'')).scene;
@@ -33,7 +39,7 @@ export function makeAnatomicalHand(side:'left'|'right',source=assets[side]){
  model.traverse(object=>{
   if(object instanceof THREE.Bone){object.userData.restQuaternion=object.quaternion.clone();bones.push(object);}
   if(object instanceof THREE.SkinnedMesh){
-   object.frustumCulled=false;object.geometry=object.geometry.clone();
+   object.frustumCulled=false;const sourceGeometry=object.geometry;object.geometry=sourceGeometry.clone();rememberLodGeometryClone(sourceGeometry,object.geometry);
    const original=object.material as THREE.MeshStandardMaterial;
    const surface=object.geometry.getAttribute('_skin_detail');
    if(surface)object.geometry.setAttribute('skinDetail',surface);
@@ -42,7 +48,7 @@ export function makeAnatomicalHand(side:'left'|'right',source=assets[side]){
    object.material=material;object.castShadow=true;object.receiveShadow=true;
   }
  });
- group.userData.anatomical={bones,model,side};
+ group.userData.anatomical={bones,model,side};handSources.set(group,source);
  poseAnatomicalHand(group,0);
  return group;
 }

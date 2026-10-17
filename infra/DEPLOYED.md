@@ -1,6 +1,27 @@
 # Deployed backend
 
-Verified on 2026-10-16. Endpoint: **https://bolts-api.christopherkrapu.com**
+Status recorded on 2026-10-16 (America/Los_Angeles). Endpoint: **https://bolts-api.christopherkrapu.com**
+
+## Regional rollout: incomplete
+
+The regional lobby frontend is published at **https://play-bolts.github.io/** from v1.0.17 source `a0f957e`. Its [Pages build and deployment](https://github.com/play-bolts/play-bolts.github.io/actions/runs/39007087017) succeeded. **London, Singapore and São Paulo are not yet playable.** Oregon remains on application release `043bfa1f697eaa8a9f5ef251ba21e2cb77d38ffb6e52417a7faafbb62c6da36f`, running the existing protocol-3 Rust service and version-1 lobby catalog. The latest public check returned `{"ok":true,"version":3}` and one Oregon lobby. The regional Go directory has not replaced it; no regional cutover, migration 4 deployment or regional end-to-end combat test has completed.
+
+The attempted `bolts-gamelift` CloudFormation stack reached `ROLLBACK_COMPLETE` after rejecting multiple target-based scaling policies. Its role was deleted and placement queues were never created; the fleet was retained. The source now uses one fleet-wide target policy and validates that constraint before deployment, but the correction has not been deployed. The retained fleet also reports managed game processes crashing before usable games are available. Local changes address limited-user installer permissions, the Server SDK's `ProcessReady` ordering before credential/certificate requests, startup readiness gating, and SDK logging in an unwritable working directory; these fixes have not yet produced a verified regional game. A read-only SSM diagnostic session on the managed host awaits explicit approval.
+
+| Diagnostic resource | Recorded state |
+| --- | --- |
+| Retained fleet / home region | `fleet-db085c8c-9cbb-48e7-93d0-3eb53a936d3d` / `us-east-1` |
+| Build | `build-4d71954d-e3fd-4035-93e9-647d719252b3` |
+| London `eu-west-2` | desired 1 for diagnosis; minimum 0, maximum 1 |
+| Singapore `ap-southeast-1` | shutdown in progress: active 0 / terminating 1, minimum / desired / maximum all 0 |
+| São Paulo `sa-east-1` | shutdown in progress: active 0 / terminating 1, minimum / desired / maximum all 0 |
+| Home `us-east-1` | minimum / desired / maximum / active all 0 |
+
+All three earlier failed fleets, with IDs beginning `fleet-18259903`, `fleet-92ef1c0b` and `fleet-5b45`, were deleted; AWS lists only the retained diagnostic fleet. The three unused builds from those deleted fleets were also removed. That fleet still needs repair or removal. Singapore and São Paulo each report no active worker and one terminating instance; shutdown completion remains unconfirmed. London retains one diagnostic instance, which incurs charges. The latest scale-in evidence is `temp/regional-validation/v17-scale-in-check.json`. The planned completed configuration is one warm `c7i.large` in each new city, maximum two per city, with no home-region worker. Its estimated baseline is **$335.80/month** for the three locations and **$360.80–$375.80/month** including Oregon; this is not the current measured bill. See [pricing assumptions and sources](../research/regional-hosting-costs.md). New York is excluded; no New York game server or support case was created.
+
+The v1.0.17 source passed **521 frontend tests, 131 Rust tests, 71 Python tests and 24 Go test groups**, plus the frontend production build. The subsequent scaling-policy correction and deployment guards passed the expanded **81-test Python suite**. These checks do not substitute for managed runtime, cross-region TLS, combat, identity-tour, idle-expiry and post-cutover database verification. Required probes and safe rollout steps are documented in [server/README.md](../server/README.md#gamelift-regional-hosting). Local evidence is retained under `temp/regional-validation/`, with the pre-cutover aggregate database baseline under `temp/regional-backend-verification/`.
+
+## Current Oregon application release
 
 Application release `043bfa1f697eaa8a9f5ef251ba21e2cb77d38ffb6e52417a7faafbb62c6da36f` deploys protocol **3** from source `9ef9a47da77bb239ed3972c6398fd434a6d7ce1d`. GitHub Pages [build and deployment](https://github.com/play-bolts/play-bolts.github.io/actions/runs/38981655354) succeeded for that source; the three served entry assets matched the locally tested build byte-for-byte. This application-only update preserved the existing Oregon instance, database and identity credentials; no CloudFormation or GameLift resources changed. The host lock, expected-current-release checks, empty-human-seat checks and pre/post backups guarded cutover. Both failed startup and failed health checks now restore the previous binary. Already-open protocol-2 clients must reload.
 
@@ -9,6 +30,8 @@ The four transport changes are lossless binary inputs/snapshots, paced latest-st
 Validation passed: **507 frontend tests, 128 Rust tests, 48 Python checks**, Go gateway race/integration tests with a realistic GameLift session ARN, 24 isolated seven-user protocol checks, 46 final three-adapter checks, and 38 applicable production checks. The production test used two combatants plus a spectator and verified reciprocal limb/head hits, reloads, ammunition, kills, killcams, chat, score agreement, ping and clean departure. Chrome loaded the published client, joined as a spectator, rendered the live arena and kill feed, displayed server-measured scoreboard ping, and returned to the main menu. Local single player started with the Kar98k and 150 total rounds, paused, and returned to the menu. No browser warnings or errors were reported.
 
 Read-only postrelease checks confirmed protocol-3 health, an active service and backup timer, successful backup, SQLite integrity `ok`, zero foreign-key violations, zero duplicate/open memberships and an empty lobby after QA. No persistence, overload, timeout or panic entries appeared in the reviewed post-restart logs. No database migration was introduced. Release evidence is retained locally under `temp/transport-release/`, benchmarks under `temp/transport-audit-v3/`, and combat reports under `artifacts/multiplayer-client-e2e.json` and `artifacts/multiplayer-remote-e2e.json` (all ignored by Git).
+
+## Previous Oregon deployments
 
 Previous application release `c642035b9a9814bd37a7c42d9299eedd0b41ada789126768638a37e4b714d8bd` deploys multiplayer protocol 2 from source `730ed981c58b532ac684085efeac3a3c0cd04b3c`. The same source passed GitHub Pages [build and deployment](https://github.com/play-bolts/play-bolts.github.io/actions/runs/38954057475); the three served entry assets matched the locally tested build byte-for-byte. This was an application-only update on the existing Oregon instance, with no CloudFormation or GameLift deployment. A host release lock, expected-current-release checks and an empty-human-seat check after backup guarded the cutover. The installer preserved the database, backed up before/after replacement, and verified protocol-2 health. Old clients must reload; browser identity credentials are retained.
 
@@ -19,6 +42,8 @@ Application release `4cfe8f0052a101d7fe41b2edba2aa0ebe6abb5c085a72a09f4fca9a172e
 Previous application release `826b677833a77551e50ab522af8a5d28ff9f7c7d57ac4065e5bfc7b6c3bfc9e2` adds server-controlled lobby AI, online counts, private feedback storage, and name-indexed leaderboards. It was deployed to the existing instance without CloudFormation changes after verifying empty human seats; the installer rechecks occupancy after compilation before replacing the running service. Both database backups completed successfully. Read-only production verification confirmed schema migrations 1 and 2, SQLite integrity `ok`, zero foreign-key violations, and healthy application/backup services. The community endpoints accept the GitHub Pages origin and reject lookalike origins. Backend verification evidence is saved locally in `artifacts/community-backend-verification.json` (ignored by Git).
 
 Frontend hosting: **https://play-bolts.github.io/**. The live production origin allowlist contains this exact origin plus `http://127.0.0.1:5173` and `http://localhost:5173`. The origin-only update completed on 2026-10-15 with empty lobbies, preserving the existing binary, database, and AWS infrastructure. All 21 public HTTP, CORS preflight, and WebSocket origin checks passed: GitHub Pages and local development origins are accepted; the retired hosting origin and lookalike origins are rejected. No players joined during verification. Future origin-only updates follow [server/README.md](../server/README.md).
+
+## Existing Oregon resources
 
 The generated endpoint remains available at https://d34rt6eezr7e5v.cloudfront.net.
 
@@ -35,11 +60,11 @@ The generated endpoint remains available at https://d34rt6eezr7e5v.cloudfront.ne
 | Retained encrypted root volume | `vol-0c9e99229c420acfb` |
 | Private backup / release bucket | `bolts-backend-storagebucket-knjq5mfjcxi7` |
 
-HTTPS and WebSockets reach the single Rust server through a CloudFront VPC origin. The instance accepts application traffic only from the CloudFront VPC origin service security group; administration uses SSM, with no SSH ingress. The earlier failed deployment's resources were removed.
+HTTPS and WebSockets reach the single Rust server through a CloudFront VPC origin. The instance accepts application traffic only from the CloudFront VPC origin service security group; administration uses SSM, with no SSH ingress. Resources from the earlier failed Oregon deployment were removed; the separate regional diagnostic fleet is recorded above.
 
 The custom hostname uses a DNS-validated ACM certificate, SNI, and CloudFront's `TLSv1.2_2021` policy. The certificate stack manages its validation CNAME; the Oregon backend stack manages the exact `bolts-api.christopherkrapu.com` A/AAAA aliases. The domain-only change set modified only the distribution and added those two aliases, with no replacements or application restart. The zone's public NS delegation was checked against its Route 53 nameservers. Other DNS names remain unchanged.
 
-The live service passed 17 multiplayer protocol checks and a two-browser-client adapter test. Browser verification also covered the automatic round restart.
+The initial Oregon deployment passed 17 multiplayer protocol checks and a two-browser-client adapter test. Browser verification also covered the automatic round restart.
 
 The hourly backup service was run successfully through SSM. Backup `backups/bolts-backend/20261014T070510.628381Z.tar.gz` was downloaded to a private temporary directory and restored independently. Verification confirmed AES256 encryption, an exact two-file archive allowlist (`bolts.sqlite`, `restore.json`), a present identity salt without exposing it, SQLite integrity `ok`, and zero foreign key violations. The restored database contained 9 players, 11 connections, 11 memberships, 30 events, 3 chat messages, and 1 combat record with correctly linked kill and death events. All temporary recovery files were removed.
 

@@ -92,6 +92,13 @@ def validate_capacity(template):
             for child in value: reject_managed_capacity(child)
     reject_managed_capacity(template)
     fleet = template['Resources']['Fleet']['Properties']
+    policies = fleet.get('ScalingPolicies', [])
+    if (len(policies) != 1 or policies[0].get('PolicyType') != 'TargetBased' or
+            policies[0].get('MetricName') != 'PercentAvailableGameSessions' or
+            policies[0].get('TargetConfiguration') != {'TargetValue': 20} or
+            not policies[0].get('Name') or
+            set(policies[0]) != {'Name', 'PolicyType', 'MetricName', 'TargetConfiguration'}):
+        raise DeploymentError('Exactly one fleet-wide target scaling policy is required, without Location')
     capacities = {loc['Location']: loc['LocationCapacity'] for loc in fleet['Locations']}
     if set(capacities) != {REGION, *LOCATIONS.values()} or len(fleet['Locations']) != 4:
         raise DeploymentError('Fleet template contains unexpected or duplicate locations')

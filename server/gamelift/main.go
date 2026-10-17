@@ -26,7 +26,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/amazon-gamelift/amazon-gamelift-servers-go-server-sdk/v5/model/request"
 	sdk "github.com/amazon-gamelift/amazon-gamelift-servers-go-server-sdk/v5/server"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -206,7 +205,7 @@ func main() {
 		os.Exit(1)
 	}
 }
-func run() error {
+func run() (runError error) {
 	mode := flag.String("mode", "directory", "directory or game")
 	cfgPath := flag.String("config", "/etc/bolts-gamelift.json", "configuration file")
 	binary := flag.String("server", "/opt/bolts/current/bolts-server", "Rust executable")
@@ -231,34 +230,8 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	options := []func(*config.LoadOptions) error{config.WithRegion(c.Region)}
-	if *mode == "game" {
-		if err = sdk.InitSDKFromEnvironment(); err != nil {
-			return err
-		}
-		defer sdk.Destroy()
-		request := request.NewGetFleetRoleCredentials()
-		request.RoleArn = c.FleetRole
-		request.RoleSessionName = "bolts-host"
-		creds, e := sdk.GetFleetRoleCredentials(request)
-		if e != nil {
-			return e
-		}
-		options = append(options, config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken)))
-	}
-	awscfg, err := config.LoadDefaultConfig(ctx, options...)
-	if err != nil {
-		return err
-	}
-	secret, err := ssm.NewFromConfig(awscfg).GetParameter(ctx, &ssm.GetParameterInput{Name: &c.SecretParameter, WithDecryption: aws.Bool(true)})
-	if err != nil {
-		return err
-	}
-	if secret.Parameter == nil || len(aws.ToString(secret.Parameter.Value)) < 32 {
-		return errors.New("invalid cluster secret")
-	}
 	local := fmt.Sprintf("http://127.0.0.1:%d", *port+10000)
-	r := &runtime{cfg: c, secret: []byte(aws.ToString(secret.Parameter.Value)), internal: randomToken(), local: local, http: &http.Client{Timeout: 12 * time.Second}}
+	r := &runtime{cfg: c, internal: randomToken(), local: local, http: &http.Client{Timeout: 12 * time.Second}}
 	dataPath := os.Getenv("BOLTS_DB")
 	if dataPath == "" {
 		dataPath = "/var/lib/bolts/bolts.sqlite"
@@ -277,15 +250,62 @@ func run() error {
 		}
 		dataPath = filepath.Join(dir, "bolts.sqlite")
 	}
+	options := []func(*config.LoadOptions) error{config.WithRegion(c.Region)}
+	var process *gameProcess
+	var childStdout io.Writer = os.Stdout
+	var childStderr io.Writer = os.Stderr
+	if *mode == "game" {
+		hostLog, e := os.OpenFile(filepath.Join(filepath.Dir(dataPath), "host.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		if e != nil {
+			return fmt.Errorf("startup log: %w", e)
+		}
+		previousOutput := log.Writer()
+		childStdout = io.MultiWriter(os.Stdout, hostLog)
+		childStderr = io.MultiWriter(os.Stderr, hostLog)
+		log.SetOutput(childStderr)
+		defer func() { log.SetOutput(previousOutput); _ = hostLog.Close() }()
+		log.Print("Initializing GameLift SDK")
+		if err = initializeManagedSDK(); err != nil {
+			log.Printf("GameLift SDK initialization failed: %v", err)
+			return fmt.Errorf("GameLift SDK initialization: %w", err)
+		}
+		defer sdk.Destroy()
+		process = newGameProcess(ctx, stop, r, managedProcessService{})
+		creds, e := process.start(*port, dataPath)
+		if e != nil {
+			return e
+		}
+		defer func() {
+			if runError != nil {
+				log.Printf("Host failed: %v", runError)
+			}
+			runError = errors.Join(runError, process.close())
+		}()
+		options = append(options, config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken)))
+	}
+	awscfg, err := config.LoadDefaultConfig(ctx, options...)
+	if err != nil {
+		return fmt.Errorf("AWS configuration: %w", err)
+	}
+	startup, cancelStartup := context.WithTimeout(ctx, 45*time.Second)
+	secret, err := ssm.NewFromConfig(awscfg).GetParameter(startup, &ssm.GetParameterInput{Name: &c.SecretParameter, WithDecryption: aws.Bool(true)})
+	cancelStartup()
+	if err != nil {
+		return fmt.Errorf("cluster secret retrieval: %w", err)
+	}
+	if secret.Parameter == nil || len(aws.ToString(secret.Parameter.Value)) < 32 {
+		return errors.New("invalid cluster secret")
+	}
+	r.secret = []byte(aws.ToString(secret.Parameter.Value))
 	child := exec.Command(*binary)
-	child.Stdout = os.Stdout
-	child.Stderr = os.Stderr
+	child.Stdout = childStdout
+	child.Stderr = childStderr
 	child.Env = append(os.Environ(), fmt.Sprintf("BOLTS_BIND=127.0.0.1:%d", *port+10000), "BOLTS_INTERNAL_TOKEN="+r.internal, "BOLTS_DB="+dataPath, "BOLTS_ORIGINS="+strings.Join(c.Origins, ","), "BOLTS_TRUST_PROXY=true")
 	if *mode == "game" {
 		child.Env = append(child.Env, "BOLTS_IDENTITY_SALT="+randomToken(), "BOLTS_MAX_ROOMS=1", "BOLTS_EMPTY_SECONDS=300")
 	}
 	if err = child.Start(); err != nil {
-		return err
+		return fmt.Errorf("Rust process start: %w", err)
 	}
 	exited := make(chan struct{})
 	var childError error
@@ -299,8 +319,14 @@ func run() error {
 		}
 	}()
 	ready := false
+	healthContext, cancelHealth := context.WithTimeout(ctx, 8*time.Second)
+	defer cancelHealth()
 	for i := 0; i < 100; i++ {
-		response, e := r.http.Get(local + "/api/health")
+		request, e := http.NewRequestWithContext(healthContext, "GET", local+"/api/health", nil)
+		if e != nil {
+			return e
+		}
+		response, e := r.http.Do(request)
 		if e == nil {
 			response.Body.Close()
 			if response.StatusCode == 200 {
@@ -309,16 +335,17 @@ func run() error {
 			}
 		}
 		select {
-		case <-ctx.Done():
-			return errors.New("Rust service stopped during startup")
+		case <-healthContext.Done():
+			return fmt.Errorf("Rust service startup: %w", healthContext.Err())
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
+	cancelHealth()
 	if !ready {
 		return errors.New("Rust service did not start")
 	}
 	if *mode == "game" {
-		err = r.runGame(ctx, *port, dataPath)
+		err = r.runGame(process, *port, dataPath)
 	} else {
 		err = r.runDirectory(ctx, *port, awscfg, dataPath)
 	}

@@ -8,6 +8,60 @@ import (
 	"testing"
 )
 
+func TestFleetInstallerUsesNoninteractivePrivilegeForOwnedPaths(t *testing.T) {
+	data, err := os.ReadFile("../../infra/gamelift/install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []string{"success", "sudo_denied"} {
+		t.Run(scenario, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, name := range []string{"bolts-server", "bolts-host"} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte("binary"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cmd := exec.Command("bash", "-c", `
+chmod() { printf 'unprivileged chmod\n' >&2; return 99; }
+install() { printf 'unprivileged install\n' >&2; return 99; }
+sudo() {
+ printf '%s\n' "$*" >> "$CASE_DIR/trace"
+ [ "$SCENARIO" != sudo_denied ] || return 1
+ case "$*" in
+ '-n chmod 0755 /local/game/bolts-server /local/game/bolts-host')
+   command chmod 0755 "$CASE_DIR/bolts-server" "$CASE_DIR/bolts-host" ;;
+ '-n install -d -m 1777 /local/game/sessionlogs')
+   command install -d -m 1777 "$CASE_DIR/sessionlogs" ;;
+ *) printf 'unexpected privileged request\n' >&2; return 98 ;;
+ esac
+}
+`+string(data))
+			cmd.Env = append(os.Environ(), "CASE_DIR="+dir, "SCENARIO="+scenario)
+			output, runErr := cmd.CombinedOutput()
+			trace, _ := os.ReadFile(filepath.Join(dir, "trace"))
+			if scenario == "sudo_denied" {
+				if runErr == nil || strings.Contains(string(trace), "install") {
+					t.Fatalf("privilege failure must stop before creating log root: %v %s %s", runErr, output, trace)
+				}
+				return
+			}
+			if runErr != nil || strings.Count(string(trace), "\n") != 2 {
+				t.Fatalf("installer failed or unexpected requests: %v %s %s", runErr, output, trace)
+			}
+			for _, name := range []string{"bolts-server", "bolts-host"} {
+				info, err := os.Stat(filepath.Join(dir, name))
+				if err != nil || info.Mode().Perm() != 0755 {
+					t.Fatalf("%s must be executable: %v", name, err)
+				}
+			}
+			logs, err := os.Stat(filepath.Join(dir, "sessionlogs"))
+			if err != nil || !logs.IsDir() || logs.Mode().Perm() != 0777 || logs.Mode()&os.ModeSticky == 0 {
+				t.Fatalf("shared log root must be a mode-1777 directory: %v", err)
+			}
+		})
+	}
+}
+
 func TestDirectoryInstallerRejectsConcurrentOrStaleRelease(t *testing.T) {
 	data, err := os.ReadFile("../../infra/gamelift/install-directory.sh")
 	if err != nil {

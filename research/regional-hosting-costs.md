@@ -1,8 +1,8 @@
 # Regional hosting costs
 
-Pricing checked 2026-10-16. Estimates are USD, before tax, using 730 hours per month, Linux On-Demand `c7i.large`, and one warm GameLift instance in each new location. No resources were provisioned for this pricing review. The existing Oregon server remains the game server, global directory and database; an additional Oregon GameLift worker is not included.
+Pricing checked 2026-10-16. Estimates are USD, before tax, using 730 hours per month, Linux On-Demand `c7i.large`, and one warm GameLift instance in each new location. This is the **planned steady-state configuration**, not a completed deployment or measured bill. The regional rollout encountered provisioning and process-startup failures; temporary diagnostic capacity and cleanup are recorded in [DEPLOYED.md](../infra/DEPLOYED.md). Oregon remains the only playable backend on its existing server, which will also host the global directory and database after cutover. An additional Oregon GameLift worker is not included.
 
-## Three new locations at zero players
+## Planned three new locations at zero players
 
 | Location shown to players | AWS deployment location | Instance / hour | Instance / month | Public IPv4 allowance / month | Budget / month |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -13,7 +13,7 @@ Pricing checked 2026-10-16. Estimates are USD, before tax, using 730 hours per m
 
 These cities are actual supported GameLift remote locations. Available instance allowance is a deployment prerequisite. New York City is excluded at the user's request; no New York quota request or support case was submitted. Enabling its Local Zone group alone does not start compute or create a warm-server charge. [AWS location reference](https://docs.aws.amazon.com/gameliftservers/latest/developerguide/gamelift-regions.html).
 
-Hourly rates come from the [official AWS GameLift price list](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonGameLift/current/index.json), published `2026-10-13T15:30:44Z`, with On-Demand terms effective `2026-10-01`. Linux SKUs: London `6BV2GJ7JEJ9ANYRF`, Singapore `JMK2AHYYJ3GMKCCV`, São Paulo `HMET2TDXYNFZPZA9`. Each SKU records 50 GB of instance storage; do not add a second 30 GB gp3 volume to each managed worker estimate. Eligible generation-6-and-later GameLift game traffic now includes network bandwidth. [AWS instance pricing](https://aws.amazon.com/gamelift/servers/pricing/instance-pricing/).
+Hourly rates come from the [official AWS GameLift price list](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonGameLift/current/index.json), published `2026-10-13T15:30:44Z`, with On-Demand terms effective `2026-10-01`. Linux SKUs: London `6BV2GJ7JEJ9ANYRF`, Singapore `JMK2AHYYJ3GMKCCV`, São Paulo `HMET2TDXYNFZPZA9`. Each SKU records 50 GB of instance storage; do not add a second 30 GB gp3 volume to each managed worker estimate. AWS includes network bandwidth for GameLift generation-6-and-later instances, including these `c7i.large` On-Demand workers in commercial regions. Traffic billed to the central Oregon EC2, CloudFront or other non-GameLift services remains separate. [AWS instance pricing](https://aws.amazon.com/gamelift/servers/pricing/instance-pricing/).
 
 The IPv4 allowance assumes one public address per managed worker at $0.005/hour. AWS lists GameLift Servers among services using public IPv4 and says service-managed addresses provisioned to an account are charged. Keep this allowance unless billing confirms that these particular fleet addresses are exempt; bandwidth inclusion does not establish an IPv4 fee waiver. [VPC billing applicability](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html#vpc-pricing), [IPv4 prices](https://aws.amazon.com/vpc/pricing/).
 

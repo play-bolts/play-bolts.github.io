@@ -1,3 +1,4 @@
+v1.0.23 - Verify and document the live London, Singapore and São Paulo rollout, browser joins, warm capacity, pricing and durable multiplayer QA events.
 v1.0.22 - Return one validated CORS policy from the regional directory so browser sessions and community APIs load correctly.
 v1.0.21 - Respect GameLift player-session pagination and placement-ID limits so regional joins can reserve seats.
 v1.0.20 - Integrate the latest managed-startup fix and record the verified soldier-animation backend deployment.

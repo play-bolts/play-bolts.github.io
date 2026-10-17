@@ -1,8 +1,8 @@
 # Regional hosting costs
 
-Pricing checked 2026-10-16. Estimates are USD, before tax, using 730 hours per month, Linux On-Demand `c7i.large`, and one warm GameLift instance in each new location. This is the **planned steady-state configuration**, not a completed deployment or measured bill. The regional rollout encountered provisioning and process-startup failures; temporary diagnostic capacity and cleanup are recorded in [DEPLOYED.md](../infra/DEPLOYED.md). Oregon remains the only playable backend on its existing server, which will also host the global directory and database after cutover. An additional Oregon GameLift worker is not included.
+Pricing checked 2026-10-16. Estimates are USD, before tax, using 730 hours per month, Linux On-Demand `c7i.large`, and one warm GameLift instance in each new location. The three warm instances, idle-session expiry, automated multiplayer combat and real-browser admission were verified on 2026-10-17. This is a steady-state estimate, not a measured bill. Current resources and completed retired-fleet cleanup are recorded in [DEPLOYED.md](../infra/DEPLOYED.md). Oregon's existing server hosts the global directory, database and Oregon games. An additional Oregon GameLift worker is not included.
 
-## Planned three new locations at zero players
+## Three warm locations at zero players
 
 | Location shown to players | AWS deployment location | Instance / hour | Instance / month | Public IPv4 allowance / month | Budget / month |
 | --- | --- | ---: | ---: | ---: | ---: |

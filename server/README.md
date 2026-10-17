@@ -1,12 +1,14 @@
 # Bolts multiplayer operations
 
-Rust owns every multiplayer combat decision. Local development and the legacy deployment use one Rust process for all lobbies. The GameLift configuration below runs one managed game session per process, with a shared directory and account database. The TypeScript client remains a static web app. **Single player** runs the local AI simulation without a multiplayer connection. The main menu can fetch the public online count and leaderboard; feedback is submitted only on request. Optional visitor tracking also records page opens and visible-page heartbeats independently of game sessions; failure never prevents local play.
+Rust owns every multiplayer combat decision. Local development and the current Oregon deployment use one Rust process for all lobbies. The pending GameLift configuration below runs one managed game session per process, with a shared directory and account database; regional gameplay is not live. The TypeScript client remains a static web app. **Single player** runs the local AI simulation without a multiplayer connection. The main menu can fetch the public online count and leaderboard; feedback is submitted only on request. Optional visitor tracking also records page opens and visible-page heartbeats independently of game sessions; failure never prevents local play.
 
 The complete game and its assets are hosted at **https://play-bolts.github.io/**. Multiplayer uses **https://bolts-api.christopherkrapu.com** and its corresponding WSS endpoint. GitHub Pages serves the frontend; the existing Oregon AWS server handles the API, lobbies and persistence.
 
 ## GameLift regional hosting
 
-Regional implementation prepared on 2026-10-16; **the GameLift fleet has not been deployed**. [DEPLOYED.md](../infra/DEPLOYED.md) remains the record of live infrastructure. New York was excluded at the user’s request after its GameLift allowance remained zero. London, Singapore, São Paulo and the fleet home region each report a 400-instance allowance. The template keeps one warm instance in each requested city and caps each at two. See the [zero-player pricing estimate](../research/regional-hosting-costs.md): approximately $336/month for the three new locations, plus the unchanged Oregon baseline.
+**Regional rollout is incomplete.** The frontend UI is published, but no regional game has passed production validation and the Oregon API remains on its existing protocol-3 Rust release. AWS provisioning exposed a scaling-policy configuration error and managed game-process crashes. The stack completed rollback while retaining its fleet; its role was deleted and placement queues were never created. The source now uses one fleet-wide target policy, but that correction has not been deployed. Diagnostic capacity and cleanup are recorded in [DEPLOYED.md](../infra/DEPLOYED.md). Read-only managed-host diagnostics await explicit approval. No regional directory cutover or regional end-to-end combat test has completed.
+
+The following sections describe the implemented target configuration, not the current production topology. It keeps one warm instance in London, Singapore and São Paulo and caps each at two. New York was excluded at the user's request; no New York game server or support case was created. The [planned zero-player estimate](../research/regional-hosting-costs.md) is **$335.80/month** for the three new locations, or **$360.80–$375.80/month** including the existing Oregon allowance. Temporary diagnostic capacity is separate from that planned steady-state estimate.
 
 | Location shown in the browser | GameLift location |
 | --- | --- |
@@ -16,6 +18,8 @@ Regional implementation prepared on 2026-10-16; **the GameLift fleet has not bee
 | São Paulo | `sa-east-1` |
 
 The [Go supervisor](gamelift/main.go) uses the official GameLift Server SDK 5.6.0 around the existing Rust simulation. Its `directory` mode runs on the existing private EC2/CloudFront backend, keeps the existing SQLite database, token hashes, leaderboard seeds, feedback, analytics and backups, and combines its existing Oregon games with the three new regional locations for every viewer. Its `game` mode runs alongside one Rust child on each GameLift server process. Regional gameplay connects directly to the GameLift hostname over TLS WebSockets on port 8080 or 8081. Oregon gameplay keeps its existing same-origin WebSocket path through the directory to the local Rust process. Existing account credentials, scores and activity records stay in the same database.
+
+Managed startup registers `ProcessReady` before requesting fleet-role credentials or the compute certificate, as required by Server SDK 5.6.0. Health remains false and an early session assignment waits until the Rust child and TLS listener are ready. Startup failure ends the registered process. The installer uses noninteractive `sudo` for the root-owned executable permissions and shared session-log directory; each process creates a private subdirectory. An injected SDK logger uses the private host log and suppresses SDK debug output that can contain temporary credentials, avoiding file creation in the managed read-only working directory. These changes pass local regressions; the remaining managed startup failure is not resolved.
 
 ```mermaid
 flowchart LR
@@ -33,7 +37,9 @@ Each region has an exact-location queue with a 600-second placement timeout; the
 
 The version-2 `GET /api/lobbies` response includes `locations: ["lon","sg","sp"]` separately from `lobbies`, which includes existing Oregon rooms as `location: "or", managed: false`. `POST /api/join` with `lobbyId: "new:<location>"` means join-or-start in that location; that routing key is never a listed lobby. Selecting an actual lobby still joins that exact game. New game allocation is driven by a player's join request, so a full lobby does not continuously create unused replacement games.
 
-The fleet uses on-demand `c7i.large` instances with two server processes each. One session can run successive rounds indefinitely while occupied. Empty sessions close after the Rust five-minute idle timeout and disappear on the next directory refresh (the API cache and browser polling each have a five-second interval). The instance stays ready with minimum and desired capacity of one; automatic scale-to-zero is disabled. Idle sessions and idle instances are separate: zero players still incurs the warm-instance cost. A 20% spare-session target scales above one instance, bounded at two instances per location by default (four lobbies / 24 human or spectator seats per location). Active game sessions have termination protection. The `us-east-1` home location has zero desired and maximum capacity and is absent from all placement queues. The central API and its storage continue to incur their existing baseline cost alongside the warm regional instances.
+The fleet uses on-demand `c7i.large` instances with two server processes each. One session can run successive rounds indefinitely while occupied. Empty sessions close after the Rust five-minute idle timeout and disappear on the next directory refresh (the API cache and browser polling each have a five-second interval). The instance stays ready with minimum and desired capacity of one; automatic scale-to-zero is disabled. Idle sessions and idle instances are separate: zero players still incurs the warm-instance cost. One fleet-wide target policy applies a 20% spare-session target, bounded at two instances per location by default (four lobbies / 24 human or spectator seats per location). Active game sessions have termination protection. The `us-east-1` home location has zero desired and maximum capacity and is absent from all placement queues. The central API and its storage continue to incur their existing baseline cost alongside the warm regional instances.
+
+AWS propagates the fleet's target policy to every location, which scales independently using its own metrics. GameLift permits only one target-based policy per fleet; the generator and deployment validator enforce that limit. See [target-based scaling](https://docs.aws.amazon.com/gameliftservers/latest/developerguide/fleets-autoscaling-target.html) and [PutScalingPolicy](https://docs.aws.amazon.com/gameliftservers/latest/apireference/API_PutScalingPolicy.html).
 
 ### Build and verify
 
@@ -42,7 +48,7 @@ Use Go 1.27.2, Rust 1.99.0, Node, Python 3.9+ and Docker. The build script copie
 ```sh
 npm test
 npm run build
-PYTHONPYCACHEPREFIX=artifacts/pycache python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONPYCACHEPREFIX=temp/pycache python3 -m unittest discover -s tests -p 'test_*.py'
 cargo test --locked --manifest-path server/Cargo.toml
 cargo build --locked --manifest-path server/Cargo.toml
 BOLTS_TEST_SERVER="$PWD/server/target/debug/bolts-server" go -C server/gamelift test -race -v ./...
@@ -51,6 +57,21 @@ python3 scripts/prepare-gamelift.py --account-id 780705957578 --build
 ```
 
 The preflight is read-only and returns a nonzero status until all locations are enabled and have sufficient allowance. Build outputs, SHA256 manifest, generated CloudFormation template and sanitized configuration are under `artifacts/gamelift/`. The integration test launches two real Rust processes and a Go WebSocket gateway, verifies an intentionally delayed browser heartbeat, reconnect and seat release, then replicates events into the central database without replacing its account credentials. It needs permission to bind localhost sockets.
+
+The v1.0.17 source passed 521 frontend tests, 131 Rust tests, 71 Python tests, 24 Go test groups and the frontend production build. The subsequent scaling-policy correction and deployment guards passed the expanded 81-test Python suite. These local checks and successful Pages publication do not establish that AWS game processes start, accept TLS connections or serve regional games.
+
+After the fleet and directory are healthy, run the explicit production probes below. They create real QA identities, activity and combat records and have **not yet passed for this regional rollout**:
+
+```sh
+node --import tsx scripts/test-multiplayer-clients.ts --remote-qa --location=lon
+node --import tsx scripts/test-multiplayer-clients.ts --remote-qa --location=sg
+node --import tsx scripts/test-multiplayer-clients.ts --remote-qa --location=sp
+node --import tsx scripts/test-multiplayer-clients.ts --remote-qa --location=or
+node --import tsx scripts/test-regional-identity.ts --remote-qa
+python3 scripts/verify-regional-backend.py --compare temp/regional-backend-verification/baseline.json --output temp/regional-backend-verification/postrollout.json
+```
+
+The combat probe uses two fighters and one spectator in an empty room, aborts if another human appears, and checks admission, AI population changes, reconnect, chat, combat, ping, replicated scores and clean leave. The identity tour reuses one permanent browser credential across all four locations while a second directory-only client compares the global inventory. Production runs require `--remote-qa`; reports are retained separately under `temp/multiplayer-qa/`. The backend verifier reads aggregate database and service state through SSM and compares a private pre-cutover baseline without printing chat, contact information or secrets.
 
 ### Rollout order
 

@@ -265,7 +265,7 @@ func run() (runError error) {
 		log.SetOutput(childStderr)
 		defer func() { log.SetOutput(previousOutput); _ = hostLog.Close() }()
 		log.Print("Initializing GameLift SDK")
-		if err = sdk.InitSDKFromEnvironment(); err != nil {
+		if err = initializeManagedSDK(); err != nil {
 			log.Printf("GameLift SDK initialization failed: %v", err)
 			return fmt.Errorf("GameLift SDK initialization: %w", err)
 		}

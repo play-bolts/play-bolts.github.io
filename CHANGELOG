@@ -1,3 +1,4 @@
+v1.0.17 - Route GameLift SDK diagnostics to private logs without requiring a writable working directory.
 v1.0.16 - Register GameLift processes before credentials and TLS, gate early assignments, and retain private startup logs.
 v1.0.15 - Fix GameLift installer permissions and verify regional identity continuity.
 v1.0.13 - Stabilize the torso-hit test and verify regional capacity, database recovery and preserved identities during rollout.

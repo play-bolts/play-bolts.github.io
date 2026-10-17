@@ -21,11 +21,16 @@ test('the carried grenade icon remains distinct from a melee kill',()=>{
  }
 });
 
-test('rifle kills retain distinct weapon silhouettes and headshot announcements',()=>{
+test('headshots replace distinct rifle silhouettes with one symbol while retaining weapon announcements',()=>{
  assert.equal(new Set(FACTIONS.map(faction=>weaponIcon(faction))).size,3);
+ const drawings:string[]=[];
  for(const faction of FACTIONS){
   const icon=weaponIcon(faction,'rifle',true);
   assert.ok(icon.includes(`aria-label="${WEAPONS[faction].name} headshot"`));
-  assert.match(icon,/<span class="headshot" aria-label="Headshot">/);
+  assert.match(icon,/class="weapon-icon headshot"/);
+  assert.equal((icon.match(/<svg\b/g)??[]).length,1,'one headshot symbol occupies the weapon slot');
+  assert.doesNotMatch(icon,/<span\b|class="weapon-icon rifle"/);
+  drawings.push(icon.slice(icon.indexOf('</title>')+8));
  }
+ assert.equal(new Set(drawings).size,1,'headshot drawing is independent of the rifle used');
 });

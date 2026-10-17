@@ -17,3 +17,9 @@ The Mosin retains MaX3Dd's authored wood grain, worn metal, normal maps, roughne
 Each `*-provenance.json` records the official source file's SHA256, final GLB SHA256, normalization scale, geometry count, removed components, and verified embedded texture dimensions. Each `*-profile.json` contains the runtime anchor contract. Original download archives remain under `artifacts/sketchfab-source/` and are not served by the web app.
 
 Reproduction uses `scripts/prepare-imported-rifles.py` in Blender with `--background --factory-startup --disable-autoexec`, followed by `scripts/optimize-imported-rifle-textures.py`. The `mosin` choice dispatches to `scripts/prepare-mosin-m91.py`, which can also be run directly. `scripts/convert-sketchfab-weapons.py` produces independent source/final inspection reports and renders.
+
+## Rifle notification silhouettes
+
+The rifle icons in `src/weaponIcons.ts` are newly drawn, simplified side profiles adapted from the three CC BY 4.0 models credited above, under the same [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/). They retain each rifle's stock, fore-end, magazine and sight proportions while omitting slings, surface detail, display rounds and bayonets for small HUD sizes. The killfeed displays them in a 70 × 20-pixel slot; the inventory HUD retains its smaller slot.
+
+The melee fist and headshot head/reticle are original vector drawings informed by early Call of Duty multiplayer icon conventions. No original Call of Duty image assets are included.

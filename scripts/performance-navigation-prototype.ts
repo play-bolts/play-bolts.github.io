@@ -7,7 +7,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { execFileSync } from 'node:child_process';
 import { ARENA, SPAWNS, blocked, dist } from '../src/config.ts';
-import { findPath, type RouteRisk } from '../src/navigation.ts';
+import type { RouteRisk } from '../src/navigation.ts';
+import { referenceFindPath as findPath } from './performance-navigation-reference.ts';
 import { coverExposure } from '../src/aiCover.ts';
 
 const CELL = .7, W = Math.floor(ARENA.width / CELL), D = Math.floor(ARENA.depth / CELL), N = W * D;

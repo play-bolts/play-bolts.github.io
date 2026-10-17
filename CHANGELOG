@@ -1,3 +1,4 @@
+v1.0.18 - Replaces linear A* searches with a stable indexed heap and reentrant scratch storage while preserving exact routes.
 v1.0.17 - Fix crouch walking with shorter strides, balanced hips and torso, rolling sole contacts, and stable head orientation; keep server hitboxes synchronized.
 v1.0.16 - Adds reproducible graphics, animation, audio, asset and CPU profiling with a device-performance audit report generator.
 v1.0.15 - Fix reversed knees and overextended strides, fit motion to imported leg proportions, and reshape/reweight German boots for firmer ankle motion.

@@ -3,7 +3,7 @@
 
 Default validates local reports and prints an aggregate plan. --aws verifies
 GameLift session locations and runs a fixed read-only SQLite audit through SSM.
-No chat text, names, credentials, identity salts or UUIDs appear in the output.
+No chat text, names, credentials, identity salts or player UUIDs appear in the output.
 This complements verify-regional-backend.py; it does not replace its baseline,
 integrity, credential-continuity and backup checks.
 """

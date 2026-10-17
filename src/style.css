@@ -10,6 +10,7 @@
   color: #e4e0cb;
   background: #171b18;
   font-synthesis: none;
+  touch-action: manipulation;
   --cream: #e4e0cb;
   --muted: #babba5;
   --gold: #f0e6aa;
@@ -359,12 +360,12 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 }
 @media (max-height: 600px) { .intro-menu { top: 10%; }.intro-menu h1 { margin-bottom: 14px; }.intro-menu .classic-choice { min-height: 23px; font-size: 21px; } }
 
-/* Touch play uses its own pointer surfaces; menus retain normal scroll and zoom. */
+/* Menus allow scrolling and pinch zoom. Active play owns the whole viewport,
+ * including the gaps between controls, so rapid taps cannot zoom the page. */
+.touch-mode:has(#touch-controls:not(.hidden)) { touch-action: none; }
 :root { --touch-scale: 1; --touch-edge: 18px; --touch-bottom: max(18px, env(safe-area-inset-bottom)); --touch-pad-size: min(calc(132px * var(--touch-scale)), 40dvh); --touch-fire-size: min(calc(88px * var(--touch-scale)), 27dvh); }
 #touch-controls { position: absolute; inset: 0; z-index: 6; pointer-events: none; font-family: Arial, sans-serif; }
 #touch-look { position: absolute; inset: 58px 0 0 50%; z-index: 0; pointer-events: auto; touch-action: none; }
-.touch-look-hint { position: absolute; top: 32%; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; color: #e8e6d29c; font-size: 11px; white-space: nowrap; pointer-events: none; user-select: none; -webkit-user-select: none; }
-.touch-look-hint svg { width: 26px; height: 13px; }
 .touch-pad { position: absolute; bottom: var(--touch-bottom); width: var(--touch-pad-size); height: var(--touch-pad-size); border: 1px solid #e4e0cb80; border-radius: 50%; background: radial-gradient(circle, #d7ddbb12 0 36%, #0b100b52 37%); box-shadow: inset 0 0 0 8px #e4e0cb08, 0 2px 12px #0002; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 #touch-move { left: max(var(--touch-edge), env(safe-area-inset-left)); }
 .touch-knob { position: absolute; left: calc(50% - 26px); top: calc(50% - 26px); width: 52px; height: 52px; border: 1px solid #e4e0cb91; border-radius: 50%; background: #dddcc02e; pointer-events: none; transform: translate(var(--stick-x, 0px), var(--stick-y, 0px)); }
@@ -402,7 +403,6 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 .mobile-card { width: min(440px, 100%); text-align: center; padding: 24px; }
 .mobile-card h2 { font-size: clamp(24px, 5vw, 32px); line-height: 1.15; }
 .mobile-card .start-button, .mobile-card .secondary-button { justify-content: center; text-align: center; min-height: 36px; padding: 6px 8px; font-size: 17px; }
-.mobile-card .mobile-match-note { font-size: 14px; color: #b5baa6; }
 .rotate-phone { width: 100px; height: 90px; color: #d8d5b4; }
 .touch-mode #hud-menu { top: max(8px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); min-width: 38px; min-height: 30px; padding: 4px 7px; font: 10px Arial, sans-serif; text-align: center; }
 .touch-mode #hud:has(#touch-controls:not(.hidden)) > #hud-menu { visibility: hidden; }

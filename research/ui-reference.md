@@ -28,6 +28,16 @@ hip-fire rotation for a 200 CSS-pixel swipe. Options allow 0.5–6.0. Unversione
 saved values at the old 1.0 default migrate to 4.0; other saved values remain,
 and choosing 1.0 explicitly in the new release persists normally.
 
+The gameplay overlay omits the swipe-to-look hint, and the portrait prompt
+omits the multiplayer status note. The invisible right-side look surface stays
+available. Menus use `touch-action: manipulation` to disable double-tap zoom
+while retaining scrolling and pinch zoom, following [WebKit's guidance](https://webkit.org/blog/5610/more-responsive-tapping-on-ios/).
+Active touch gameplay uses `touch-action: none` on the root so gaps between
+controls are covered too. A native `touchend` guard supplements CSS for
+[Safari's positioned-element zoom issue](https://bugs.webkit.org/show_bug.cgi?id=218015).
+It tracks touches that begin in gameplay through release or cancellation,
+including presses that open menus, without cancelling fresh menu gestures.
+
 ## Model reference pointers
 
 - [Lee-Enfield Association No.4/No.5 illustrated sight picture, page 39](https://lee-enfield.org/images/Training/BYSA_Lee_Enfield_instructors_manual_v61.pdf): rear aperture and front post. No.4 geometry should not be confused with SMLE open rear sights.

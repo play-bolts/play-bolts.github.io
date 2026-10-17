@@ -17,7 +17,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'artifacts/gamelift'
 HOME_REGION = 'us-east-1'
-LOCATIONS = {'ca': 'us-west-1', 'ny': 'us-east-1-nyc-2', 'sp': 'sa-east-1', 'par': 'eu-west-3'}
+LOCATIONS = {'lon': 'eu-west-2', 'sg': 'ap-southeast-1', 'sp': 'sa-east-1'}
 
 
 def aws(*args):
@@ -49,8 +49,7 @@ def template():
     policies = []
     for key, location in LOCATIONS.items():
         locations.append({'Location': location, 'LocationCapacity': {
-            'MinSize': 0, 'DesiredEC2Instances': 0, 'MaxSize': ref('MaximumInstancesPerLocation'),
-            'ManagedCapacityConfiguration': {'ZeroCapacityStrategy': 'SCALE_TO_AND_FROM_ZERO', 'ScaleInAfterInactivityMinutes': 5}}})
+            'MinSize': 1, 'DesiredEC2Instances': 1, 'MaxSize': ref('MaximumInstancesPerLocation')}})
         policies.append({'Name': 'spare-capacity-' + key, 'Location': location, 'PolicyType': 'TargetBased',
                          'MetricName': 'PercentAvailableGameSessions', 'TargetConfiguration': {'TargetValue': 20}})
     fleet = {'Type': 'AWS::GameLift::Fleet', 'DeletionPolicy': 'Retain', 'UpdateReplacePolicy': 'Retain', 'Properties': {
@@ -82,14 +81,13 @@ def template():
             {'Effect': 'Allow', 'Action': 'gamelift:StartGameSessionPlacement',
                 'Resource': [{'Fn::GetAtt': ['Queue' + key.title(), 'Arn']} for key in LOCATIONS]},
         ]}}}
-    return {'AWSTemplateFormatVersion': '2010-09-09', 'Description': 'Bolts global GameLift sessions, four exact locations, scale to zero',
+    return {'AWSTemplateFormatVersion': '2010-09-09', 'Description': 'Bolts regional GameLift sessions, London, Singapore and Sao Paulo, one warm instance per city',
             'Parameters': parameters, 'Resources': resources,
             'Outputs': {'FleetId': {'Value': ref('Fleet')}, 'FleetRoleArn': {'Value': {'Fn::GetAtt': ['GameRole', 'Arn']}}}}
 
 
 def preflight():
-    zone = aws('ec2', 'describe-availability-zones', '--all-availability-zones', '--filters', 'Name=group-name,Values=us-east-1-nyc-2')['AvailabilityZones']
-    checks = [{'check': 'New York Local Zone enabled', 'ok': any(z.get('OptInStatus') == 'opted-in' for z in zone)}]
+    checks = []
     for location in [HOME_REGION, *LOCATIONS.values()]:
         limits = aws('gamelift', 'describe-ec2-instance-limits', '--ec2-instance-type', 'c7i.large', '--location', location)['EC2InstanceLimits']
         limit = limits[0]['InstanceLimit'] if limits else 0
@@ -118,21 +116,25 @@ def main():
     files = [ROOT / 'server/Cargo.toml', ROOT / 'server/Cargo.lock', ROOT / 'server/schema.sql',
              *sorted((ROOT / 'server/src').glob('*.rs')), *sorted((ROOT / 'server/gamelift').glob('*.go')),
              ROOT / 'server/gamelift/go.mod', ROOT / 'server/gamelift/go.sum',
-             ROOT / 'src/generated/hitboxData.json', ROOT / 'src/generated/handCollisionData.json', ROOT / 'shared/actor-fields.json', ROOT / 'infra/gamelift/Dockerfile']
+             ROOT / 'src/generated/hitboxData.json', ROOT / 'src/generated/handCollisionData.json', ROOT / 'shared/actor-fields.json', ROOT / 'infra/gamelift/Dockerfile',
+             ROOT / 'infra/gamelift/install.sh', ROOT / 'infra/gamelift/host.example.json', ROOT / 'scripts/prepare-gamelift.py']
     context = OUT / 'context'
     if context.exists():
         shutil.rmtree(context)
+    source_hashes = {}
     for source in files:
         if not source.is_file() or source.is_symlink():
             raise ValueError('Invalid build input: ' + str(source))
         target = context / source.relative_to(ROOT)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
+        source_hashes[str(source.relative_to(ROOT))] = hashlib.sha256(target.read_bytes()).hexdigest()
     if args.preflight:
         checks = preflight()
         (OUT / 'preflight.json').write_text(json.dumps(checks, indent=2) + '\n')
         print(json.dumps(checks, indent=2))
     if args.build:
+        config_digest = hashlib.sha256((OUT / 'host.json').read_bytes()).hexdigest()
         subprocess.run(['docker', 'buildx', 'build', '--platform', 'linux/amd64', '--target', 'release',
                         '--output', 'type=local,dest=' + str(OUT / 'bundle'), '-f', str(context / 'infra/gamelift/Dockerfile'), str(context)], check=True)
         shutil.copyfile(OUT / 'host.json', OUT / 'bundle/host.json')
@@ -140,7 +142,10 @@ def main():
         for name in ['bolts-host', 'bolts-server', 'install.sh']:
             (OUT / 'bundle' / name).chmod(0o755)
         manifest = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((OUT / 'bundle').iterdir()) if p.is_file()}
+        if any(hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != digest for name, digest in source_hashes.items()):
+            raise RuntimeError('Build inputs changed during compilation; rebuild before deploying.')
         (OUT / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+        (OUT / 'build-provenance.json').write_text(json.dumps({'sourceFiles': source_hashes, 'configSha256': config_digest, 'outputs': manifest}, indent=2) + '\n')
     print('Prepared GameLift configuration and allowlisted build context in ' + str(OUT))
     if args.preflight and not all(c['ok'] for c in checks):
         raise SystemExit('Deployment prerequisites are incomplete; no AWS resources were changed.')

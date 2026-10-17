@@ -15,12 +15,12 @@ class GameLiftConfigurationTests(unittest.TestCase):
         config = json.loads((ROOT / 'infra/gamelift/host.example.json').read_text())
         self.assertEqual({l['id']: l['aws'] for l in config['locations']}, prepare.LOCATIONS)
         queues = [r['Properties'] for r in resources.values() if r['Type'] == 'AWS::GameLift::GameSessionQueue']
-        self.assertEqual(len(queues), 4)
+        self.assertEqual(len(queues), 3)
         self.assertEqual({q['FilterConfiguration']['AllowedLocations'][0] for q in queues}, set(prepare.LOCATIONS.values()))
         self.assertTrue(all(len(q['FilterConfiguration']['AllowedLocations']) == 1 for q in queues))
         self.assertTrue(all(q['TimeoutInSeconds'] == 600 for q in queues))
 
-    def test_capacity_is_bounded_protected_and_can_reach_zero(self):
+    def test_one_warm_server_per_requested_city_remains_available_when_empty(self):
         template = prepare.template()
         fleet = template['Resources']['Fleet']['Properties']
         self.assertEqual(template['Parameters']['MaximumInstancesPerLocation']['Default'], 2)
@@ -29,12 +29,19 @@ class GameLiftConfigurationTests(unittest.TestCase):
         self.assertEqual(len(fleet['RuntimeConfiguration']['ServerProcesses']), 2)
         for loc in fleet['Locations']:
             capacity = loc['LocationCapacity']
-            self.assertEqual(capacity['DesiredEC2Instances'], 0)
             if loc['Location'] == prepare.HOME_REGION:
+                self.assertEqual(capacity['MinSize'], 0)
+                self.assertEqual(capacity['DesiredEC2Instances'], 0)
                 self.assertEqual(capacity['MaxSize'], 0)
             else:
-                self.assertEqual(capacity['ManagedCapacityConfiguration']['ZeroCapacityStrategy'], 'SCALE_TO_AND_FROM_ZERO')
+                self.assertEqual(capacity['MinSize'], 1)
+                self.assertEqual(capacity['DesiredEC2Instances'], 1)
+                self.assertNotIn('ManagedCapacityConfiguration', capacity)
         self.assertEqual({s['Location'] for s in fleet['ScalingPolicies']}, set(prepare.LOCATIONS.values()))
+
+    def test_managed_locations_match_requested_cities_without_replacing_oregon(self):
+        self.assertEqual(prepare.LOCATIONS, {'lon': 'eu-west-2', 'sg': 'ap-southeast-1', 'sp': 'sa-east-1'})
+        self.assertNotIn('us-west-2', prepare.LOCATIONS.values())
 
 
 if __name__ == '__main__':

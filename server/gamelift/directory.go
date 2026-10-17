@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -37,6 +38,30 @@ type gameAPI interface {
 var invalidIdentity = errors.New("invalid identity")
 var replicationSlots = make(chan struct{}, 4)
 
+// Match the classic Rust lobby vocabulary. The random placement ID selects a
+// stable starting name; active names are skipped, with a suffix after one cycle.
+func regionalLobbyName(placementID string, rows []lobby) string {
+	generals := [...]string{"Rommel", "Guderian", "Moltke", "Blücher", "Scharnhorst", "Clausewitz"}
+	greek := [...]string{"Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta", "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi", "Rho", "Sigma", "Tau", "Upsilon", "Phi", "Chi", "Psi", "Omega"}
+	used := map[string]bool{}
+	for _, row := range rows {
+		used[row.Name] = true
+	}
+	digest := sha256.Sum256([]byte(placementID))
+	total := len(generals) * len(greek)
+	start := (int(digest[0])<<8 | int(digest[1])) % total
+	for offset := 0; ; offset++ {
+		n := (start + offset) % total
+		name := generals[n/len(greek)] + " " + greek[n%len(greek)]
+		if offset >= total {
+			name += fmt.Sprintf(" %d", offset/total+1)
+		}
+		if !used[name] {
+			return name
+		}
+	}
+}
+
 type lobby struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -47,6 +72,23 @@ type lobby struct {
 	PingURL  string `json:"pingUrl,omitempty"`
 	Managed  bool   `json:"managed"`
 }
+
+func (d *directory) legacy(ctx context.Context, path string, out any) error {
+	q, err := http.NewRequestWithContext(ctx, "GET", d.r.local+path, nil)
+	if err != nil {
+		return err
+	}
+	response, err := d.r.http.Do(q)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("Oregon service: HTTP %d", response.StatusCode)
+	}
+	return json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(out)
+}
+
 type directory struct {
 	r           *runtime
 	api         gameAPI
@@ -55,6 +97,7 @@ type directory struct {
 	updated     time.Time
 	games       map[string]types.GameSession
 	rows        []lobby
+	available   []string
 	pending     map[string]string
 	pendingFile string
 	limits      rateLimits
@@ -74,13 +117,39 @@ func (d *directory) catalog(ctx context.Context, force bool) ([]lobby, error) {
 	}
 	rows := []lobby{}
 	games := map[string]types.GameSession{}
+	// Oregon continues on the existing Rust process and database. These real
+	// rooms use its original account admission, while managed rooms use tickets.
+	var local struct {
+		Lobbies []lobby `json:"lobbies"`
+	}
+	if err := d.legacy(ctx, "/api/lobbies", &local); err != nil {
+		return nil, err
+	}
+	if local.Lobbies == nil {
+		return nil, errors.New("invalid Oregon lobby list")
+	}
+	for _, row := range local.Lobbies {
+		if row.ID == "" || strings.HasPrefix(row.ID, "new:") || row.Capacity != 6 || row.Players < 0 || row.Players > row.Capacity {
+			return nil, errors.New("invalid Oregon lobby")
+		}
+		row.Location, row.Managed = "or", false
+		row.PingURL = strings.Replace(strings.TrimRight(d.r.cfg.API, "/"), "https:", "wss:", 1) + "/api/ping"
+		rows = append(rows, row)
+	}
 	// Every viewer receives the same full directory; latency lives in the browser.
+	available := []string{}
 	for _, loc := range d.r.cfg.Locations {
+		regionalRows := []lobby{}
+		regionalGames := map[string]types.GameSession{}
+		regionCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+		healthy := true
 		var next *string
 		for {
-			response, err := d.api.DescribeGameSessions(ctx, &gamelift.DescribeGameSessionsInput{FleetId: &d.r.cfg.Fleet, Location: &loc.AWS, NextToken: next, Limit: aws.Int32(100)})
+			response, err := d.api.DescribeGameSessions(regionCtx, &gamelift.DescribeGameSessionsInput{FleetId: &d.r.cfg.Fleet, Location: &loc.AWS, NextToken: next, Limit: aws.Int32(100)})
 			if err != nil {
-				return nil, err
+				log.Printf("directory location %s unavailable: %v", loc.ID, err)
+				healthy = false
+				break
 			}
 			for _, g := range response.GameSessions {
 				if g.Status != types.GameSessionStatusActive && g.Status != types.GameSessionStatusActivating {
@@ -92,12 +161,20 @@ func (d *directory) catalog(ctx context.Context, force bool) ([]lobby, error) {
 				}
 				ping, _ := endpoint(aws.ToString(g.DnsName), aws.ToInt32(g.Port), "/api/ping")
 				id := aws.ToString(g.GameSessionId)
-				games[id] = g
-				rows = append(rows, lobby{ID: id, Name: aws.ToString(g.Name), Location: loc.ID, Players: aws.ToInt32(g.CurrentPlayerSessionCount), Capacity: 6, Phase: phase, PingURL: ping, Managed: true})
+				regionalGames[id] = g
+				regionalRows = append(regionalRows, lobby{ID: id, Name: aws.ToString(g.Name), Location: loc.ID, Players: aws.ToInt32(g.CurrentPlayerSessionCount), Capacity: 6, Phase: phase, PingURL: ping, Managed: true})
 			}
 			next = response.NextToken
 			if next == nil || *next == "" {
 				break
+			}
+		}
+		cancel()
+		if healthy {
+			available = append(available, loc.ID)
+			rows = append(rows, regionalRows...)
+			for id, game := range regionalGames {
+				games[id] = game
 			}
 		}
 	}
@@ -109,6 +186,7 @@ func (d *directory) catalog(ctx context.Context, force bool) ([]lobby, error) {
 	})
 	d.rows = rows
 	d.games = games
+	d.available = available
 	d.updated = time.Now()
 	return append([]lobby{}, rows...), nil
 }
@@ -119,12 +197,11 @@ func (d *directory) list(w http.ResponseWriter, q *http.Request) {
 		problem(w, 503, "Unable to load servers.")
 		return
 	}
-	// Locations remain selectable at zero capacity, without pretending that an
-	// unallocated server is a lobby. Reading the directory never starts a game.
-	locations := make([]string, 0, len(d.r.cfg.Locations))
-	for _, loc := range d.r.cfg.Locations {
-		locations = append(locations, loc.ID)
-	}
+	// Healthy locations remain selectable without a current game. A failed
+	// refresh removes that location's stale rooms and its placement option.
+	d.mu.Lock()
+	locations := append([]string{}, d.available...)
+	d.mu.Unlock()
 	respond(w, 200, map[string]any{"version": 2, "lobbies": rows, "locations": locations})
 }
 func (d *directory) playerSession(ctx context.Context, id, player string) (*types.PlayerSession, error) {
@@ -228,6 +305,19 @@ func (d *directory) join(w http.ResponseWriter, q *http.Request) {
 			problem(w, 400, "Unknown location.")
 			return
 		}
+		d.mu.Lock()
+		available := false
+		for _, id := range d.available {
+			if id == locID {
+				available = true
+				break
+			}
+		}
+		d.mu.Unlock()
+		if !available {
+			problem(w, 503, "This location is temporarily unavailable.")
+			return
+		}
 		// Retry an existing reservation first, including a lobby whose final seat
 		// was reserved by this player. Lost responses must not reserve two games.
 		candidates := []lobby{}
@@ -291,7 +381,7 @@ func (d *directory) join(w http.ResponseWriter, q *http.Request) {
 					problem(w, 503, "Unable to check server startup.")
 					return
 				}
-				_, err = d.api.StartGameSessionPlacement(q.Context(), &gamelift.StartGameSessionPlacementInput{PlacementId: &placementID, GameSessionQueueName: &loc.Queue, MaximumPlayerSessionCount: aws.Int32(6), GameSessionName: aws.String("Rommel " + strings.ToUpper(placementID[len(placementID)-6:])), GameProperties: []types.GameProperty{{Key: aws.String("boltsLocation"), Value: &loc.ID}}})
+				_, err = d.api.StartGameSessionPlacement(q.Context(), &gamelift.StartGameSessionPlacementInput{PlacementId: &placementID, GameSessionQueueName: &loc.Queue, MaximumPlayerSessionCount: aws.Int32(6), GameSessionName: aws.String(regionalLobbyName(placementID, rows)), GameProperties: []types.GameProperty{{Key: aws.String("boltsLocation"), Value: &loc.ID}}})
 				if err != nil {
 					problem(w, 503, "Unable to start this server.")
 					return
@@ -460,13 +550,8 @@ func (r *runtime) ingest(w http.ResponseWriter, q *http.Request) {
 	}
 	respond(w, 200, map[string]bool{"ok": true})
 }
-func (r *runtime) runDirectory(ctx context.Context, port int, awscfg aws.Config, dataPath string) error {
-	d := &directory{r: r, api: gamelift.NewFromConfig(awscfg), pending: map[string]string{}, pendingFile: filepath.Join(filepath.Dir(dataPath), "gamelift-placements.json")}
-	if data, err := os.ReadFile(d.pendingFile); err == nil {
-		if err = json.Unmarshal(data, &d.pending); err != nil {
-			return err
-		}
-	}
+func (d *directory) handler() http.Handler {
+	r := d.r
 	local, _ := url.Parse(r.local)
 	proxy := &httputil.ReverseProxy{Rewrite: func(p *httputil.ProxyRequest) {
 		p.SetURL(local)
@@ -480,18 +565,36 @@ func (r *runtime) runDirectory(ctx context.Context, port int, awscfg aws.Config,
 			problem(w, 503, "Unable to load status.")
 			return
 		}
-		count := int32(0)
+		var local struct {
+			Online int32 `json:"online"`
+		}
+		if d.legacy(q.Context(), "/api/status", &local) != nil {
+			problem(w, 503, "Unable to load status.")
+			return
+		}
+		count := local.Online
 		for _, row := range rows {
-			count += row.Players
+			if row.Managed {
+				count += row.Players
+			}
 		}
 		respond(w, 200, map[string]int32{"online": count})
 	})
 	mux.HandleFunc("POST /api/join", d.join)
 	mux.HandleFunc("POST /api/cluster/replicate", r.ingest)
-	for _, route := range []string{"GET /api/health", "POST /api/session", "GET /api/leaderboard", "POST /api/feedback"} {
+	for _, route := range []string{"GET /api/health", "POST /api/session", "GET /api/leaderboard", "POST /api/feedback", "POST /api/visits", "GET /api/ws", "GET /api/ping"} {
 		mux.Handle(route, proxy)
 	}
-	httpServer := &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: r.cors(mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 8192}
+	return r.cors(mux)
+}
+func (r *runtime) runDirectory(ctx context.Context, port int, awscfg aws.Config, dataPath string) error {
+	d := &directory{r: r, api: gamelift.NewFromConfig(awscfg), pending: map[string]string{}, pendingFile: filepath.Join(filepath.Dir(dataPath), "gamelift-placements.json")}
+	if data, err := os.ReadFile(d.pendingFile); err == nil {
+		if err = json.Unmarshal(data, &d.pending); err != nil {
+			return err
+		}
+	}
+	httpServer := &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: d.handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 8192}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)

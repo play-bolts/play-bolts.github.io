@@ -186,17 +186,17 @@ func loadSettings(path string) (settings, error) {
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
 		return c, errors.New("directory API must use HTTPS")
 	}
-	expected := map[string]string{"ca": "us-west-1", "ny": "us-east-1-nyc-2", "sp": "sa-east-1", "par": "eu-west-3"}
+	expected := map[string]string{"or": "us-west-2", "lon": "eu-west-2", "sg": "ap-southeast-1", "sp": "sa-east-1"}
 	seen := map[string]bool{}
 	for _, loc := range c.Locations {
 		expectedAWS, known := expected[loc.ID]
-		if !known || expectedAWS != loc.AWS || loc.Queue == "" || seen[loc.ID] {
+		if !known || expectedAWS != loc.AWS || strings.TrimSpace(loc.Name) == "" || loc.Queue == "" || seen[loc.ID] {
 			return c, errors.New("invalid or duplicate GameLift location")
 		}
 		seen[loc.ID] = true
 	}
-	if len(seen) != 4 {
-		return c, errors.New("configure all four locations")
+	if len(seen) == 0 {
+		return c, errors.New("configure at least one game location")
 	}
 	return c, nil
 }

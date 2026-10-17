@@ -12,7 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use rusqlite::{
-    params, params_from_iter,
+    OptionalExtension, params, params_from_iter,
     types::{Value as SqlValue, ValueRef},
 };
 use serde_json::{Value, json};
@@ -194,7 +194,6 @@ fn import(db: &mut Db, batch: &Value) -> HResult<()> {
     if after < 0 || through < after {
         return Err("invalid cursor".into());
     }
-    db.conn.execute_batch("CREATE TABLE IF NOT EXISTS cluster_cursors(session TEXT PRIMARY KEY,through INTEGER NOT NULL);")?;
     let tx = db.conn.transaction()?;
     let cursor: i64 = tx.query_row(
         "SELECT coalesce((SELECT through FROM cluster_cursors WHERE session=?1),0)",
@@ -213,6 +212,16 @@ fn import(db: &mut Db, batch: &Value) -> HResult<()> {
         .any(|r| r["id"] != session)
     {
         return Err("wrong source lobby".into());
+    }
+    for connection in records(tables, "connections")? {
+        let owner: Option<String> = tx.query_row(
+            "SELECT session FROM cluster_connection_owners WHERE connection_id=?1",
+            [string(connection, "id")?],
+            |row| row.get(0),
+        ).optional()?;
+        if owner.is_some_and(|owner| owner != session) {
+            return Err("cross-lobby connection".into());
+        }
     }
     for p in records(tables, "players")? {
         let id = string(p, "id")?;
@@ -311,6 +320,12 @@ fn import(db: &mut Db, batch: &Value) -> HResult<()> {
         )?;
     }
     tx.execute("INSERT INTO cluster_cursors(session,through) VALUES(?1,?2) ON CONFLICT(session) DO UPDATE SET through=excluded.through",params![session,through])?;
+    for connection in records(tables, "connections")? {
+        tx.execute(
+            "INSERT OR IGNORE INTO cluster_connection_owners(connection_id,session) VALUES(?1,?2)",
+            params![string(connection, "id")?, session],
+        )?;
+    }
     tx.commit()?;
     Ok(())
 }
@@ -318,6 +333,110 @@ fn import(db: &mut Db, batch: &Value) -> HResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn active_record(db: &Db, table: &str, key: &str, ended_column: &str) -> bool {
+        db.conn.query_row(
+            &format!("SELECT {ended_column} IS NULL FROM {table} WHERE id=?1"),
+            [key],
+            |row| row.get(0),
+        ).unwrap()
+    }
+    fn populate_remote(central: &mut Db, remote: &mut Db) -> String {
+        let (player, _) = central.session(None).unwrap().unwrap();
+        remote.conn.execute(
+            "INSERT INTO players(id,credential_hash,created_at,last_seen) VALUES(?1,?2,0,0)",
+            params![player, db::hash(&"b".repeat(64))],
+        ).unwrap();
+        remote.create_lobby("test:lon", "London").unwrap();
+        remote.create_match("remote-round", "test:lon", 1).unwrap();
+        remote.connect("remote-socket", &player, "ip", "ua").unwrap();
+        remote.join("remote-membership", "test:lon", "remote-round", &player, 1, "Alice", "british", "remote-socket", false).unwrap();
+        player
+    }
+    #[test]
+    fn directory_recovery_leaves_imported_sessions_to_their_worker() {
+        let files = tempfile::tempdir().unwrap();
+        let central_path = files.path().join("central.sqlite");
+        let remote_path = files.path().join("remote.sqlite");
+        let mut central = Db::open(&central_path).unwrap();
+        let mut remote = Db::open(&remote_path).unwrap();
+        let player = populate_remote(&mut central, &mut remote);
+        // An authenticated socket can be replicated before sending Join.
+        remote.connect("remote-unjoined", &player, "ip", "ua").unwrap();
+        // A regional-looking ID and the same human do not imply remote ownership.
+        central.create_lobby("test:local", "Oregon").unwrap();
+        central.create_match("local-round", "test:local", 1).unwrap();
+        central.connect("local-socket", &player, "ip", "ua").unwrap();
+        central.join("local-membership", "test:local", "local-round", &player, 1, "Alice", "british", "local-socket", false).unwrap();
+        let first = export(&remote, "test:lon", 0).unwrap();
+        import(&mut central, &first).unwrap();
+        for _ in 0..2 {
+            drop(central);
+            central = Db::open(&central_path).unwrap();
+            for (table, remote_id, local_id, ended_column) in [
+                ("lobbies", "test:lon", "test:local", "closed_at"),
+                ("matches", "remote-round", "local-round", "ended_at"),
+                ("memberships", "remote-membership", "local-membership", "left_at"),
+                ("connections", "remote-socket", "local-socket", "closed_at"),
+            ] {
+                assert!(active_record(&central, table, remote_id, ended_column), "{table} remote record must stay active");
+                assert!(!active_record(&central, table, local_id, ended_column), "{table} local record must recover");
+            }
+            assert!(active_record(&central, "connections", "remote-unjoined", "closed_at"));
+            let leaves: Vec<String> = central.conn.prepare("SELECT lobby_id FROM events WHERE event_type='player_leave'").unwrap()
+                .query_map([], |row| row.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
+            assert_eq!(leaves, ["test:local"]);
+        }
+        drop(remote);
+        let remote = Db::open(&remote_path).unwrap();
+        for (table, key, ended_column) in [
+            ("lobbies", "test:lon", "closed_at"),
+            ("matches", "remote-round", "ended_at"),
+            ("memberships", "remote-membership", "left_at"),
+            ("connections", "remote-socket", "closed_at"),
+            ("connections", "remote-unjoined", "closed_at"),
+        ] {
+            assert!(!active_record(&remote, table, key, ended_column), "worker must recover its own {table}");
+        }
+        let recovered = export(&remote, "test:lon", first["through"].as_i64().unwrap()).unwrap();
+        import(&mut central, &recovered).unwrap();
+        import(&mut central, &recovered).unwrap();
+        assert!(!active_record(&central, "connections", "remote-unjoined", "closed_at"));
+        assert!(!active_record(&central, "memberships", "remote-membership", "left_at"));
+        let regional_leaves: i64 = central.conn.query_row("SELECT count(*) FROM events WHERE event_type='player_leave' AND lobby_id='test:lon' AND json_extract(data,'$.reason')='server_restart'", [], |row| row.get(0)).unwrap();
+        assert_eq!(regional_leaves, 1, "the worker's real leave event replicates exactly once");
+    }
+    #[test]
+    fn ownership_migration_recovers_prior_imports_from_recorded_lobby_events() {
+        let files = tempfile::tempdir().unwrap();
+        let central_path = files.path().join("central.sqlite");
+        let mut central = Db::open(&central_path).unwrap();
+        let mut remote = Db::open(&files.path().join("remote.sqlite")).unwrap();
+        populate_remote(&mut central, &mut remote);
+        import(&mut central, &export(&remote, "test:lon", 0).unwrap()).unwrap();
+        central.conn.execute_batch("DROP TABLE cluster_connection_owners; DELETE FROM schema_migrations WHERE version=4;").unwrap();
+        drop(central);
+        let central = Db::open(&central_path).unwrap();
+        assert!(active_record(&central, "connections", "remote-socket", "closed_at"));
+        let owner: String = central.conn.query_row("SELECT session FROM cluster_connection_owners WHERE connection_id='remote-socket'", [], |row| row.get(0)).unwrap();
+        assert_eq!(owner, "test:lon");
+        let migrations: i64 = central.conn.query_row("SELECT count(*) FROM schema_migrations WHERE version=4", [], |row| row.get(0)).unwrap();
+        assert_eq!(migrations, 1);
+    }
+    #[test]
+    fn another_worker_cannot_take_ownership_of_an_imported_connection() {
+        let files = tempfile::tempdir().unwrap();
+        let mut central = Db::open(&files.path().join("central.sqlite")).unwrap();
+        let mut remote = Db::open(&files.path().join("remote.sqlite")).unwrap();
+        populate_remote(&mut central, &mut remote);
+        let mut batch = export(&remote, "test:lon", 0).unwrap();
+        import(&mut central, &batch).unwrap();
+        batch["session"] = json!("test:sg");
+        batch["tables"]["lobbies"][0]["id"] = json!("test:sg");
+        let error = import(&mut central, &batch).unwrap_err();
+        assert_eq!(error.to_string(), "cross-lobby connection");
+        let owner: String = central.conn.query_row("SELECT session FROM cluster_connection_owners WHERE connection_id='remote-socket'", [], |row| row.get(0)).unwrap();
+        assert_eq!(owner, "test:lon");
+    }
     #[test]
     fn regional_events_retry_without_duplicate_scores_or_changing_credentials() {
         let files = tempfile::tempdir().unwrap();

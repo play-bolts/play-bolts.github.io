@@ -1,9 +1,9 @@
 /** Location identifiers come from the global directory, never from the viewer. */
 export const LOBBY_LOCATIONS = {
- ca:{name:'California',abbreviation:'CA',flag:'🇺🇸',country:'us',aws:'us-west-1'},
- ny:{name:'New York',abbreviation:'NY',flag:'🇺🇸',country:'us',aws:'us-east-1-nyc-2'},
+ or:{name:'Oregon',abbreviation:'OR',flag:'🇺🇸',country:'us',aws:'us-west-2'},
+ lon:{name:'London',abbreviation:'LON',flag:'🇬🇧',country:'gb',aws:'eu-west-2'},
+ sg:{name:'Singapore',abbreviation:'SG',flag:'🇸🇬',country:'sg',aws:'ap-southeast-1'},
  sp:{name:'São Paulo',abbreviation:'SP',flag:'🇧🇷',country:'br',aws:'sa-east-1'},
- par:{name:'Paris',abbreviation:'PAR',flag:'🇫🇷',country:'fr',aws:'eu-west-3'},
 } as const;
 export type LobbyLocation=keyof typeof LOBBY_LOCATIONS;
 export interface Lobby {

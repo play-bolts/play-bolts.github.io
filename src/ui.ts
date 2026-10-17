@@ -27,7 +27,7 @@ export class UI {
  private inGame=false;private spectating=false;private spectatorSelection=false;
  online=false;lobbyOpen=false;chatOpen=false;private onlineCount:number|null=null;
  private lobbyRows:LobbyRow[]=[];private selectedLobby='';private lobbyBusy=false;
- private lobbyLocations:readonly LobbyLocation[]=[];private selectedLocation:LobbyLocation='ca';
+ private lobbyLocations:readonly LobbyLocation[]=[];private selectedLocation:LobbyLocation='lon';
  private chatIds=new Set<string>();
  private chatKeys=new Set<string>();
  private hudMarkup=new HudMarkup();
@@ -245,8 +245,8 @@ export class UI {
   this.lobbyRows=rows.map(row=>({...row}));
   this.el['lobby-location-controls'].classList.toggle('hidden',!locations.length);
   if(locations.join()!==this.lobbyLocations.join()){
-   this.lobbyLocations=[...locations];if(!locations.includes(this.selectedLocation))this.selectedLocation=locations[0]??'ca';this.el['lobby-locations'].replaceChildren();
-   for(const id of locations){const label=locationLabel(id)!;const button=document.createElement('button'),flag=document.createElement('img');button.type='button';button.dataset.location=id;button.title=label.name;button.setAttribute('aria-label',label.name);flag.className='lobby-flag';flag.src=`${import.meta.env?.BASE_URL??'/'}flags/${label.country}.svg`;flag.alt='';button.append(flag,document.createTextNode(` ${label.abbreviation}`));button.onclick=()=>{this.selectedLocation=id;this.refreshLobbyButtons();};this.el['lobby-locations'].append(button);}
+   this.lobbyLocations=[...locations];if(!locations.includes(this.selectedLocation))this.selectedLocation=locations[0]??'lon';this.el['lobby-locations'].replaceChildren();
+   for(const id of locations){const label=locationLabel(id)!;const button=document.createElement('button'),flag=document.createElement('img');button.type='button';button.dataset.location=id;button.title=label.name;button.setAttribute('aria-label',label.name);flag.className='lobby-flag';flag.src=`${import.meta.env?.BASE_URL??'/'}flags/${label.country}.svg`;flag.alt='';button.append(flag,document.createTextNode(` ${label.name}`));button.onclick=()=>{this.selectedLocation=id;this.refreshLobbyButtons();};this.el['lobby-locations'].append(button);}
   }
   if(!rows.some(row=>row.id===this.selectedLobby))this.selectedLobby=rows.find(row=>row.players<row.capacity)?.id??rows[0]?.id??'';
   const opening=!this.lobbyOpen;this.lobbyOpen=true;this.menuStage='main';this.el.menu.classList.remove('hidden','intro-active');this.el['menu-main'].classList.add('hidden');this.el['selection-window'].classList.add('hidden');this.el['lobby-window'].classList.remove('hidden');this.refreshOnlineCountVisibility();
@@ -255,7 +255,7 @@ export class UI {
    const tr=document.createElement('tr'),name=document.createElement('td'),location=document.createElement('td'),players=document.createElement('td'),ping=document.createElement('td'),button=document.createElement('button');
    tr.dataset.lobby=row.id;button.type='button';button.textContent=row.name;button.setAttribute('aria-label',row.name);button.setAttribute('aria-pressed',String(row.id===this.selectedLobby));name.append(button);
    const label=locationLabel(row.location);location.className='lobby-location';location.title=label?.name??'Location unavailable';location.setAttribute('aria-label',location.title);
-   if(label){const flag=document.createElement('img');flag.className='lobby-flag';flag.src=`${import.meta.env?.BASE_URL??'/'}flags/${label.country}.svg`;flag.alt='';location.append(flag,document.createTextNode(` ${label.abbreviation}`));}else location.textContent='—';
+   if(label){const flag=document.createElement('img');flag.className='lobby-flag';flag.src=`${import.meta.env?.BASE_URL??'/'}flags/${label.country}.svg`;flag.alt='';location.append(flag,document.createTextNode(` ${label.name}`));}else location.textContent='—';
    players.textContent=`${row.players} / ${row.capacity}`;ping.textContent=typeof row.ping==='number'&&Number.isFinite(row.ping)?`${Math.max(0,Math.round(row.ping))} ms`:'—';ping.title=row.phase==='starting'?'Server is starting':row.ping===undefined?'Ping unavailable':'Your round-trip time to this server';
    if(row.phase==='starting'){const hint=document.createElement('span');hint.className='lobby-starting';hint.textContent='Starting…';button.append(hint);}
    tr.classList.toggle('selected',row.id===this.selectedLobby);tr.classList.toggle('full',row.players>=row.capacity);tr.append(name,location,players,ping);

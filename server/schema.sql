@@ -42,3 +42,17 @@ CREATE TABLE IF NOT EXISTS visitor_activity(visitor_id TEXT NOT NULL REFERENCES 
 CREATE INDEX IF NOT EXISTS visitor_activity_time ON visitor_activity(last_seen,visitor_id);
 INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(3,unixepoch('subsec')*1000);
 COMMIT;
+-- The directory stores regional records, but their worker owns their lifetime.
+-- Cursors identify imported lobbies; connections need explicit ownership because
+-- an authenticated socket can be exported before its first lobby event exists.
+BEGIN;
+CREATE TABLE IF NOT EXISTS cluster_cursors(session TEXT PRIMARY KEY,through INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS cluster_connection_owners(connection_id TEXT PRIMARY KEY REFERENCES connections(id),session TEXT NOT NULL REFERENCES cluster_cursors(session));
+CREATE INDEX IF NOT EXISTS cluster_connections_session ON cluster_connection_owners(session);
+-- Adopt connections imported before ownership tracking was introduced, using
+-- recorded lobby associations rather than player identity or ID prefixes.
+INSERT OR IGNORE INTO cluster_connection_owners(connection_id,session)
+SELECT e.connection_id,c.session FROM events e JOIN cluster_cursors c ON c.session=e.lobby_id
+WHERE e.connection_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM schema_migrations WHERE version=4);
+INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(4,unixepoch('subsec')*1000);
+COMMIT;

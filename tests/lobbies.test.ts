@@ -5,9 +5,11 @@ import {NetworkClient,type SocketLike} from '../src/network.ts';
 import {Game} from '../src/engine.ts';
 
 test('location labels map to the requested physical GameLift locations',()=>{
- assert.deepEqual(Object.values(LOBBY_LOCATIONS).map(v=>`${v.flag} ${v.abbreviation}`),['🇺🇸 CA','🇺🇸 NY','🇧🇷 SP','🇫🇷 PAR']);
- assert.equal(LOBBY_LOCATIONS.ny.aws,'us-east-1-nyc-2');
- assert.equal(locationLabel('sp')?.name,'São Paulo');assert.equal(locationLabel('toString'),undefined);
+ assert.deepEqual(Object.values(LOBBY_LOCATIONS).map(v=>`${v.flag} ${v.abbreviation}`),['🇺🇸 OR','🇬🇧 LON','🇸🇬 SG','🇧🇷 SP']);
+ assert.deepEqual(Object.values(LOBBY_LOCATIONS).map(v=>[v.name,v.aws]),[
+  ['Oregon','us-west-2'],['London','eu-west-2'],['Singapore','ap-southeast-1'],['São Paulo','sa-east-1'],
+ ]);
+ assert.equal(locationLabel('sp')?.name,'São Paulo');assert.equal(locationLabel('toString'),undefined);assert.equal(locationLabel('ny'),undefined);
 });
 test('untrusted or insecure addresses never receive a probe or admission ticket',()=>{
  const base='https://bolts-api.example.com';
@@ -30,10 +32,10 @@ test('ping excludes connection setup and uses a nonce-checked median of three RT
 });
 test('every viewer sees every real lobby, with independently measured RTT and no starting probes',async()=>{
  const rows=[
-  {id:'ca',name:'Alpha',location:'ca',players:2,capacity:6,phase:'playing',managed:true,ping:1,pingUrl:'wss://ca.amazongamelift.com:8080/api/ping'},
-  {id:'ca2',name:'Bravo',location:'ca',players:1,capacity:6,phase:'playing',managed:true,pingUrl:'wss://ca.amazongamelift.com:8080/api/ping'},
-  {id:'par',name:'Charlie',location:'par',players:1,capacity:6,phase:'playing',managed:true,pingUrl:'wss://par.amazongamelift.com:8080/api/ping'},
-  {id:'ny',name:'Delta',location:'ny',players:0,capacity:6,phase:'starting',managed:true},
+  {id:'or',name:'Alpha',location:'or',players:2,capacity:6,phase:'playing',managed:true,ping:1,pingUrl:'wss://or.amazongamelift.com:8080/api/ping'},
+  {id:'or2',name:'Bravo',location:'or',players:1,capacity:6,phase:'playing',managed:true,pingUrl:'wss://or.amazongamelift.com:8080/api/ping'},
+  {id:'lon',name:'Charlie',location:'lon',players:1,capacity:6,phase:'playing',managed:true,pingUrl:'wss://lon.amazongamelift.com:8080/api/ping'},
+  {id:'sg',name:'Delta',location:'sg',players:0,capacity:6,phase:'starting',managed:true},
  ];
  async function viewer(samples:Record<string,number>){const opened:string[]=[];
   // A per-socket clock makes deterministic concurrent probes independent.
@@ -41,23 +43,23 @@ test('every viewer sees every real lobby, with independently measured RTT and no
   const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async()=>new Response(JSON.stringify({lobbies:rows})),now:()=>times[active],socket:url=>{const i=opened.length;opened.push(url);const delay=samples[new URL(url).hostname];const socket=new Echo(n=>{active=i;times[i]+=n},[delay,delay,delay]);socket.send=(raw:string)=>{const p=JSON.parse(raw);queueMicrotask(()=>{active=i;times[i]+=delay;socket.onmessage?.({data:JSON.stringify({type:'pong',nonce:p.nonce})});});};return socket;}});
   const all=await client.lobbies();assert.ok(all.every(r=>r.ping===undefined));const result=await client.measureLobbies(all);assert.equal(opened.length,2);return result;
  }
- const california=await viewer({'ca.amazongamelift.com':20,'par.amazongamelift.com':155});
- const europe=await viewer({'ca.amazongamelift.com':160,'par.amazongamelift.com':18});
- assert.deepEqual(california.map(r=>r.id),europe.map(r=>r.id));
- assert.deepEqual(california.map(r=>r.ping),[20,20,155,undefined]);
+ const oregon=await viewer({'or.amazongamelift.com':20,'lon.amazongamelift.com':155});
+ const europe=await viewer({'or.amazongamelift.com':160,'lon.amazongamelift.com':18});
+ assert.deepEqual(oregon.map(r=>r.id),europe.map(r=>r.id));
+ assert.deepEqual(oregon.map(r=>r.ping),[20,20,155,undefined]);
  assert.deepEqual(europe.map(r=>r.ping),[160,160,18,undefined]);
 });
 test('managed join cancellation cannot open a late WebSocket or lose the browser identity',async()=>{
  let resolveJoin:(r:Response)=>void=()=>{};let opened=0;const storage=new Map<string,string>();
- const client=new NetworkClient(new Game(),{origin:'https://api.example.com',storage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>void storage.set(k,v),removeItem:k=>void storage.delete(k)},fetch:async(url)=>String(url).endsWith('/lobbies')?new Response(JSON.stringify({version:2,lobbies:[],locations:['ca','ny','sp','par']})):String(url).endsWith('/session')?new Response(JSON.stringify({token:'a'.repeat(64)})):new Promise(r=>resolveJoin=r),socket:()=>{opened++;throw Error('late socket');}});
- assert.deepEqual(await client.lobbies(),[]);assert.deepEqual(client.locations,['ca','ny','sp','par']);const pending=client.join('new:sp','Alice','british');await new Promise(r=>setImmediate(r));client.disconnect();
+ const client=new NetworkClient(new Game(),{origin:'https://api.example.com',storage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>void storage.set(k,v),removeItem:k=>void storage.delete(k)},fetch:async(url)=>String(url).endsWith('/lobbies')?new Response(JSON.stringify({version:2,lobbies:[],locations:['lon','sg','sp']})):String(url).endsWith('/session')?new Response(JSON.stringify({token:'a'.repeat(64)})):new Promise(r=>resolveJoin=r),socket:()=>{opened++;throw Error('late socket');}});
+ assert.deepEqual(await client.lobbies(),[]);assert.deepEqual(client.locations,['lon','sg','sp']);const pending=client.join('new:sp','Alice','british');await new Promise(r=>setImmediate(r));client.disconnect();
  resolveJoin(new Response(JSON.stringify({lobbyId:'game',ticket:'short-lived',websocketUrl:'wss://abc.amazongamelift.com:8080/api/ws'})));
  await pending;assert.equal(opened,0);assert.equal(client.online,false);assert.equal(storage.size,1);
 });
 test('location Play obtains a managed admission even when no lobby is running',async()=>{
  const sent:any[]=[];const requests:string[]=[];
  const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async(url,options)=>{
-  if(String(url).endsWith('/lobbies'))return new Response(JSON.stringify({version:2,lobbies:[],locations:['ca','ny','sp','par']}));
+  if(String(url).endsWith('/lobbies'))return new Response(JSON.stringify({version:2,lobbies:[],locations:['lon','sg','sp']}));
   if(String(url).endsWith('/session'))return new Response(JSON.stringify({token:'a'.repeat(64)}));
   requests.push(JSON.parse(String(options?.body)).lobbyId);return new Response(JSON.stringify({lobbyId:'game-sp',ticket:'temporary-ticket-'.repeat(8),websocketUrl:'wss://sp.amazongamelift.com:8080/api/ws'}));
  },socket:()=>{const socket:SocketLike={readyState:1,onopen:null,onmessage:null,onerror:null,onclose:null,send(raw){sent.push(JSON.parse(String(raw)));},close(){}};queueMicrotask(()=>socket.onopen?.({}));return socket;}});
@@ -67,18 +69,28 @@ test('location Play obtains a managed admission even when no lobby is running',a
 });
 test('ended servers disappear without placeholder rows; locations stay available',async()=>{
  let running=true;
- const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async()=>new Response(JSON.stringify({version:2,locations:['ca','ny','sp','par','unknown','ca'],lobbies:running?[{id:'real',name:'Alpha',players:0,capacity:6,phase:'playing',managed:true,location:'ca'}]:[]}))});
- assert.deepEqual((await client.lobbies()).map(row=>row.id),['real']);running=false;assert.deepEqual(await client.lobbies(),[]);assert.deepEqual(client.locations,['ca','ny','sp','par']);
+ const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async()=>new Response(JSON.stringify({version:2,locations:['lon','sg','sp','unknown','lon'],lobbies:running?[{id:'real',name:'Alpha',players:0,capacity:6,phase:'playing',managed:true,location:'lon'}]:[]}))});
+ assert.deepEqual((await client.lobbies()).map(row=>row.id),['real']);running=false;assert.deepEqual(await client.lobbies(),[]);assert.deepEqual(client.locations,['lon','sg','sp']);
  await assert.rejects(client.join('new:unknown','Alice','british'),/location is unavailable/);
 });
+test('unavailable regions stay hidden and cannot silently reroute a location join',async()=>{
+ let joinRequests=0;
+ const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async url=>{
+  if(!String(url).endsWith('/lobbies'))joinRequests++;
+  return new Response(JSON.stringify({version:2,locations:['lon'],lobbies:[]}));
+ }});
+ assert.deepEqual(await client.lobbies(),[]);assert.deepEqual(client.locations,['lon']);
+ for(const location of ['or','ny','sg','sp'])await assert.rejects(client.join(`new:${location}`,'Alice','british'),/location is unavailable/);
+ assert.equal(joinRequests,0);
+});
 test('legacy directories cannot route location joins or expose old sleeping placeholders',async()=>{
- const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async()=>new Response(JSON.stringify({lobbies:[{id:'new:ca',name:'California',players:0,capacity:6,phase:'sleeping',managed:true}],locations:['ca']}))});
- assert.deepEqual(await client.lobbies(),[]);assert.deepEqual(client.locations,[]);await assert.rejects(client.join('new:ca','Alice','british'),/location is unavailable/);
+ const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async()=>new Response(JSON.stringify({lobbies:[{id:'new:or',name:'Oregon',players:0,capacity:6,phase:'sleeping',managed:true}],locations:['or']}))});
+ assert.deepEqual(await client.lobbies(),[]);assert.deepEqual(client.locations,[]);await assert.rejects(client.join('new:or','Alice','british'),/location is unavailable/);
 });
 test('managed sockets receive only the temporary ticket; empty tickets fail closed',async()=>{
  for(const ticket of ['signed-ticket-'.repeat(8),'']){
   const sent:any[]=[];let opened=0;
-  const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async(url)=>new Response(JSON.stringify(String(url).endsWith('/lobbies')?{lobbies:[{id:'game',name:'Paris',capacity:6,players:0,phase:'playing',managed:true}]}:String(url).endsWith('/session')?{token:'permanent-account-token-'.repeat(3)}:{lobbyId:'game',ticket,websocketUrl:'wss://par.amazongamelift.com:8080/api/ws'})),socket:()=>{
+  const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async(url)=>new Response(JSON.stringify(String(url).endsWith('/lobbies')?{lobbies:[{id:'game',name:'London',capacity:6,players:0,phase:'playing',managed:true}]}:String(url).endsWith('/session')?{token:'permanent-account-token-'.repeat(3)}:{lobbyId:'game',ticket,websocketUrl:'wss://lon.amazongamelift.com:8080/api/ws'})),socket:()=>{
    opened++;const socket:SocketLike={readyState:1,onopen:null,onmessage:null,onerror:null,onclose:null,send(raw){sent.push(JSON.parse(String(raw)));},close(){}};queueMicrotask(()=>socket.onopen?.({}));return socket;
   }});
   await client.lobbies();const joining=client.join('game','Alice','british');

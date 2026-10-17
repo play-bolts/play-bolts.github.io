@@ -1,8 +1,9 @@
 /** Three actual frontend adapters validate lobby fill, observe reciprocal combat,
  * and exercise community APIs through a Rust server.
  * Build the debug backend, then: node --import tsx scripts/test-multiplayer-clients.ts
- * Explicitly authorized production QA: append --remote-qa. This only targets
- * the Bolts backend below, requires an empty room, and disconnects if a real
+ * Explicitly authorized production QA: append --remote-qa [--location=lon|sg|sp|or].
+ * The default is Oregon. This only targets the Bolts backend below, selects an
+ * empty room or requests a managed city, and disconnects if a real
  * player enters. It creates durable QA events. No teleports or authority edits.
  */
 import assert from 'node:assert/strict';
@@ -20,10 +21,14 @@ import {NetworkClient,type WireActor,type WireSnapshot} from '../src/network.ts'
 import {ARENA,blocked,visible,type Vec,type Faction} from '../src/config.ts';
 import {sampleHitVolumes,rayHitVolumes} from '../src/hitboxes.ts';
 import {CommunityClient} from '../src/community.ts';
+import type {Lobby} from '../src/lobbies.ts';
 
 if(process.env.BOLTS_TEST_URL)throw new Error('Unset BOLTS_TEST_URL; use --remote-qa only for the explicitly authorized Bolts endpoint.');
-const remote=process.argv.slice(2).includes('--remote-qa');
-if(process.argv.slice(2).some(arg=>arg!=='--remote-qa'))throw new Error('Only --remote-qa is supported; the remote endpoint cannot be overridden.');
+const args=process.argv.slice(2),remote=args.includes('--remote-qa'),locationArgs=args.filter(arg=>arg.startsWith('--location='));
+if(args.some(arg=>arg!=='--remote-qa'&&!arg.startsWith('--location='))||args.filter(arg=>arg==='--remote-qa').length>1||locationArgs.length>1)throw new Error('Only --remote-qa [--location=lon|sg|sp|or] is supported; the remote endpoint cannot be overridden.');
+const requestedLocation=locationArgs[0]?.slice('--location='.length)??'or';
+if(!['lon','sg','sp','or'].includes(requestedLocation)||(!remote&&locationArgs.length))throw new Error('--location requires --remote-qa; accepted values: lon, sg, sp, or (Oregon).');
+const remoteLocation=requestedLocation as 'lon'|'sg'|'sp'|'or';
 const remoteOrigin='https://bolts-api.christopherkrapu.com';
 const root=resolve(fileURLToPath(new URL('..',import.meta.url))),started=Date.now(),idle:Input={forward:0,right:0,jump:false,walk:false,lean:0};
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -34,9 +39,17 @@ const backendPath=resolve(process.env.BOLTS_TEST_SERVER??join(root,'server/targe
 let relayBurst={up:0,down:0};
 let base=remote?remoteOrigin:'',temporary='',dbPath='',diagnostics='',isolationError='',qaLobbyId='',backend:ReturnType<typeof spawn>|undefined,timer:ReturnType<typeof setInterval>|undefined,relay:Server|undefined;
 let inventoryBefore:unknown,inventoryAfter:unknown;
+let inventoryVersion:number|undefined;
+const reportPath=remote?`temp/multiplayer-qa/multiplayer-remote-e2e-${remoteLocation}-${started}.json`:'artifacts/multiplayer-client-e2e.json';
 const relaySockets=new Set<Socket>(),relayTimers=new Set<ReturnType<typeof setTimeout>>();
-async function until(predicate:()=>boolean|Promise<boolean>,label:string,timeout=6000){const end=Date.now()+timeout;while(Date.now()<end){if(isolationError)throw new Error(isolationError);if(await predicate())return;await delay(20);}throw new Error(`Timed out: ${label}`);}
-async function lobbyInventory(){const response=await fetch(base+'/api/lobbies',{signal:AbortSignal.timeout(8000)});assert.equal(response.ok,true,'lobby inventory is available');return (await response.json()).lobbies as {id:string;name:string;players:number;bots:number;capacity:number;phase:string}[];}
+async function until(predicate:()=>boolean|Promise<boolean>,label:string,timeout=6000,pollMs=20){const end=Date.now()+timeout;while(Date.now()<end){if(isolationError)throw new Error(isolationError);if(await predicate())return;await delay(pollMs);}throw new Error(`Timed out: ${label}`);}
+async function lobbyInventory(){const response=await fetch(base+'/api/lobbies',{cache:'no-store',signal:AbortSignal.timeout(8000)});assert.equal(response.ok,true,'lobby inventory is available');const body=await response.json();assert.ok(Array.isArray(body.lobbies),'directory returns actual lobby rows');inventoryVersion=body.version;return body.lobbies as Lobby[];}
+function selectedLocation(row:Lobby){return remoteLocation==='or'?row.managed!==true&&(row.location==='or'||(inventoryVersion!==2&&row.location===undefined)):row.managed===true&&row.location===remoteLocation;}
+async function listedRoom(players:number){
+ let found:Lobby|undefined;
+ await until(async()=>{const rows=await lobbyInventory();found=rows.find(row=>row.id===qaLobbyId);if(found&&remote)assert.ok(selectedLocation(found),`actual QA room must be listed in ${remoteLocation}`);return !!found&&found.players===players;},`directory lists the actual QA room with ${players} human participants`,remote?20000:6000,remote?1000:20);
+ return found!;
+}
 function protectRoom(snapshot:WireSnapshot){if(remote&&snapshot.actors.some(actor=>actor.bot!==true&&!users.some(u=>u.name===actor.name&&(u.actorId<0||u.actorId===actor.id)))){isolationError='A non-QA participant appeared; all QA clients disconnected before continuing.';for(const u of users)u.network.disconnect();}}
 function check(label:string,assertions:()=>void){assertions();checks.push(label);console.log(`PASS ${label}`);}
 async function unusedPort(){const server=createServer();await new Promise<void>((done,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',done);});const port=(server.address() as {port:number}).port;await new Promise<void>(done=>server.close(()=>done()));return port;}
@@ -54,13 +67,13 @@ async function delayRelay(serverPort:number){
 }
 function user(name:string,faction:Faction,relayPort?:number){
  const game=new Game(),storage=new Map<string,string>(),messages:any[]=[],chat:string[]=[],failures:string[]=[],effects:Event[]=[];
- let actorId=-1,snapshot:WireSnapshot|undefined;
+ let actorId=-1,snapshot:WireSnapshot|undefined,transport:WebSocket|undefined;
  const network=new NetworkClient(game,{origin:base,storage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>void storage.set(k,v),removeItem:k=>void storage.delete(k)},socket:url=>{
   const destination=new URL(url);if(relayPort)destination.port=String(relayPort);
-  const socket=new WebSocket(destination);socket.binaryType='arraybuffer';socket.addEventListener('message',({data})=>{const message=decodeMessage(data) as any;messages.push(message);if(message.type==='joined'){actorId=message.actorId;snapshot=message.snapshot;protectRoom(snapshot!);}if(message.type==='snapshot'){snapshot=decodeSnapshot(message) as WireSnapshot;protectRoom(snapshot!);}});return socket;
+  const socket=new WebSocket(destination);transport=socket;socket.binaryType='arraybuffer';socket.addEventListener('message',({data})=>{const message=decodeMessage(data) as any;messages.push(message);if(message.type==='joined'){actorId=message.actorId;snapshot=message.snapshot;protectRoom(snapshot!);}if(message.type==='snapshot'){snapshot=decodeSnapshot(message) as WireSnapshot;protectRoom(snapshot!);}});return socket;
  }});
  network.onChat=message=>chat.push(message.message);network.onFailure=message=>failures.push(message);
- return{name,faction,game,network,storage,messages,chat,failures,effects,input:{...idle},get actorId(){return actorId;},get snapshot(){assert.ok(snapshot);return snapshot;},get authority(){assert.ok(snapshot);return snapshot.actors.find(actor=>actor.id===actorId)!;}};
+ return{name,faction,game,network,storage,messages,chat,failures,effects,input:{...idle},dropTransport(){assert.ok(transport);transport.close(1000,'QA reconnect');},get actorId(){return actorId;},get snapshot(){assert.ok(snapshot);return snapshot;},get authority(){assert.ok(snapshot);return snapshot.actors.find(actor=>actor.id===actorId)!;}};
 }
 type User=ReturnType<typeof user>;
 function events(user:User,after=0){return user.messages.slice(after).flatMap(message=>message.events??[]);}
@@ -170,26 +183,46 @@ try{
   relayPort=await delayRelay(port);
  }
  await until(async()=>{try{return (await fetch(base+'/api/health',{signal:AbortSignal.timeout(remote?5000:1000)})).ok;}catch{return false;}},'server health');
+ const tag=`${remoteLocation} ${Date.now().toString(36).slice(-5)}`,a=user(remote?`QA Alpha ${tag}`:'Combat Alpha','british'),b=user(remote?`QA Beta ${tag}`:'Combat Beta','german',relayPort),observer=user(remote?`QA Observer ${tag}`:'Combat Observer','russian');users.push(a,b,observer);
  if(remote){
-  const rows=await lobbyInventory();inventoryBefore=rows;const empty=rows.find(row=>row.players===0&&row.capacity===6&&row.phase==='playing');assert.ok(empty,'remote QA requires an empty playing lobby; never quick-join an occupied room');qaLobbyId=empty.id;
-  const fresh=await lobbyInventory();assert.equal(fresh.find(row=>row.id===qaLobbyId)?.players,0,'selected QA lobby is still empty immediately before joining');
-  check('production QA selected and rechecked an empty six-player lobby',()=>assert.ok(qaLobbyId));
+  inventoryBefore=await lobbyInventory();const rows=await a.network.lobbies();
+  if(remoteLocation!=='or')assert.ok(a.network.locations.includes(remoteLocation),`${remoteLocation} is available in the real directory`);
+  const empty=rows.find(row=>selectedLocation(row)&&row.players===0&&row.capacity===6&&row.phase==='playing');
+  if(empty){
+   const fresh=await a.network.lobbies(),confirmed=fresh.find(row=>row.id===empty.id);assert.ok(confirmed&&selectedLocation(confirmed)&&confirmed.players===0&&confirmed.phase==='playing','selected QA lobby is still empty in the requested location immediately before joining');qaLobbyId=empty.id;
+   check(`production QA selected and rechecked an empty six-player lobby in ${remoteLocation}`,()=>assert.ok(qaLobbyId));
+  }else{
+   assert.notEqual(remoteLocation,'or','Oregon QA requires an actual empty unmanaged room');qaLobbyId=`new:${remoteLocation}`;
+   // Location admission may pack a room that opened after our listing. Join
+   // as a spectator; protectRoom aborts on any non-QA human before combat.
+   check(`production QA requests an available managed location ${remoteLocation}`,()=>assert.ok(a.network.locations.includes(remoteLocation)));
+  }
  }
- const tag=Date.now().toString(36).slice(-5),a=user(remote?`QA Alpha ${tag}`:'Combat Alpha','british'),b=user(remote?`QA Beta ${tag}`:'Combat Beta','german',relayPort),observer=user(remote?`QA Observer ${tag}`:'Combat Observer','russian');users.push(a,b,observer);
  const community=new CommunityClient(base),onlineBefore=await community.status();
  await a.network.join(qaLobbyId||undefined,a.name,a.faction,true);qaLobbyId=a.network.lobbyId;
+ assert.ok(qaLobbyId&&!qaLobbyId.startsWith('new:'),'first adapter received an actual lobby ID');
  if(remote)assert.ok(a.snapshot.remaining>90,'enough round time remains for isolated reciprocal combat');
  check('one human receives two server AI with spectator safety',()=>{assert.equal(a.snapshot.actors.filter(actor=>actor.bot===true).length,2);assert.equal(a.snapshot.actors.filter(actor=>actor.bot!==true).length,1);assert.equal(a.authority.spectator,true);for(const bot of a.snapshot.actors.filter(actor=>actor.bot))assert.equal(bot.ping,null);});
- const firstRoom=(await lobbyInventory()).find(room=>room.id===qaLobbyId)!;
- check('lobby inventory counts the human separately from two AI seats',()=>{assert.equal(firstRoom.players,1);assert.equal(firstRoom.bots,2);assert.equal(firstRoom.capacity,6);});
+ const firstRoom=await listedRoom(1);
+ check('lobby inventory counts the human separately from authoritative AI seats',()=>{assert.equal(firstRoom.players,1);if(firstRoom.bots!==undefined)assert.equal(firstRoom.bots,2);assert.equal(firstRoom.capacity,6);if(remote)assert.ok(selectedLocation(firstRoom));});
  const onlineOne=await community.status();check('online count includes the first connected human and excludes bots',()=>{if(!remote)assert.equal(onlineOne,onlineBefore+1);else assert.ok(onlineOne>=1);});
+ if(remote){const row=(await b.network.lobbies()).find(row=>row.id===qaLobbyId);assert.ok(row&&selectedLocation(row),'second adapter routes to the actual room in the requested location');}
  await b.network.join(qaLobbyId,b.name,b.faction,true);
  check('two humans retain exactly two server AI',()=>{assert.equal(b.snapshot.actors.filter(actor=>actor.bot===true).length,2);assert.equal(b.snapshot.actors.filter(actor=>actor.bot!==true).length,2);});
+ if(remote){const row=(await observer.network.lobbies()).find(row=>row.id===qaLobbyId);assert.ok(row&&selectedLocation(row),'observer routes to the actual room in the requested location');}
  await observer.network.join(qaLobbyId,observer.name,observer.faction,true);
  timer=setInterval(()=>{for(const u of users){u.network.update(1/60,u.input);u.network.present();u.effects.push(...u.game.events);u.game.events=[];}},1000/60);
  await until(()=>users.every(u=>u.snapshot.actors.length===3&&u.snapshot.actors.every(actor=>actor.bot!==true)&&u.game.actors.length===3),'third human removes both AI from all three adapters');
  check('three independent human sessions replace AI with correctly remapped IDs',()=>{for(const u of users){assert.equal(u.network.lobbyId,qaLobbyId);assert.equal(u.game.player.id,0);for(const peer of users)assert.equal(actorOn(u,peer.name).name,peer.name);}assert.equal(new Set(users.map(u=>[...u.storage.values()][0])).size,3,'independent browsers receive distinct credentials');});
- const fullRoom=(await lobbyInventory()).find(room=>room.id===qaLobbyId)!;check('three-human lobby no longer advertises any AI',()=>{assert.equal(fullRoom.players,3);assert.equal(fullRoom.bots,0);});
+ const fullRoom=await listedRoom(3);check('three-human lobby excludes AI from directory player counts',()=>{assert.equal(fullRoom.players,3);if(fullRoom.bots!==undefined)assert.equal(fullRoom.bots,0);});
+ if(remote){
+  const actor=observer.actorId,identity=[...observer.storage.values()],joins=observer.messages.filter(message=>message.type==='joined').length;
+  observer.dropTransport();
+  await until(()=>observer.network.connected&&observer.messages.filter(message=>message.type==='joined').length>joins&&users.every(u=>u.snapshot.actors.length===3&&u.snapshot.actors.every(actor=>actor.bot!==true)),'spectator reconnect preserves the isolated room and removes temporary AI',20000);
+  check('automatic reconnect retains the same identity, actor and regional lobby',()=>{assert.equal(observer.actorId,actor);assert.equal(observer.network.lobbyId,qaLobbyId);assert.deepEqual([...observer.storage.values()],identity);assert.equal(observer.authority.spectator,true);});
+  netcodeEvidence.reconnect={location:remoteLocation,actorId:actor,lobbyId:qaLobbyId};
+  await listedRoom(3);
+ }
  const onlineThree=await community.status();check('online count includes all three connected humans',()=>{if(!remote)assert.equal(onlineThree,onlineBefore+3);else assert.ok(onlineThree>=3);});
  await until(()=>users.every(u=>u.game.actors.every(actor=>Number.isInteger(actor.ping))),'server-measured ping on all three humans',10000);
  check(remote?'all production clients receive bounded server-measured human RTTs':'each scoreboard row has its own server-measured RTT across a delayed connection',()=>{for(const u of users){const fast=actorOn(u,a.name).ping!,slow=actorOn(u,b.name).ping!,observerPing=actorOn(u,observer.name).ping!;for(const ping of [fast,slow,observerPing])assert.ok(ping>=0&&ping<=999);if(!remote){assert.ok(slow>=140);assert.ok(slow-fast>100,'the remote delayed row cannot reuse the local connection ping');}latencyEvidence.push({observer:u.name,alphaMs:fast,betaMs:slow,observerMs:observerPing});}});
@@ -220,7 +253,8 @@ try{
  await fight(a,b);await fight(b,a);
  check('spectator application effects contain four authoritative shots and two reloads',()=>{assert.equal(authoritativeEffects.filter(event=>event.type==='shot').length,4);assert.equal(authoritativeEffects.filter(event=>event.type==='reload').length,2);});
  check('all three clients agree on the final reciprocal combat totals',()=>{for(const u of users)for(const name of [a.name,b.name]){const actor=actorOn(u,name);assert.equal(actor.kills,1);assert.equal(actor.deaths,1);assert.equal(actor.shots,2);assert.equal(actor.hits,2);}});
- const board=await community.leaderboard();
+ let board=await community.leaderboard();
+ if(remote)await until(async()=>{board=await community.leaderboard();return [board.allTime,board.last24Hours].every(rows=>[a.name,b.name].every(name=>{const row=rows.find(row=>row.name===name);return row?.kills===1&&row.deaths===1;})&&rows.some(row=>row.name===observer.name));},'central leaderboard receives both regional combat records',20000,1000);
  check('both leaderboard periods match combat totals and omit default and AI names',()=>{for(const rows of [board.allTime,board.last24Hours]){for(const name of [a.name,b.name]){const row=rows.find(row=>row.name===name);assert.ok(row);assert.equal(row.kills,1);assert.equal(row.deaths,1);}const watching=rows.find(row=>row.name===observer.name);assert.ok(watching);assert.equal(watching.kills,0);assert.equal(watching.deaths,0);assert.ok(rows.every(row=>row.name.toLowerCase()!=='unknown soldier'));if(!remote)assert.ok(rows.every(row=>!row.name.startsWith('[AI]')));}});
  let feedbackId:string|undefined;const feedbackMessage='Multiplayer QA: menu feedback <b>stays literal</b>.',feedbackEmail='qa@example.invalid';
  if(!remote){
@@ -247,15 +281,17 @@ try{
   check('feedback text and optional email persist with one linked submitted event',()=>{const rows=db.prepare('SELECT f.id,f.message,f.email,e.event_type FROM feedback_requests f JOIN feedback_events e ON e.request_id=f.id').all();assert.equal(rows.length,1);assert.equal(rows[0].id,feedbackId);assert.equal(rows[0].message,feedbackMessage);assert.equal(rows[0].email,feedbackEmail);assert.equal(rows[0].event_type,'submitted');});
  }finally{db.close();}}
  else{
-  await until(async()=>{const rows=await lobbyInventory();inventoryAfter=rows;const room=rows.find(row=>row.id===qaLobbyId);return !room||(room.players===0&&room.bots===0);},'production QA room has no remaining participants',10000);
+  await until(async()=>{const rows=await lobbyInventory();inventoryAfter=rows;const room=rows.find(row=>row.id===qaLobbyId);return !room||(room.players===0&&(room.bots===undefined||room.bots===0));},'production QA room has no remaining human participants',30000,1000);
   check('production QA clients disconnected and their room is empty',()=>assert.ok(inventoryAfter));
  }
  check('none of the three adapters experienced a connection failure',()=>{for(const u of users)assert.deepEqual(u.failures,[]);});
- const report={passed:true,mode:remote?'production QA':'isolated local',endpoint:base,lobbyId:qaLobbyId,startedAt:new Date(started).toISOString(),durationSeconds:(Date.now()-started)/1000,...(!remote?{backendSha256:createHash('sha256').update(await readFile(backendPath)).digest('hex')}:{inventoryBefore,inventoryAfter}),delayRelayMsEachDirection:remote?0:80,latencyEvidence,netcodeEvidence,authoritativeEffects,online:{before:onlineBefore,oneHuman:onlineOne,threeHumans:onlineThree,after:onlineAfter},checks,combat,persisted};
- const reportPath=remote?'artifacts/multiplayer-remote-e2e.json':'artifacts/multiplayer-client-e2e.json';
- await mkdir(resolve(root,'artifacts'),{recursive:true});await writeFile(resolve(root,reportPath),JSON.stringify(report,null,2)+'\n');
+ const report={passed:true,mode:remote?'production QA':'isolated local',location:remote?remoteLocation:'local',endpoint:base,lobbyId:qaLobbyId,startedAt:new Date(started).toISOString(),durationSeconds:(Date.now()-started)/1000,...(!remote?{backendSha256:createHash('sha256').update(await readFile(backendPath)).digest('hex')}:{inventoryBefore,inventoryAfter}),delayRelayMsEachDirection:remote?0:80,latencyEvidence,netcodeEvidence,authoritativeEffects,online:{before:onlineBefore,oneHuman:onlineOne,threeHumans:onlineThree,after:onlineAfter},checks,combat,persisted};
+ await mkdir(resolve(root,remote?'temp/multiplayer-qa':'artifacts'),{recursive:true});await writeFile(resolve(root,reportPath),JSON.stringify(report,null,2)+'\n');
  console.log(`Multiplayer adapter combat: ${checks.length} checks passed; report ${reportPath}.`);
-}catch(error){console.error(error);if(diagnostics)console.error(diagnostics);process.exitCode=1;}
+}catch(error){
+ console.error(error);if(diagnostics)console.error(diagnostics);process.exitCode=1;
+ if(remote)try{await mkdir(resolve(root,'temp/multiplayer-qa'),{recursive:true});await writeFile(resolve(root,reportPath),JSON.stringify({passed:false,mode:'production QA',location:remoteLocation,endpoint:base,lobbyId:qaLobbyId,startedAt:new Date(started).toISOString(),durationSeconds:(Date.now()-started)/1000,error:error instanceof Error?error.message:String(error),isolationError,checks,combat,inventoryBefore,inventoryAfter},null,2)+'\n');console.error(`Failed QA report: ${reportPath}`);}catch(reportError){console.error('Unable to save QA failure report',reportError);}
+}
 finally{
  if(timer)clearInterval(timer);for(const u of users)u.network.disconnect();
  for(const timeout of relayTimers)clearTimeout(timeout);for(const socket of relaySockets)socket.destroy();if(relay)await new Promise<void>(done=>relay!.close(()=>done()));

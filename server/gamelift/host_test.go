@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -26,8 +27,92 @@ import (
 )
 
 func testRuntime() *runtime {
-	return &runtime{cfg: settings{Fleet: "fleet-test", Origins: []string{"http://localhost:5173"}, Locations: []location{{"ca", "California", "us-west-1", "ca-queue"}, {"ny", "New York", "us-east-1-nyc-2", "ny-queue"}, {"sp", "São Paulo", "sa-east-1", "sp-queue"}, {"par", "Paris", "eu-west-3", "par-queue"}}}, secret: []byte(strings.Repeat("secret", 8)), internal: randomToken(), http: &http.Client{Timeout: 3 * time.Second}}
+	return &runtime{cfg: settings{Fleet: "fleet-test", API: "https://bolts-api.example.com", Origins: []string{"http://localhost:5173"}, Locations: []location{{"lon", "London", "eu-west-2", "lon-queue"}, {"sg", "Singapore", "ap-southeast-1", "sg-queue"}, {"sp", "São Paulo", "sa-east-1", "sp-queue"}}}, secret: []byte(strings.Repeat("secret", 8)), internal: randomToken(), http: &http.Client{Timeout: 3 * time.Second}}
 }
+func TestSettingsValidatePhysicalLocationsWithoutFixedCount(t *testing.T) {
+	base := testRuntime().cfg
+	base.Region = "us-east-1"
+	base.FleetRole = "arn:aws:iam::123456789012:role/bolts-game-role"
+	base.SecretParameter = "/bolts/gamelift/cluster-secret"
+	base.API = "https://bolts-api.example.com"
+	check := func(t *testing.T, locations []location, valid bool) {
+		t.Helper()
+		cfg := base
+		cfg.Locations = locations
+		data, err := json.Marshal(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "host.json")
+		if err = os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		_, err = loadSettings(path)
+		if (err == nil) != valid {
+			t.Fatalf("valid=%t: %v", valid, err)
+		}
+	}
+	check(t, base.Locations, true)
+	// The directory may retain Oregon locally, so configured managed locations
+	// need not include an additional Oregon worker or a hardcoded total count.
+	check(t, base.Locations[1:], true)
+	for name, locations := range map[string][]location{
+		"empty":         nil,
+		"unknown":       {{"par", "Paris", "eu-west-3", "par-queue"}},
+		"removed NYC":   {{"ny", "New York City", "us-east-1-nyc-2", "ny-queue"}},
+		"city mismatch": {{"lon", "London", "us-east-1", "lon-queue"}},
+		"duplicate":     {base.Locations[1], base.Locations[1]},
+		"missing queue": {{"sg", "Singapore", "ap-southeast-1", ""}},
+		"missing label": {{"lon", " ", "eu-west-2", "lon-queue"}},
+	} {
+		t.Run(name, func(t *testing.T) { check(t, locations, false) })
+	}
+}
+
+func TestDirectoryPreservesVisitorTrackingAndPrivateRouteBoundary(t *testing.T) {
+	r := testRuntime()
+	calls := 0
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
+		calls++
+		body, _ := io.ReadAll(q.Body)
+		if q.Method != "POST" || q.URL.Path != "/api/visits" || string(body) != `{"visitorId":"anonymous-id"}` || q.Header.Get("Origin") != r.cfg.Origins[0] || q.Header.Get("X-Forwarded-For") != "203.0.113.9" {
+			t.Errorf("visitor request changed: %s %s headers=%v body=%s", q.Method, q.URL.Path, q.Header, body)
+		}
+		respond(w, 202, map[string]bool{"ok": true})
+	}))
+	defer backend.Close()
+	r.local = backend.URL
+	d := &directory{r: r}
+	handler := d.handler()
+	request := func(method, path, origin string) *httptest.ResponseRecorder {
+		q := httptest.NewRequest(method, path, strings.NewReader(`{"visitorId":"anonymous-id"}`))
+		q.RemoteAddr = "10.0.0.1:54321"
+		q.Header.Set("Origin", origin)
+		q.Header.Set("X-Forwarded-For", "198.51.100.77, 203.0.113.9")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, q)
+		return w
+	}
+	if w := request("POST", "/api/visits", r.cfg.Origins[0]); w.Code != 202 || w.Header().Get("Access-Control-Allow-Origin") != r.cfg.Origins[0] {
+		t.Fatalf("visitor forwarding: %d %s", w.Code, w.Body.String())
+	}
+	if w := request("OPTIONS", "/api/visits", r.cfg.Origins[0]); w.Code != 204 {
+		t.Fatalf("visitor preflight: %d", w.Code)
+	}
+	if w := request("POST", "/api/visits", "https://other.example"); w.Code != 403 {
+		t.Fatalf("foreign origin: %d", w.Code)
+	}
+	if w := request("POST", "/internal/cluster", r.cfg.Origins[0]); w.Code != 404 {
+		t.Fatalf("private route exposed: %d", w.Code)
+	}
+	if w := request("GET", "/api/visits", r.cfg.Origins[0]); w.Code != 405 {
+		t.Fatalf("visitor read exposed: %d", w.Code)
+	}
+	if calls != 1 {
+		t.Fatalf("unexpected backend calls: %d", calls)
+	}
+}
+
 func TestAdmissionScopeAndExpiry(t *testing.T) {
 	r := testRuntime()
 	a := admission{Player: "p", Session: "s", PlayerSession: "ps", Expires: time.Now().Add(time.Minute).Unix()}
@@ -49,9 +134,11 @@ type fakeFleet struct {
 	gameAPI
 	mu        sync.Mutex
 	games     map[string][]types.GameSession
+	errors    map[string]error
 	placement *types.GameSessionPlacement
 	starts    int
 	queue     string
+	name      string
 	seats     map[string][]types.PlayerSession
 	creates   int
 	racedFull string
@@ -60,6 +147,9 @@ type fakeFleet struct {
 func (f *fakeFleet) DescribeGameSessions(_ context.Context, q *gamelift.DescribeGameSessionsInput, _ ...func(*gamelift.Options)) (*gamelift.DescribeGameSessionsOutput, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.errors[*q.Location]; err != nil {
+		return nil, err
+	}
 	return &gamelift.DescribeGameSessionsOutput{GameSessions: f.games[*q.Location]}, nil
 }
 func (f *fakeFleet) DescribeGameSessionPlacement(_ context.Context, q *gamelift.DescribeGameSessionPlacementInput, _ ...func(*gamelift.Options)) (*gamelift.DescribeGameSessionPlacementOutput, error) {
@@ -75,6 +165,7 @@ func (f *fakeFleet) StartGameSessionPlacement(_ context.Context, q *gamelift.Sta
 	defer f.mu.Unlock()
 	f.starts++
 	f.queue = *q.GameSessionQueueName
+	f.name = *q.GameSessionName
 	f.placement = &types.GameSessionPlacement{Status: types.GameSessionPlacementStatePending}
 	return &gamelift.StartGameSessionPlacementOutput{GameSessionPlacement: f.placement}, nil
 }
@@ -116,16 +207,22 @@ func (f *fakeFleet) CreatePlayerSession(_ context.Context, q *gamelift.CreatePla
 }
 func TestGlobalDirectoryAndColdPlacementDeduplication(t *testing.T) {
 	r := testRuntime()
-	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) { respond(w, 200, map[string]string{"playerId": "player"}) }))
+	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
+		if q.URL.Path == "/api/lobbies" {
+			respond(w, 200, map[string]any{"lobbies": []lobby{}})
+			return
+		}
+		respond(w, 200, map[string]string{"playerId": "player"})
+	}))
 	defer auth.Close()
 	r.local = auth.URL
-	api := &fakeFleet{games: map[string][]types.GameSession{"us-west-1": {{GameSessionId: aws.String("game-ca"), Name: aws.String("Alpha"), Location: aws.String("us-west-1"), Status: types.GameSessionStatusActive, CurrentPlayerSessionCount: aws.Int32(2), DnsName: aws.String("ca.amazongamelift.com"), Port: aws.Int32(8080)}}}}
+	api := &fakeFleet{games: map[string][]types.GameSession{"eu-west-2": {{GameSessionId: aws.String("game-lon"), Name: aws.String("Alpha"), Location: aws.String("eu-west-2"), Status: types.GameSessionStatusActive, CurrentPlayerSessionCount: aws.Int32(2), DnsName: aws.String("lon.amazongamelift.com"), Port: aws.Int32(8080)}}}}
 	d := &directory{r: r, api: api, pending: map[string]string{}, pendingFile: filepath.Join(t.TempDir(), "placements.json")}
 	rows, err := d.catalog(context.Background(), false)
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("global directory %v: %v", rows, err)
 	}
-	if rows[0].PingURL == "" || rows[0].Location != "ca" {
+	if rows[0].PingURL == "" || rows[0].Location != "lon" {
 		t.Fatalf("missing direct probe: %+v", rows[0])
 	}
 	call := func() *httptest.ResponseRecorder {
@@ -161,6 +258,10 @@ func directoryForTest(t *testing.T, api *fakeFleet) *directory {
 	t.Helper()
 	r := testRuntime()
 	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
+		if q.URL.Path == "/api/lobbies" {
+			respond(w, 200, map[string]any{"lobbies": []lobby{}})
+			return
+		}
 		var body map[string]string
 		json.NewDecoder(q.Body).Decode(&body)
 		respond(w, 200, map[string]string{"playerId": body["token"]})
@@ -175,8 +276,8 @@ func joinForTest(d *directory, target, player string) *httptest.ResponseRecorder
 	d.join(w, q)
 	return w
 }
-func californiaGame(id string, players int32) types.GameSession {
-	return types.GameSession{GameSessionId: &id, Name: &id, Location: aws.String("us-west-1"), Status: types.GameSessionStatusActive, CurrentPlayerSessionCount: &players, DnsName: aws.String("ca.amazongamelift.com"), Port: aws.Int32(8080)}
+func londonGame(id string, players int32) types.GameSession {
+	return types.GameSession{GameSessionId: &id, Name: &id, Location: aws.String("eu-west-2"), Status: types.GameSessionStatusActive, CurrentPlayerSessionCount: &players, DnsName: aws.String("lon.amazongamelift.com"), Port: aws.Int32(8080)}
 }
 func TestDirectoryListsOnlyRealSessionsAndRetainsLocationsAtZero(t *testing.T) {
 	api := &fakeFleet{games: map[string][]types.GameSession{}}
@@ -193,7 +294,7 @@ func TestDirectoryListsOnlyRealSessionsAndRetainsLocationsAtZero(t *testing.T) {
 			Lobbies   []lobby
 			Locations []string
 		}
-		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || w.Code != 200 || body.Version != 2 || len(body.Lobbies) != want || strings.Join(body.Locations, ",") != "ca,ny,sp,par" {
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || w.Code != 200 || body.Version != 2 || len(body.Lobbies) != want || strings.Join(body.Locations, ",") != "lon,sg,sp" {
 			t.Fatalf("directory: %d %s (%v)", w.Code, w.Body.String(), err)
 		}
 		if api.starts != 0 {
@@ -201,18 +302,18 @@ func TestDirectoryListsOnlyRealSessionsAndRetainsLocationsAtZero(t *testing.T) {
 		}
 	}
 	check(0)
-	api.games["us-west-1"] = []types.GameSession{californiaGame("game-ca", 0)}
+	api.games["eu-west-2"] = []types.GameSession{londonGame("game-lon", 0)}
 	check(1) // A real idle game is available during its shutdown grace period.
-	api.games["us-west-1"][0].Status = types.GameSessionStatusTerminating
+	api.games["eu-west-2"][0].Status = types.GameSessionStatusTerminating
 	check(0)
-	api.games["us-west-1"][0].Status = types.GameSessionStatusTerminated
+	api.games["eu-west-2"][0].Status = types.GameSessionStatusTerminated
 	check(0)
 }
 func TestLocationPacksBeforeExpandingAndSharesOverflowPlacement(t *testing.T) {
-	api := &fakeFleet{games: map[string][]types.GameSession{"us-west-1": {californiaGame("Alpha", 2), californiaGame("Bravo", 5)}}}
+	api := &fakeFleet{games: map[string][]types.GameSession{"eu-west-2": {londonGame("Alpha", 2), londonGame("Bravo", 5)}}}
 	d := directoryForTest(t, api)
 	for i := 0; i < 2; i++ {
-		w := joinForTest(d, "new:ca", "a")
+		w := joinForTest(d, "new:lon", "a")
 		if w.Code != 200 || !strings.Contains(w.Body.String(), `"lobbyId":"Bravo"`) {
 			t.Fatalf("pack/retry: %d %s", w.Code, w.Body.String())
 		}
@@ -220,30 +321,30 @@ func TestLocationPacksBeforeExpandingAndSharesOverflowPlacement(t *testing.T) {
 	if api.creates != 1 || api.starts != 0 {
 		t.Fatal("retry created another reservation or game")
 	}
-	w := joinForTest(d, "new:ca", "b")
+	w := joinForTest(d, "new:lon", "b")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"lobbyId":"Alpha"`) || api.starts != 0 {
 		t.Fatalf("remaining capacity: %d %s", w.Code, w.Body.String())
 	}
-	api.games["us-west-1"][0].CurrentPlayerSessionCount = aws.Int32(6)
+	api.games["eu-west-2"][0].CurrentPlayerSessionCount = aws.Int32(6)
 	// Multiple players arriving at a full location request one shared game.
 	var group sync.WaitGroup
 	for _, player := range []string{"c", "d", "e"} {
 		group.Add(1)
 		go func(player string) {
 			defer group.Done()
-			w := joinForTest(d, "new:ca", player)
+			w := joinForTest(d, "new:lon", player)
 			if w.Code != 202 {
 				t.Errorf("overflow: %d %s", w.Code, w.Body.String())
 			}
 		}(player)
 	}
 	group.Wait()
-	if api.starts != 1 || api.queue != "ca-queue" {
+	if api.starts != 1 || api.queue != "lon-queue" {
 		t.Fatalf("overflow started %d on %s", api.starts, api.queue)
 	}
 	api.placement.Status = types.GameSessionPlacementStateFulfilled
 	api.placement.GameSessionId = aws.String("Charlie")
-	api.games["us-west-1"] = append(api.games["us-west-1"], californiaGame("Charlie", 0))
+	api.games["eu-west-2"] = append(api.games["eu-west-2"], londonGame("Charlie", 0))
 	// Simulate a gateway restart: recover the placement rather than creating one.
 	recovered := directoryForTest(t, api)
 	recovered.pendingFile = d.pendingFile
@@ -255,7 +356,7 @@ func TestLocationPacksBeforeExpandingAndSharesOverflowPlacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, player := range []string{"c", "d", "e"} {
-		w := joinForTest(recovered, "new:ca", player)
+		w := joinForTest(recovered, "new:lon", player)
 		if w.Code != 200 || !strings.Contains(w.Body.String(), `"lobbyId":"Charlie"`) {
 			t.Fatalf("overflow admission: %d %s", w.Code, w.Body.String())
 		}
@@ -270,18 +371,18 @@ func TestLocationPacksBeforeExpandingAndSharesOverflowPlacement(t *testing.T) {
 func TestLastSeatRaceUsesRemainingCapacityBeforeStartingGame(t *testing.T) {
 	for _, otherRoom := range []bool{true, false} {
 		t.Run(fmt.Sprint(otherRoom), func(t *testing.T) {
-			games := []types.GameSession{californiaGame("Bravo", 5)}
+			games := []types.GameSession{londonGame("Bravo", 5)}
 			if otherRoom {
-				games = append(games, californiaGame("Alpha", 1))
+				games = append(games, londonGame("Alpha", 1))
 			}
-			api := &fakeFleet{games: map[string][]types.GameSession{"us-west-1": games}, racedFull: "Bravo"}
+			api := &fakeFleet{games: map[string][]types.GameSession{"eu-west-2": games}, racedFull: "Bravo"}
 			d := directoryForTest(t, api)
-			w := joinForTest(d, "new:ca", "a")
+			w := joinForTest(d, "new:lon", "a")
 			if otherRoom {
 				if w.Code != 200 || !strings.Contains(w.Body.String(), `"lobbyId":"Alpha"`) || api.starts != 0 {
 					t.Fatalf("race fallback: %d %s", w.Code, w.Body.String())
 				}
-			} else if w.Code != 202 || api.starts != 1 || api.queue != "ca-queue" {
+			} else if w.Code != 202 || api.starts != 1 || api.queue != "lon-queue" {
 				t.Fatalf("race overflow: %d %s", w.Code, w.Body.String())
 			}
 		})
@@ -362,8 +463,8 @@ func TestRealRustAdmissionHeartbeatReconnectAndReplication(t *testing.T) {
 	if identity.PlayerID == "" {
 		t.Fatal("no identity")
 	}
-	session := "arn:aws:gamelift:us-west-2:123456789012:gamesession/fleet-11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222"
-	if err = remote.localCall(ctx, map[string]string{"op": "activate", "session": session, "name": "California"}, nil); err != nil {
+	session := "arn:aws:gamelift:eu-west-2:123456789012:gamesession/fleet-11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222"
+	if err = remote.localCall(ctx, map[string]string{"op": "activate", "session": session, "name": "London"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	service := &fakeSessions{p: model.PlayerSession{PlayerID: identity.PlayerID, GameSessionID: session, PlayerSessionID: "ps-test"}.WithStatus(model.PlayerReserved)}

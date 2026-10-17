@@ -288,9 +288,12 @@ impl Db {
     fn recover(&mut self) -> rusqlite::Result<()> {
         let at = now_ms();
         let tx = self.conn.transaction()?;
+        // Imported sessions remain alive on their regional worker when the
+        // directory restarts. Only the process that owns a record may close it.
+        // Worker databases have no imported cursors or connection owners, so a
+        // worker restart still recovers every one of its own interrupted rows.
         let interrupted: Vec<(String, String, String)> = {
-            let mut statement =
-                tx.prepare("SELECT id,lobby_id,player_id FROM memberships WHERE left_at IS NULL")?;
+            let mut statement = tx.prepare("SELECT id,lobby_id,player_id FROM memberships WHERE left_at IS NULL AND NOT EXISTS(SELECT 1 FROM cluster_cursors c WHERE c.session=memberships.lobby_id)")?;
             statement
                 .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
                 .collect::<rusqlite::Result<_>>()?
@@ -298,13 +301,13 @@ impl Db {
         for (membership, lobby, player) in interrupted {
             tx.execute("INSERT INTO events(id,event_type,at,lobby_id,actor_player_id,data) VALUES(?1,'player_leave',?2,?3,?4,?5)",params![id(),at,lobby,player,json!({"reason":"server_restart","membershipId":membership}).to_string()])?;
         }
-        tx.execute("UPDATE memberships SET left_at=?1, leave_reason='server_restart' WHERE left_at IS NULL", [at])?;
-        tx.execute("UPDATE connections SET closed_at=?1, end_reason='server_restart' WHERE closed_at IS NULL", [at])?;
+        tx.execute("UPDATE memberships SET left_at=?1, leave_reason='server_restart' WHERE left_at IS NULL AND NOT EXISTS(SELECT 1 FROM cluster_cursors c WHERE c.session=memberships.lobby_id)", [at])?;
+        tx.execute("UPDATE connections SET closed_at=?1, end_reason='server_restart' WHERE closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM cluster_connection_owners o WHERE o.connection_id=connections.id)", [at])?;
         tx.execute(
-            "UPDATE matches SET ended_at=?1, end_reason='server_restart' WHERE ended_at IS NULL",
+            "UPDATE matches SET ended_at=?1, end_reason='server_restart' WHERE ended_at IS NULL AND NOT EXISTS(SELECT 1 FROM cluster_cursors c WHERE c.session=matches.lobby_id)",
             [at],
         )?;
-        tx.execute("UPDATE lobbies SET closed_at=?1, close_reason='server_restart' WHERE closed_at IS NULL", [at])?;
+        tx.execute("UPDATE lobbies SET closed_at=?1, close_reason='server_restart' WHERE closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM cluster_cursors c WHERE c.session=lobbies.id)", [at])?;
         tx.commit()?;
         self.event(EventRow {
             kind: "server_start",

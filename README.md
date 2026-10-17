@@ -4,6 +4,8 @@ A TypeScript / Three.js browser FPS inspired by the rifle-only WaWa arena in Cal
 
 Play the complete game at **[play-bolts.github.io](https://play-bolts.github.io/)**. Source and deployment are in **[play-bolts/play-bolts.github.io](https://github.com/play-bolts/play-bolts.github.io)**.
 
+Regional lobby support is prepared for London, Singapore and São Paulo, with full city labels and one warm server per location; Oregon remains on the existing host. The regional fleet is **not live yet**; rollout validation is in progress. New York is excluded from this rollout. See [regional operation and rollout](server/README.md#gamelift-regional-hosting) and [zero-player cost estimates](research/regional-hosting-costs.md).
+
 Multiplayer adds six-player lobbies, an authoritative Rust server, chat and durable event history. See [multiplayer deployment, data model and operations](server/README.md). **Single player** retains the local AI game without a backend connection.
 
 Multiplayer protocol 3 uses lossless binary inputs and snapshots, adaptive input scheduling, monotonic opponent interpolation, and immediate generation-tagged combat effects. Snapshot publication is paced after server stalls; shared payloads are encoded outside the game lock. Durable kill/chat notifications retain their ordering and persistence guarantees; camera corrections stay clear of walls. The client and server must be released together. See [the research and measurements](research/netcode.md), [protocol and timing diagnostics](server/PROTOCOL.md), and [multiplayer validation](server/README.md).

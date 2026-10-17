@@ -16,6 +16,18 @@ If a bundled font is wanted, [Liberation Serif](https://github.com/liberationfon
 
 Bolts uses mixed-case serif text, cream highlights, dark text shadows, restrained olive translucent panels, thin dividers and text-based selections. The setup menu remains one step from starting a round. Scoreboard, options, controls, pause, killcam and in-game HUD all use the same period-appropriate typography. The exact palette is an approximation, not sampled proprietary UI assets.
 
+The mobile stance and rifle buttons carry that treatment into compact, square
+faces with original cream soldier, iron-sight and cartridge silhouettes. Short
+serif labels remain visible, and active stances/aim use a pale gold highlight.
+At the default control size, the faces are 42×40 CSS pixels inside 48×44 touch
+targets; the targets never shrink below 44×44. The original PC HUD is the style
+reference, not evidence that the original game had these touch buttons.
+
+Touch sensitivity defaults to 4.0 (previously 1.0), giving approximately 83° of
+hip-fire rotation for a 200 CSS-pixel swipe. Options allow 0.5–6.0. Unversioned
+saved values at the old 1.0 default migrate to 4.0; other saved values remain,
+and choosing 1.0 explicitly in the new release persists normally.
+
 ## Model reference pointers
 
 - [Lee-Enfield Association No.4/No.5 illustrated sight picture, page 39](https://lee-enfield.org/images/Training/BYSA_Lee_Enfield_instructors_manual_v61.pdf): rear aperture and front post. No.4 geometry should not be confused with SMLE open rear sights.

@@ -116,7 +116,7 @@ function syncTouchState(){
  const player=game.player,life=player?`${player.renderIdentity??''}:${player.deaths}:${player.faction}:${player.spectator}`:'';
  if(touchEnabled&&life!==touchLife)clearTouchInput();touchLife=life;
  const active=canTouchPlay();if(touchWasActive&&!active)clearTouchInput();touchWasActive=active;touch.setEnabled(active);
- ui.setTouchState({enabled:touchEnabled,mobile:mobileDevice(),controls:active,rotate:ui.ready&&touchEnabled&&!menu&&game.state!=='ended'&&mobilePortrait,resume:touchEnabled&&!menu&&!ui.selectionOpen&&!ui.modalOpen&&!mobilePortrait&&mobileResumeRequired&&game.state==='paused',spectator:!!player?.spectator,following:game.spectator.following,ads:!!player?.ads,weapon:player?.selectedWeapon??'rifle'});
+ ui.setTouchState({enabled:touchEnabled,mobile:mobileDevice(),controls:active,rotate:ui.ready&&touchEnabled&&!menu&&game.state!=='ended'&&mobilePortrait,resume:touchEnabled&&!menu&&!ui.selectionOpen&&!ui.modalOpen&&!mobilePortrait&&mobileResumeRequired&&game.state==='paused',spectator:!!player?.spectator,following:game.spectator.following,ads:!!player?.ads,stance:player?.stance??'stand',weapon:player?.selectedWeapon??'rifle'});
 }
 function updateTouchViewport(){
  // A soft keyboard can change viewport orientation without rotating the phone.

@@ -380,10 +380,16 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 #touch-controls #touch-fire.active, #touch-controls #touch-fire:active { border-color: #fff2b6; background: #b7b58b70; color: #fff7cd; }
 .touch-utility { left: max(12px, env(safe-area-inset-left)); top: max(8px, env(safe-area-inset-top)); gap: 5px; }
 #touch-controls .touch-utility button { min-width: 38px; min-height: 30px; padding: 4px 7px; font-size: 10px; }
-.touch-actions { bottom: calc(var(--touch-bottom) + var(--touch-pad-size) + 10px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: var(--touch-pad-size); align-items: center; }
+.touch-actions { --touch-action-width: max(44px, calc(48px * var(--touch-scale))); bottom: calc(var(--touch-bottom) + var(--touch-pad-size) + 8px); display: grid; grid-template-columns: repeat(2, var(--touch-action-width)); width: var(--touch-pad-size); align-items: center; justify-content: center; gap: 4px; }
 .touch-movement-actions { left: max(var(--touch-edge), env(safe-area-inset-left)); }
-.touch-weapon-actions { right: max(var(--touch-edge), env(safe-area-inset-right)); bottom: calc(var(--touch-bottom) + var(--touch-fire-size) + 10px); }
-.touch-actions button { min-height: max(44px, calc(44px * var(--touch-scale))); }
+.touch-weapon-actions { right: max(var(--touch-edge), env(safe-area-inset-right)); bottom: calc(var(--touch-bottom) + var(--touch-fire-size) + 8px); }
+/* Compact faces retain full finger targets around the classic HUD silhouettes. */
+#touch-controls .touch-actions button { position: relative; isolation: isolate; flex-direction: column; gap: 0; width: var(--touch-action-width); height: max(44px, calc(44px * var(--touch-scale))); padding: 3px; border: 0; border-radius: 0; background: transparent; color: #dedbc6; font: 12px/12px "Times New Roman", Times, Georgia, serif; text-shadow: 1px 1px 1px #000; }
+#touch-controls .touch-actions button::before { content: ""; position: absolute; z-index: -1; inset: 2px 3px; border: 1px solid #d4d0b655; background: linear-gradient(#20261bb8, #10150daf); box-shadow: 0 1px 2px #0005; }
+#touch-controls .touch-actions button > * { pointer-events: none; }
+#touch-controls .touch-actions .touch-action-icon { width: calc(30px * var(--touch-scale)); height: calc(21px * var(--touch-scale)); filter: drop-shadow(1px 1px 0 #000a); }
+#touch-controls .touch-actions button:active, #touch-controls .touch-actions button[aria-pressed=true] { color: #fff0b6; }
+#touch-controls .touch-actions button:active::before, #touch-controls .touch-actions button[aria-pressed=true]::before { border-color: #e0ce92; background: #655d35b8; box-shadow: inset 0 -2px #d9c88d, 0 1px 2px #0005; }
 .touch-spectator-actions { right: max(var(--touch-edge), env(safe-area-inset-right)); bottom: var(--touch-bottom); display: grid; grid-template-columns: repeat(2, minmax(64px, 1fr)); max-width: 225px; }
 .touch-mode .touch-controls-help { display: block; }
 .touch-controls-help, .touch-mode .keyboard-controls { display: none; }

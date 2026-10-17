@@ -1,4 +1,4 @@
-import {WEAPONS,type Difficulty,type Faction} from './config';
+import {WEAPONS,type Difficulty,type Faction,type Stance} from './config';
 import {CROSSHAIR_DISPLAY_SCALE,crosshairDisplayGapPixels} from './accuracy';
 import {weaponIcon} from './weaponIcons';
 import {damageFlashOpacity} from './damageFeedback';
@@ -8,11 +8,13 @@ import {DEFAULT_PLAYER_NAME,PLAYER_NAME_PREFERENCE_VERSION,MAX_NAME_RAW_LENGTH,p
 import {HudMarkup,hudClass,hudStyle,hudText} from './hudUpdates';
 import {locationLabel,type Lobby,type LobbyLocation} from './lobbies';
 import {bindTouchAction} from './touchActions';
+import {touchActionIcon} from './touchIcons';
+import {DEFAULT_TOUCH_SENSITIVITY,MIN_TOUCH_SENSITIVITY,MAX_TOUCH_SENSITIVITY,TOUCH_SENSITIVITY_PREFERENCE_VERSION,restoreTouchSensitivityPreference} from './touchPreferences';
 const closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg>';
 const controls=[['W A S D','Move'],['Mouse','Look'],['LMB','Fire / grenade bash'],['RMB','Iron sights'],['1 / 2','Rifle / grenade'],['Wheel','Switch weapon'],['R','Reload'],['Space','Jump / stand'],['C','Crouch'],['Ctrl','Prone'],['Q / E','Lean'],['Shift','Melee'],['Alt','Walk'],['Tab','Scoreboard'],['T / Enter','Chat'],['M','Change team'],['Esc','Menu / leave follow'],['LMB / RMB','Spectator: next / previous'],['Space / Ctrl','Spectator: up / down'],['Shift','Spectator: faster']];
-export interface Preferences {faction:Faction;difficulty:Difficulty;playerName:string;playerNameVersion:number;sensitivity:number;volume:number;aim:'toggle'|'hold';quality:string;invert:boolean;hitIndicators:boolean;controlsMode:'auto'|'touch'|'mouse';touchSensitivity:number;touchSize:number}
+export interface Preferences {faction:Faction;difficulty:Difficulty;playerName:string;playerNameVersion:number;sensitivity:number;volume:number;aim:'toggle'|'hold';quality:string;invert:boolean;hitIndicators:boolean;controlsMode:'auto'|'touch'|'mouse';touchSensitivity:number;touchSensitivityVersion:number;touchSize:number}
 export type TouchAction='aim'|'reload'|'crouch'|'prone'|'team'|'score'|'chat'|'menu'|'up'|'down'|'next'|'previous'|'unfollow';
-export interface TouchState {enabled:boolean;mobile:boolean;controls:boolean;rotate:boolean;resume:boolean;spectator:boolean;following:boolean;ads:boolean;weapon:'rifle'|'grenade'}
+export interface TouchState {enabled:boolean;mobile:boolean;controls:boolean;rotate:boolean;resume:boolean;spectator:boolean;following:boolean;ads:boolean;stance:Stance;weapon:'rifle'|'grenade'}
 export type LobbyRow=Pick<Lobby,'id'|'name'|'players'|'capacity'|'ping'|'location'> & Partial<Pick<Lobby,'phase'>>;
 export interface ChatLine {id?:string;name?:string;message:string;system?:boolean}
 export function scoreboardRows(actors:readonly Actor[],online:boolean){
@@ -35,7 +37,7 @@ export class UI {
  private modalReturnFocus:HTMLElement|null=null;
  private feedbackBusy=false;private leaderboardBusy=false;private leaderboardStatus='';private leaderboardData:Leaderboard|null=null;private leaderboardPeriod:LeaderboardPeriod='allTime';
  feedbackSend=async(_message:string,_email:string)=>{};leaderboardLoad=()=>{};
- prefs:Preferences={faction:'british',difficulty:'regular',playerName:DEFAULT_PLAYER_NAME,playerNameVersion:PLAYER_NAME_PREFERENCE_VERSION,sensitivity:1,volume:.6,aim:'toggle',quality:'high',invert:false,hitIndicators:false,controlsMode:'auto',touchSensitivity:1,touchSize:1};
+ prefs:Preferences={faction:'british',difficulty:'regular',playerName:DEFAULT_PLAYER_NAME,playerNameVersion:PLAYER_NAME_PREFERENCE_VERSION,sensitivity:1,volume:.6,aim:'toggle',quality:'high',invert:false,hitIndicators:false,controlsMode:'auto',touchSensitivity:DEFAULT_TOUCH_SENSITIVITY,touchSensitivityVersion:TOUCH_SENSITIVITY_PREFERENCE_VERSION,touchSize:1};
  touchAction=(_action:TouchAction)=>{};mobileResume=()=>{};mobileBack=()=>{};
  selectLoadout=()=>{};selectSpectator=()=>{};selectTeam=()=>{};cancelSelection=()=>{};
  start=()=>{};resume=()=>{};pause=()=>{};leave=()=>{};settingsChanged=()=>{};skip=()=>{};captureMouse=()=>{};
@@ -52,7 +54,7 @@ export class UI {
    if(['high','medium','low'].includes(saved.quality))this.prefs.quality=saved.quality;
    else if(navigator.maxTouchPoints>0&&window.matchMedia('(pointer: coarse)').matches)this.prefs.quality='medium';
    if(['auto','touch','mouse'].includes(saved.controlsMode))this.prefs.controlsMode=saved.controlsMode;
-   if(typeof saved.touchSensitivity==='number'&&Number.isFinite(saved.touchSensitivity))this.prefs.touchSensitivity=Math.max(.5,Math.min(2,saved.touchSensitivity));
+   this.prefs.touchSensitivity=restoreTouchSensitivityPreference(saved.touchSensitivity,saved.touchSensitivityVersion);
    if(typeof saved.touchSize==='number'&&Number.isFinite(saved.touchSize))this.prefs.touchSize=Math.max(.8,Math.min(1.25,saved.touchSize));
    this.prefs.invert=!!saved.invert;
    this.prefs.hitIndicators=saved.hitIndicators===true;
@@ -94,7 +96,7 @@ export class UI {
     <div id="touch-move" class="touch-pad" role="group" aria-label="Movement joystick; tap to jump"><span class="touch-knob" aria-hidden="true"></span><span id="touch-move-label" class="touch-label">Move · Tap to jump</span></div>
     <button id="touch-fire" type="button" aria-label="Fire one shot; drag to aim"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="16" cy="16" r="9"/><circle cx="16" cy="16" r="2"/><path d="M16 2v7m0 14v7M2 16h7m14 0h7"/></svg><span>Fire</span></button>
     <div class="touch-utility"><button type="button" data-touch-action="menu">Menu</button><button type="button" data-touch-action="score">Score</button><button id="touch-chat" type="button" data-touch-action="chat">Chat</button></div>
-    <div id="touch-player-actions"><div class="touch-actions touch-movement-actions" aria-label="Stance"><button type="button" data-touch-action="crouch">Crouch</button><button type="button" data-touch-action="prone">Prone</button></div><div class="touch-actions touch-weapon-actions" aria-label="Rifle controls"><button id="touch-aim" type="button" data-touch-action="aim" aria-pressed="false">Aim</button><button type="button" data-touch-action="reload">Reload</button></div></div>
+    <div id="touch-player-actions"><div class="touch-actions touch-movement-actions" aria-label="Stance"><button id="touch-crouch" type="button" data-touch-action="crouch" aria-pressed="false">${touchActionIcon('crouch')}<span>Crouch</span></button><button id="touch-prone" type="button" data-touch-action="prone" aria-pressed="false">${touchActionIcon('prone')}<span>Prone</span></button></div><div class="touch-actions touch-weapon-actions" aria-label="Rifle controls"><button id="touch-aim" type="button" data-touch-action="aim" aria-pressed="false">${touchActionIcon('aim')}<span>Aim</span></button><button type="button" data-touch-action="reload">${touchActionIcon('reload')}<span>Reload</span></button></div></div>
     <div id="touch-spectator-actions" class="touch-spectator-actions hidden"><button type="button" data-touch-action="previous" aria-label="Follow previous player">Previous</button><button type="button" data-touch-action="next" aria-label="Follow next player">Next</button><button id="touch-unfollow" type="button" data-touch-action="unfollow">Free fly</button><button id="touch-up" type="button" data-touch-action="up">Rise</button><button id="touch-down" type="button" data-touch-action="down">Lower</button><button type="button" data-touch-action="team">Join game</button></div>
    </div>
   </div>
@@ -133,7 +135,7 @@ export class UI {
     <label id="difficulty-setting" class="setting select-setting hidden">Difficulty<select id="difficulty"><option value="recruit">Recruit</option><option value="regular">Regular</option><option value="veteran">Veteran</option></select></label>
     <div class="name-setting"><label for="player-name">Player name</label><input id="player-name" type="text" maxlength="${MAX_NAME_RAW_LENGTH}" autocomplete="off" spellcheck="false" aria-describedby="name-color-help"><div class="name-preview-row"><div id="player-name-preview" aria-label="Name preview"></div><small id="name-color-help">^0–^9</small></div></div>
     <label class="setting select-setting">Controls<select id="controls-mode"><option value="auto">Automatic</option><option value="touch">Touch</option><option value="mouse">Mouse and keyboard</option></select></label>
-    <div class="touch-settings"><label class="setting">Touch sensitivity <output id="touch-sensitivity-value">1.0</output><input id="touch-sensitivity" type="range" min="0.5" max="2" step="0.1" value="1"></label><label class="setting">Control size <output id="touch-size-value">100%</output><input id="touch-size" type="range" min="0.8" max="1.25" step="0.05" value="1"></label></div>
+    <div class="touch-settings"><label class="setting">Touch sensitivity <output id="touch-sensitivity-value">${DEFAULT_TOUCH_SENSITIVITY.toFixed(1)}</output><input id="touch-sensitivity" type="range" min="${MIN_TOUCH_SENSITIVITY}" max="${MAX_TOUCH_SENSITIVITY}" step="0.1" value="${DEFAULT_TOUCH_SENSITIVITY}"></label><label class="setting">Control size <output id="touch-size-value">100%</output><input id="touch-size" type="range" min="0.8" max="1.25" step="0.05" value="1"></label></div>
     <label class="setting">Mouse sensitivity <output id="sensitivity-value">1.0</output><input id="sensitivity" type="range" min="0.2" max="2.5" step="0.1" value="1"></label>
     <label class="setting">Volume <output id="volume-value">60%</output><input id="volume" type="range" min="0" max="1" step="0.05" value=".6"></label>
     <label class="setting select-setting">Iron sights<select id="aim-mode"><option value="toggle">Toggle</option><option value="hold">Hold</option></select></label>
@@ -170,7 +172,7 @@ export class UI {
   nameInput.onblur=()=>{nameInput.value=this.prefs.playerName;};
   for(const key of ['sensitivity','volume'] as const){const e=this.el[key] as HTMLInputElement;e.oninput=()=>{this.prefs[key]=Number(e.value);this.refreshSettings();this.save();};}
   (this.el['controls-mode'] as HTMLSelectElement).onchange=()=>{this.prefs.controlsMode=(this.el['controls-mode'] as HTMLSelectElement).value as Preferences['controlsMode'];this.refreshSettings();this.save();};
-  for(const [id,key,min,max] of [['touch-sensitivity','touchSensitivity',.5,2],['touch-size','touchSize',.8,1.25]] as const){const input=this.el[id] as HTMLInputElement;input.oninput=()=>{const value=Number(input.value);if(!Number.isFinite(value))return;this.prefs[key]=Math.max(min,Math.min(max,value));this.refreshSettings();this.save();};}
+  for(const [id,key,min,max] of [['touch-sensitivity','touchSensitivity',MIN_TOUCH_SENSITIVITY,MAX_TOUCH_SENSITIVITY],['touch-size','touchSize',.8,1.25]] as const){const input=this.el[id] as HTMLInputElement;input.oninput=()=>{const value=Number(input.value);if(!Number.isFinite(value))return;this.prefs[key]=Math.max(min,Math.min(max,value));this.refreshSettings();this.save();};}
   (this.el['aim-mode'] as HTMLSelectElement).onchange=()=>{this.prefs.aim=(this.el['aim-mode'] as HTMLSelectElement).value as 'toggle'|'hold';this.save();};
   (this.el.quality as HTMLSelectElement).onchange=()=>{this.prefs.quality=(this.el.quality as HTMLSelectElement).value;this.save();};
   (this.el.invert as HTMLInputElement).onchange=()=>{this.prefs.invert=(this.el.invert as HTMLInputElement).checked;this.save();};
@@ -202,6 +204,8 @@ export class UI {
   hudClass(this.el['touch-unfollow'],'hidden',!state.following);hudClass(this.el['touch-up'],'hidden',state.following);hudClass(this.el['touch-down'],'hidden',state.following);
   hudClass(this.el['touch-chat'],'hidden',!this.online);hudClass(this.el['touch-aim'],'hidden',state.weapon==='grenade');
   this.el['touch-aim'].setAttribute('aria-pressed',String(state.ads));
+  this.el['touch-crouch'].setAttribute('aria-pressed',String(state.stance==='crouch'));
+  this.el['touch-prone'].setAttribute('aria-pressed',String(state.stance==='prone'));
   // Keep the normal menu button available during killcams, when the sticks hide.
   hudText(this.el['hud-menu'],state.enabled?'Menu':'Esc · Menu');
   this.refreshTouchSettings();

@@ -1,5 +1,7 @@
 export const LOADING_TIPS=[
  'Lean with Q and E to peek around corners with less exposure.',
+ 'Right-click to aim down your rifle’s iron sights.',
+ 'In multiplayer, press T to chat, Enter to send, or Esc to cancel.',
  'Turn hit indicators on or off in Options.',
  'Press Shift to interrupt a reload with a melee attack at close range.',
  'With one or two human players, multiplayer lobbies add two AI soldiers.',

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -141,6 +142,7 @@ type fakeFleet struct {
 	name      string
 	seats     map[string][]types.PlayerSession
 	creates   int
+	seatPages int
 	racedFull string
 }
 
@@ -172,7 +174,28 @@ func (f *fakeFleet) StartGameSessionPlacement(_ context.Context, q *gamelift.Sta
 func (f *fakeFleet) DescribePlayerSessions(_ context.Context, q *gamelift.DescribePlayerSessionsInput, _ ...func(*gamelift.Options)) (*gamelift.DescribePlayerSessionsOutput, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return &gamelift.DescribePlayerSessionsOutput{PlayerSessions: f.seats[*q.GameSessionId]}, nil
+	limit := int(aws.ToInt32(q.Limit))
+	// Match the service constraint so admission tests cannot silently accept a
+	// request that AWS rejects before it can reserve a seat.
+	if limit < 1 || limit > 50 {
+		return nil, &smithy.GenericAPIError{Code: "InvalidRequestException", Message: "Limit must be between 1 and 50"}
+	}
+	start := 0
+	if q.NextToken != nil {
+		var err error
+		start, err = strconv.Atoi(*q.NextToken)
+		if err != nil || start < 0 || start > len(f.seats[*q.GameSessionId]) {
+			return nil, &smithy.GenericAPIError{Code: "InvalidRequestException", Message: "Invalid next token"}
+		}
+	}
+	f.seatPages++
+	seats := f.seats[*q.GameSessionId]
+	end := min(start+limit, len(seats))
+	response := &gamelift.DescribePlayerSessionsOutput{PlayerSessions: seats[start:end]}
+	if end < len(seats) {
+		response.NextToken = aws.String(strconv.Itoa(end))
+	}
+	return response, nil
 }
 func (f *fakeFleet) CreatePlayerSession(_ context.Context, q *gamelift.CreatePlayerSessionInput, _ ...func(*gamelift.Options)) (*gamelift.CreatePlayerSessionOutput, error) {
 	f.mu.Lock()
@@ -278,6 +301,27 @@ func joinForTest(d *directory, target, player string) *httptest.ResponseRecorder
 }
 func londonGame(id string, players int32) types.GameSession {
 	return types.GameSession{GameSessionId: &id, Name: &id, Location: aws.String("eu-west-2"), Status: types.GameSessionStatusActive, CurrentPlayerSessionCount: &players, DnsName: aws.String("lon.amazongamelift.com"), Port: aws.Int32(8080)}
+}
+func TestAdmissionUsesValidPlayerSessionPagesAndReusesLaterReservation(t *testing.T) {
+	for _, target := range []string{"Alpha", "new:lon"} {
+		t.Run(target, func(t *testing.T) {
+			player := strings.Repeat("a", 64)
+			seats := make([]types.PlayerSession, 51)
+			for i := range seats[:50] {
+				seats[i] = types.PlayerSession{PlayerId: &player, Status: types.PlayerSessionStatusCompleted}
+			}
+			seats[50] = types.PlayerSession{PlayerId: &player, PlayerSessionId: aws.String("ps-existing"), GameSessionId: aws.String("Alpha"), Status: types.PlayerSessionStatusReserved, DnsName: aws.String("lon.amazongamelift.com"), Port: aws.Int32(8080)}
+			api := &fakeFleet{games: map[string][]types.GameSession{"eu-west-2": {londonGame("Alpha", 1)}}, seats: map[string][]types.PlayerSession{"Alpha": seats}}
+			d := directoryForTest(t, api)
+			w := joinForTest(d, target, "a")
+			if w.Code != 200 {
+				t.Fatalf("valid paginated admission rejected: HTTP %d", w.Code)
+			}
+			if api.seatPages != 2 || api.creates != 0 || api.starts != 0 {
+				t.Fatalf("later reservation not reused: pages=%d seats=%d games=%d", api.seatPages, api.creates, api.starts)
+			}
+		})
+	}
 }
 func TestDirectoryListsOnlyRealSessionsAndRetainsLocationsAtZero(t *testing.T) {
 	api := &fakeFleet{games: map[string][]types.GameSession{}}

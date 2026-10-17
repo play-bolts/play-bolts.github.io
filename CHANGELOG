@@ -1,3 +1,4 @@
+v1.0.21 - Respect GameLift player-session pagination and placement-ID limits so regional joins can reserve seats.
 v1.0.20 - Integrate the latest managed-startup fix and record the verified soldier-animation backend deployment.
 v1.0.19 - Integrate soldier gait, crouch contact and model fixes with regional-hosting corrections for a synchronized client/server release. Keep managed startup healthy within a bounded deadline while gating game admission, and validate replacement fleets before placement tests.
 v1.0.18 - Fix fleet-wide regional scaling, add resumable placement checks, and document pending managed startup diagnosis.

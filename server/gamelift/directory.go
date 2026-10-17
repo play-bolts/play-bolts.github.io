@@ -207,7 +207,9 @@ func (d *directory) list(w http.ResponseWriter, q *http.Request) {
 func (d *directory) playerSession(ctx context.Context, id, player string) (*types.PlayerSession, error) {
 	var next *string
 	for {
-		existing, err := d.api.DescribePlayerSessions(ctx, &gamelift.DescribePlayerSessionsInput{GameSessionId: &id, NextToken: next, Limit: aws.Int32(100)})
+		// GameLift rejects player-session pages above 50, even though game-session
+		// listing accepts larger pages. Retain pagination for a room's history.
+		existing, err := d.api.DescribePlayerSessions(ctx, &gamelift.DescribePlayerSessionsInput{GameSessionId: &id, NextToken: next, Limit: aws.Int32(50)})
 		if err != nil {
 			return nil, err
 		}

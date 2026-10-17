@@ -111,13 +111,13 @@ def load_state(path, fleet):
             row = state['cities'][key]
             if any(row.get(field) != value for field, value in city.items()):
                 raise QAError(f'{key}: state target has changed')
-            if not re.fullmatch(r'bolts-regional-qa-[a-f0-9]{32}-' + key, row.get('placementId', '')):
+            if not re.fullmatch(r'bolts-qa-[a-f0-9]{32}-' + key, row.get('placementId', '')):
                 raise QAError(f'{key}: invalid saved placement ID')
         return state
     run = uuid.uuid4().hex
     state = {'version': 2, 'fleet': fleet, 'stack': STACK, 'account': ACCOUNT, 'region': REGION,
              'createdAt': int(time.time()), 'cities': {
-                 key: {**city, 'placementId': f'bolts-regional-qa-{run}-{key}', 'status': 'PREPARED'}
+                 key: {**city, 'placementId': f'bolts-qa-{run}-{key}', 'status': 'PREPARED'}
                  for key, city in CITIES.items()}}
     save(path, state)
     return state

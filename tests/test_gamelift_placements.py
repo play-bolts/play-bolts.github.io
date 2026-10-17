@@ -79,6 +79,30 @@ class FakeAWS:
 
 
 class PlacementTests(unittest.TestCase):
+    def test_generated_placement_ids_fit_aws_limit_for_every_city_and_resume(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'state.json'
+            state = qa.load_state(path, FLEET)
+            for key, row in state['cities'].items():
+                with self.subTest(city=key):
+                    self.assertLessEqual(len(row['placementId']), 48)
+                    self.assertRegex(row['placementId'], rf'^bolts-qa-[a-f0-9]{{32}}-{key}$')
+            self.assertEqual(qa.load_state(path, FLEET), state)
+
+    def test_invalid_old_prepared_state_is_preserved_without_rewriting_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'state.json'
+            state = qa.load_state(path, FLEET)
+            for row in state['cities'].values():
+                row['placementId'] = row['placementId'].replace('bolts-qa-', 'bolts-regional-qa-', 1)
+                self.assertEqual(row['status'], 'PREPARED')
+                self.assertNotIn('attemptedAt', row)
+            qa.save(path, state)
+            original = path.read_bytes()
+            with self.assertRaisesRegex(qa.QAError, 'invalid saved placement ID'):
+                qa.load_state(path, FLEET)
+            self.assertEqual(path.read_bytes(), original)
+
     def test_cli_requires_explicit_expected_fleet_before_any_aws_call(self):
         with patch.object(qa, 'AWS') as aws, patch('sys.stderr'):
             with self.assertRaises(SystemExit):

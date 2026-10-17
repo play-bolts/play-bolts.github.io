@@ -1,3 +1,4 @@
+v1.0.10 - Add shuffled loading tips with arrow navigation and a quick fade every 10 seconds; pause while reading and stop on load completion or failure.
 v1.0.9 - Replaces mobile action artwork with consistent Lucide icons
 v1.0.8 - Removes mobile overlay hints and prevents rapid gameplay taps from zooming the page
 v1.0.7 - Raises mobile look sensitivity and adds smaller classic HUD action buttons

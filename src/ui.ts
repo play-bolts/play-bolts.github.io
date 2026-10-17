@@ -6,6 +6,7 @@ import type {Actor,Game,Shot} from './engine';
 import {FEEDBACK_MESSAGE_LIMIT,FEEDBACK_EMAIL_LIMIT,validateFeedback,type Leaderboard,type LeaderboardPeriod} from './community';
 import {DEFAULT_PLAYER_NAME,PLAYER_NAME_PREFERENCE_VERSION,MAX_NAME_RAW_LENGTH,playerNameHTML,sanitizePlayerName,restorePlayerNamePreference} from './names';
 import {HudMarkup,hudClass,hudStyle,hudText} from './hudUpdates';
+import {LoadingTips} from './loadingTips';
 import {locationLabel,type Lobby,type LobbyLocation} from './lobbies';
 import {bindTouchAction} from './touchActions';
 import {bindGameplayZoomGuard} from './touchGestures';
@@ -31,6 +32,7 @@ export class UI {
  private chatKeys=new Set<string>();
  private hudMarkup=new HudMarkup();
  private loadingProgress=0;private loadingCompletion:ReturnType<typeof setTimeout>|undefined;
+ private loadingTips:LoadingTips;
  private touchStateKey='';private touchEnabled=false;
  private mobileGate:'rotate'|'resume'|null=null;private mobileReturnFocus:HTMLElement|null=null;
  multiplayer=()=>{};refreshLobbies=()=>{};joinLobby=(_id:string)=>{};playLocation=(_location:LobbyLocation)=>{};lobbyBack=()=>this.closeLobbies();
@@ -145,8 +147,23 @@ export class UI {
     <label class="setting select-setting">Hit indicators<input id="hit-indicators" type="checkbox"></label>
     <label class="setting select-setting">Invert mouse Y<input id="invert" type="checkbox"></label><button id="fullscreen" class="text-button">Fullscreen</button>
    </div>
-  </div></div><div id="toast" role="status" class="hidden"></div><div id="loading" class="overlay loading-overlay" role="status" aria-live="polite"><div class="loading-content"><div id="loading-label">Loading</div><div id="loading-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="loading-label"><div id="loading-fill"></div></div></div></div><div id="load-error" class="overlay hidden"></div>`;
+  </div></div><div id="toast" role="status" class="hidden"></div><div id="loading" class="overlay loading-overlay" role="region" aria-label="Loading game"><div class="loading-content"><div id="loading-label" role="status">Loading</div><div id="loading-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="loading-label"><div id="loading-fill"></div></div><div id="loading-tips" role="group" aria-label="Loading tips"><button id="loading-tip-previous" type="button" aria-label="Previous tip" aria-controls="loading-tip"><span aria-hidden="true">‹</span></button><p id="loading-tip" aria-live="off" aria-atomic="true"></p><span id="loading-tip-announcement" role="status" aria-live="polite" aria-atomic="true"></span><button id="loading-tip-next" type="button" aria-label="Next tip" aria-controls="loading-tip"><span aria-hidden="true">›</span></button></div></div></div><div id="load-error" class="overlay hidden"></div>`;
   for(const e of document.querySelectorAll<HTMLElement>('[id]'))this.el[e.id]=e;
+  this.loadingTips=new LoadingTips((text,fading,announce)=>{
+   const tip=this.el['loading-tip'];
+   if(!fading){tip.textContent=text;this.el['loading-tip-announcement'].textContent=announce?text:'';}
+   tip.classList.toggle('tip-fading',fading);
+  },()=>matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const tips=this.el['loading-tips'];let tipsHovered=false;
+  const pauseTips=()=>this.loadingTips.setPaused(document.hidden||tipsHovered||tips.contains(document.activeElement));
+  tips.addEventListener('pointerenter',event=>{if(event.pointerType!=='touch'){tipsHovered=true;pauseTips();}});
+  tips.addEventListener('pointerleave',()=>{tipsHovered=false;pauseTips();});
+  tips.addEventListener('focusin',pauseTips);tips.addEventListener('focusout',event=>this.loadingTips.setPaused(document.hidden||tipsHovered||tips.contains(event.relatedTarget as Node|null)));
+  document.addEventListener('visibilitychange',pauseTips);
+  this.el['loading-tip-previous'].onclick=()=>this.loadingTips.move(-1);
+  this.el['loading-tip-next'].onclick=()=>this.loadingTips.move(1);
+  tips.onkeydown=event=>{if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();event.stopPropagation();this.loadingTips.move(event.key==='ArrowLeft'?-1:1);}};
+  pauseTips();
   bindGameplayZoomGuard(this.el.app,this.el['touch-controls']);
   document.querySelectorAll<HTMLButtonElement>('[data-faction]').forEach(b=>b.onclick=()=>{if(!this.ready||this.selectionBusy)return;this.spectatorSelection=false;this.prefs.faction=b.dataset.faction as Faction;this.refreshSelection();this.selectLoadout();});
   (this.el.difficulty as HTMLSelectElement).onchange=()=>{this.prefs.difficulty=(this.el.difficulty as HTMLSelectElement).value as Difficulty;this.save();};
@@ -301,14 +318,18 @@ export class UI {
   this.ready=ready;(this.el.start as HTMLButtonElement).disabled=!ready;(this.el.multiplayer as HTMLButtonElement).disabled=!ready;this.setSelectionBusy(this.selectionBusy);this.refreshBackgroundInert();this.el.menu.setAttribute('aria-busy',String(!ready));
   clearTimeout(this.loadingCompletion);
   if(ready){
+   const tipsFocused=this.el.loading.contains(document.activeElement);this.loadingTips.stop();this.el.loading.inert=true;
+   if(tipsFocused)this.el.start.focus({preventScroll:true});
    // Let the final fill finish before fading, without holding game startup.
    this.setLoadingProgress(1);this.el.loading.classList.add('loading-complete');
    this.loadingCompletion=setTimeout(()=>this.el.loading.classList.add('hidden'),500);
   }else{
    this.loadingProgress=0;this.el['loading-fill'].style.transform='scaleX(0)';this.el['loading-progress'].setAttribute('aria-valuenow','0');
    this.el.loading.classList.remove('hidden','loading-complete');
+   this.el.loading.inert=false;this.loadingTips.start();
   }
  }
+ hideLoading(){clearTimeout(this.loadingCompletion);this.loadingTips.stop();this.el.loading.inert=true;this.el.loading.classList.add('hidden');}
  setMenuStage(stage:typeof this.menuStage,focus=true){this.lobbyOpen=false;this.el['lobby-window'].classList.add('hidden');this.menuStage=stage;this.refreshOnlineCountVisibility();this.el.menu.classList.toggle('intro-active',stage==='main');this.el['selection-window'].classList.toggle('hidden',stage==='main');
   for(const name of ['main','team'])this.el['menu-'+name].classList.toggle('hidden',name!==stage);
   document.querySelectorAll<HTMLElement>('[data-menu-tab]').forEach(b=>{const active=b.dataset.menuTab===stage;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});

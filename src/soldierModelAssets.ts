@@ -4,6 +4,8 @@ import {ConvexHull} from 'three/addons/math/ConvexHull.js';
 import type {Faction} from './config';
 import type {JointChain,SoldierRig} from './soldierAnimation';
 import {makeSoldierHand} from './soldierHands';
+import {assetUrl,registerTieredAsset,trackAssetTextureCopy} from './assetTiers';
+import {rememberLodGeometryClone} from './lodGeometryIdentity';
 
 export const SOLDIER_BONES=['pelvis','spine','neck','upperArmL','lowerArmL','handL','upperArmR','lowerArmR','handR','thighL','calfL','footL','thighR','calfR','footR'] as const;
 export type SoldierBone=typeof SOLDIER_BONES[number];
@@ -101,9 +103,10 @@ function fitBritishTrouserWeights(geometry:THREE.BufferGeometry){
 
 /** Shares the browser parser with offline asset validation. Source materials,
  * garment UVs and continuous four-weight skinning are preserved. */
-export async function loadSoldierModelFromBuffer(buffer:ArrayBuffer,profile:SoldierModelProfile,loader=new GLTFLoader()):Promise<void> {
+export async function loadSoldierModelFromBuffer(buffer:ArrayBuffer,profile:SoldierModelProfile,loader=new GLTFLoader(),assetPath?:string):Promise<void> {
  for(const name of SOLDIER_BONES)if(!profile.bonePositions[name]?.every(Number.isFinite))throw new Error(`Invalid ${profile.faction} soldier bone ${name}`);
  const gltf=await loader.parseAsync(buffer,'');gltf.scene.updateMatrixWorld(true);const surfaces:Surface[]=[];
+ if(assetPath)await registerTieredAsset(assetPath,gltf);
  gltf.scene.traverse(object=>{
   if(!(object instanceof THREE.SkinnedMesh))return;
   const materials=Array.isArray(object.material)?object.material:[object.material];
@@ -152,10 +155,10 @@ export async function loadSoldierModelFromBuffer(buffer:ArrayBuffer,profile:Sold
 export function preloadSoldierModels():Promise<void>{
  if(typeof window==='undefined')return Promise.resolve();
  return loading??=Promise.all((['british','russian','german'] as const).map(async faction=>{
-  const base=`${import.meta.env?.BASE_URL??'/'}assets/imported-soldiers/${faction}`;
-  const [model,profile]=await Promise.all([fetch(`${base}.glb`),fetch(`${base}-profile.json`)]);
+  const path=`imported-soldiers/${faction}.glb`,base=`${import.meta.env?.BASE_URL??'/'}assets/imported-soldiers/${faction}`;
+  const [model,profile]=await Promise.all([fetch(assetUrl(path)),fetch(`${base}-profile.json`)]);
   if(!model.ok||!profile.ok)throw new Error(`Unable to load source ${faction} soldier`);
-  await loadSoldierModelFromBuffer(await model.arrayBuffer(),await profile.json());
+  await loadSoldierModelFromBuffer(await model.arrayBuffer(),await profile.json(),new GLTFLoader(),path);
  })).then(()=>{});
 }
 
@@ -188,12 +191,13 @@ export function makeImportedSoldierBody(faction:Faction,model:THREE.Group):Soldi
  const copyMaterial=(material:THREE.Material)=>{
   let copy=materials.get(material);if(copy)return copy;
   copy=material.clone();materials.set(material,copy);
-  for(const[key,value]of Object.entries(material))if(value instanceof THREE.Texture){let texture=textures.get(value);if(!texture){texture=value.clone();textures.set(value,texture);}(copy as unknown as Record<string,unknown>)[key]=texture;}
+  for(const[key,value]of Object.entries(material))if(value instanceof THREE.Texture){let texture=textures.get(value);if(!texture){texture=value.clone();trackAssetTextureCopy(value,texture);textures.set(value,texture);}(copy as unknown as Record<string,unknown>)[key]=texture;}
   return copy;
  };
  for(const surface of source.surfaces){
   const material=Array.isArray(surface.material)?surface.material.map(copyMaterial):copyMaterial(surface.material);
   const geometry=surface.geometry.clone();
+  rememberLodGeometryClone(surface.geometry,geometry);
   if(hands){
    // Remove the rigid source digits only when articulated replacements are
    // available. Keep the wrist transition strip under their cuffs, so the

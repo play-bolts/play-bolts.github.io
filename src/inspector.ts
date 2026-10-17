@@ -1,5 +1,6 @@
 import {sampleFirstPersonWeaponAnimation} from './firstPersonWeaponAnimation';
 import {preloadModelDetails} from './modelDetails';
+import {preloadSoldierModels} from './soldierModelAssets';
 import {preloadImportedWeapons} from './importedWeapons';
 import {preloadSurfaceAssets} from './materials';
 import {createOutdoorEnvironment} from './outdoorLighting';
@@ -20,7 +21,7 @@ import {applyWeaponAnimation,applyGrenadePose,sampleGrenadeReadyPose,sampleGrena
 import {loadHandAssets} from './hands';
 import {makeMuzzleFlash,updateMuzzleFlash,placeMuzzleFlash,MUZZLE_FLASH_RADII} from './weaponFeedback';
 import {makeImpactEffect,updateImpactEffect} from './impactFeedback';
-await Promise.all([loadHandAssets(),preloadHumanHead(),preloadSoldierMaterials(),preloadModelDetails(),preloadSurfaceAssets(),preloadImportedWeapons()]);
+await Promise.all([loadHandAssets(),preloadHumanHead(),preloadSoldierMaterials(),preloadModelDetails(),preloadSoldierModels(),preloadSurfaceAssets(),preloadImportedWeapons()]);
 
 // Separate development entry point. Vite's default production entry is
 // index.html, so this gallery is neither linked from nor included in the game.

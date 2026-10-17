@@ -9,11 +9,9 @@ import {playCombatSound,playImpactSound} from './combatAudio';
 import {RULES,SPAWNS,clamp} from './config';
 import {playerNameHTML} from './names';
 import {weaponIcon} from './weaponIcons';
-import {preloadModelDetails} from './modelDetails';
+import {preloadSoldierModels} from './soldierModelAssets';
 import {preloadImportedWeapons} from './importedWeapons';
 import {loadHandAssets} from './hands';
-import {preloadHumanHead} from './humanHead';
-import {preloadSoldierMaterials} from './soldier';
 import {preloadSurfaceAssets} from './materials';
 import {NetworkClient,type Lobby} from './network';
 import {readLaunchAction} from './launch';
@@ -23,6 +21,8 @@ import {PointerCapture} from './pointerCapture';
 import {TouchControls} from './touchControls';
 import {yieldLoadingPaint} from './scenePreparation';
 import {startVisitorTracking} from './visitors';
+import {assetTierForQuality,setInitialAssetTier,changeAssetTier} from './assetTiers';
+import {preloadWorldModelLods} from './worldModelLod';
 startVisitorTracking();
 const ui=new UI(),game=new Game(),sound=new Sound(),network=new NetworkClient(game),community=new CommunityClient();
 const touchMedia=matchMedia('(pointer: coarse)');
@@ -35,7 +35,8 @@ DefaultLoadingManager.onProgress=(_url,loaded,total)=>{if(total>0)ui.setLoadingP
 let graphics:WebGLRenderer;
 try{graphics=new WebGLRenderer({antialias:true,powerPreference:'high-performance'});}catch(error){ui.hideLoading();ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].textContent='WebGL 2 required';throw error;}
 try{
- const resources=[loadHandAssets(),preloadHumanHead(),preloadSoldierMaterials(),preloadSurfaceAssets(graphics),preloadModelDetails(),preloadImportedWeapons()];let completed=0;
+ setInitialAssetTier(assetTierForQuality(ui.prefs.quality));
+ const resources=[loadHandAssets(),preloadSoldierModels(),preloadSurfaceAssets(graphics,{includeLegacy:false}),preloadImportedWeapons(),preloadWorldModelLods()];let completed=0;
  await Promise.all(resources.map(resource=>resource.then(()=>ui.setLoadingProgress(.45*++completed/resources.length))));
 }catch(error){ui.hideLoading();ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].innerHTML='<div class="dialog"><h2>Unable to load models</h2><button onclick="location.reload()">Retry</button></div>';throw error;}finally{DefaultLoadingManager.onProgress=()=>{};}
 let view:View;
@@ -51,6 +52,7 @@ const touch=new TouchControls({move:ui.el['touch-move'],fire:ui.el['touch-fire']
  reset:()=>{touchTap=false;jump=false;network.clearInput();if(game.player)game.player.ads=false;},
 });
 let appliedQuality:string|undefined;
+let requestedTextureQuality=ui.prefs.quality,textureRequest=0;
 const resolution=new AdaptiveResolution();
 let qaLean:number|null=null,joining=false,equipRifle=false,onlineEntered=false,lobbyFetchBusy=false,lobbyFetchTime=0;
 let lobbyRequest=0,onlineSelection=false;let requestedLobby:string|undefined;let lobbyRows:Lobby[]=[];
@@ -69,7 +71,13 @@ function syncSettings(){
  const enabled=wantsTouch();if(enabled!==touchEnabled){clearTouchInput();touchEnabled=enabled;mobileResumeRequired=false;releaseMouse();}
  touch.setSensitivity(ui.prefs.touchSensitivity);
  game.difficulty=ui.prefs.difficulty;sound.setVolume(ui.prefs.volume);const quality=`${ui.prefs.quality}:${touchEnabled}`;
- if(appliedQuality!==quality){view.setQuality(ui.prefs.quality,touchEnabled);resolution.setBase(view.renderer.getPixelRatio(),touchEnabled?.75:1.5);appliedQuality=quality;}
+ if(appliedQuality!==quality){view.setQuality(ui.prefs.quality,touchEnabled);resolution.setBase(view.renderer.getPixelRatio(),.75);appliedQuality=quality;}
+ if(requestedTextureQuality!==ui.prefs.quality){
+  requestedTextureQuality=ui.prefs.quality;const request=++textureRequest;ui.el['quality-status'].textContent='Loading texture quality…';
+  void changeAssetTier(assetTierForQuality(ui.prefs.quality)).then(()=>{if(request===textureRequest)ui.el['quality-status'].textContent='';}).catch(()=>{
+   if(request===textureRequest)ui.el['quality-status'].textContent='Texture quality could not be loaded. Select a quality to try again.';
+  });
+ }
  game.setPlayerName(ui.prefs.playerName);network.setName(ui.prefs.playerName);if(menu)view.setFaction(ui.prefs.faction);updateTouchViewport();
 }
 ui.settingsChanged=syncSettings;syncSettings();
@@ -125,6 +133,7 @@ function updateTouchViewport(){
 }
 function landscapeReady(){updateTouchViewport();return !touchEnabled||!mobilePortrait;}
 window.addEventListener('resize',updateTouchViewport);
+window.addEventListener('resize',()=>{appliedQuality=undefined;syncSettings();});
 window.addEventListener('orientationchange',()=>{clearTouchInput();updateTouchViewport();});
 touchMedia.addEventListener('change',syncSettings);
 ui.mobileResume=resume;ui.mobileBack=leave;
@@ -261,10 +270,12 @@ function processEvents(){
  }
  game.events=[];
 }
+let previousCpuMs=0;
 function frame(now:number){
+ const cpuStart=performance.now();
  const frameMs=now-previous,dt=Math.min(frameMs/1000,.075);previous=now;
  syncTouchState();
- const ratio=resolution.sample(frameMs,!document.hidden&&!menu&&!ui.selectionOpen&&!ui.modalOpen&&game.state==='playing');if(ratio!==null){view.renderer.setPixelRatio(ratio);view.resize();}
+ const ratio=resolution.sample(frameMs,!document.hidden&&!menu&&!ui.selectionOpen&&!ui.modalOpen&&game.state==='playing',previousCpuMs);if(ratio!==null){view.renderer.setPixelRatio(ratio);view.resize();}
  if(!menu){
   const movement=touch.movement;
   const input:Input={forward:clamp(Number(keys.has('KeyW'))-Number(keys.has('KeyS'))+movement.forward,-1,1),right:clamp(Number(keys.has('KeyD'))-Number(keys.has('KeyA'))+movement.right,-1,1),jump,walk:keys.has('AltLeft')||keys.has('AltRight'),lean:import.meta.env.DEV&&qaLean!==null?qaLean:Number(keys.has('KeyE'))-Number(keys.has('KeyQ'))};
@@ -292,7 +303,7 @@ function frame(now:number){
    if(action==='singleplayer')start();else if(action==='multiplayer')ui.multiplayer();else ui.openModal(action==='options'?'settings':'controls');
   }
  }
- requestAnimationFrame(frame);
+ previousCpuMs=performance.now()-cpuStart;requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 // Development-only inspection surface for deterministic browser QA; Vite removes it from production.

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {preloadSoldierModels} from './soldierModelAssets';
 
 const meshes=new Map<string,THREE.BufferGeometry>();
 let loading:Promise<void>|undefined;
@@ -24,7 +23,7 @@ export async function loadModelDetailsFromBuffer(buffer:ArrayBuffer):Promise<voi
 /** Geometry-only Blender details reuse loaded walnut, steel and cloth maps. */
 export function preloadModelDetails():Promise<void> {
   if(typeof window==='undefined')return Promise.resolve();
-  return loading??=Promise.all([new GLTFLoader().loadAsync(`${import.meta.env?.BASE_URL??'/'}assets/details/model-details.glb`).then(gltf=>registerDetails(gltf.scene)),preloadSoldierModels()]).then(()=>{});
+  return loading??=new GLTFLoader().loadAsync(`${import.meta.env?.BASE_URL??'/'}assets/details/model-details.glb`).then(gltf=>registerDetails(gltf.scene));
 }
 
 /** Independent geometry copies keep per-actor batching/disposal safe. */

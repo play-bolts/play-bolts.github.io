@@ -143,7 +143,8 @@ export class UI {
     <label class="setting">Mouse sensitivity <output id="sensitivity-value">1.0</output><input id="sensitivity" type="range" min="0.2" max="2.5" step="0.1" value="1"></label>
     <label class="setting">Volume <output id="volume-value">60%</output><input id="volume" type="range" min="0" max="1" step="0.05" value=".6"></label>
     <label class="setting select-setting">Iron sights<select id="aim-mode"><option value="toggle">Toggle</option><option value="hold">Hold</option></select></label>
-    <label class="setting select-setting">Visual quality<select id="quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+    <label class="setting select-setting">Visual quality<select id="quality" aria-describedby="quality-help quality-status"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+    <small id="quality-help">Texture, shadow and distant model detail. Resolution adapts during slow play.</small><p id="quality-status" role="status"></p>
     <label class="setting select-setting">Hit indicators<input id="hit-indicators" type="checkbox"></label>
     <label class="setting select-setting">Invert mouse Y<input id="invert" type="checkbox"></label><button id="fullscreen" class="text-button">Fullscreen</button>
    </div>

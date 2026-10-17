@@ -71,8 +71,9 @@ function getSource(kind: SurfaceKind, map: MapKind) {
 }
 
 let preload: Promise<void> | undefined;
-/** Resolve once local textures have decoded. An optional renderer enables KTX2. */
-export async function preloadSurfaceAssets(renderer?: THREE.WebGLRenderer) {
+/** Imported production rifles do not use legacy steel. Procedural tools keep
+ * the complete default set; a later caller can still request missing maps. */
+export async function preloadSurfaceAssets(renderer?: THREE.WebGLRenderer, options: {includeLegacy?: boolean} = {}) {
   if (!canLoadTextures()) return;
   preload ??= (async () => {
     // Materials are normally created after preload. The no-renderer inspector
@@ -86,10 +87,10 @@ export async function preloadSurfaceAssets(renderer?: THREE.WebGLRenderer) {
         }
       } catch { console.warn('Compressed texture loader unavailable; using original surfaces.'); }
     }
-    await Promise.all((Object.keys(defaults) as SurfaceKind[]).flatMap(kind =>
-      mapsBySurface[kind].map(map => getSource(kind, map).ready)));
   })();
   await preload;
+  await Promise.all((Object.keys(defaults) as SurfaceKind[]).filter(kind => options.includeLegacy !== false || kind !== 'steel').flatMap(kind =>
+    mapsBySurface[kind].map(map => getSource(kind, map).ready)));
 }
 
 function surfaceTexture(kind: SurfaceKind, map: MapKind, options: SurfaceOptions) {

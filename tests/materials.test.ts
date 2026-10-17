@@ -79,6 +79,9 @@ test('PBR maps share decoded sources, align AO on UV0 and dispose independent ma
   });
   const a=makeSurfaceMaterial('stone',{repeat:[2,1],offset:[.2,.4],rotation:.3,aoIntensity:.8});
   const initialVersion=a.aoMap!.version;
+  await preloadSurfaceAssets(undefined,{includeLegacy:false});
+  assert.ok(requests.every(url=>!url.includes('/steel/')),'production preloading skips legacy procedural steel');
+  assert.equal(requests.length,maps.filter(map=>!map.path.startsWith('steel/')).length);
   await preloadSurfaceAssets();
   assert.ok(a.aoMap!.version>initialVersion,'views created before load are marked for upload when it finishes');
   assert.equal(requests.length,maps.length);

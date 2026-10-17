@@ -6,13 +6,15 @@ import {loadHandAssets} from './hands';
 import {preloadHumanHead} from './humanHead';
 import {preloadSoldierMaterials} from './soldier';
 import {preloadModelDetails} from './modelDetails';
+import {preloadSoldierModels} from './soldierModelAssets';
 import {preloadImportedWeapons} from './importedWeapons';
 import {preloadSurfaceAssets} from './materials';
+import {preloadWorldModelLods} from './worldModelLod';
 
 // Independent development entry: never imported by the shipped game.
 const status=document.querySelector<HTMLElement>('#status')!,results=document.querySelector<HTMLElement>('#results')!;
 const compressed=new URLSearchParams(location.search).get('compressed')==='1',graphics=compressed?new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'}):undefined;
-await Promise.all([loadHandAssets(),preloadHumanHead(),preloadSoldierMaterials(),preloadModelDetails(),preloadSurfaceAssets(graphics),preloadImportedWeapons()]);
+await Promise.all([loadHandAssets(),preloadHumanHead(),preloadSoldierMaterials(),preloadModelDetails(),preloadSoldierModels(),preloadSurfaceAssets(graphics),preloadImportedWeapons(),preloadWorldModelLods()]);
 const game=new Game(),view=new View(document.querySelector<HTMLElement>('#world')!,graphics);
 await view.prepare();
 const compressedMaps=new Set<string>();view.scene.traverse(object=>{if(object instanceof THREE.Mesh)for(const material of Array.isArray(object.material)?object.material:[object.material])for(const value of Object.values(material))if(value instanceof THREE.CompressedTexture)compressedMaps.add(value.name);});

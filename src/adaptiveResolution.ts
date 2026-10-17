@@ -2,12 +2,15 @@
 export class AdaptiveResolution {
  private base=1;private current=1;private minimum=1;private samples:number[]=[];private elapsed=0;private healthy=0;
  get ratio(){return this.current;}
- setBase(ratio:number,minimum=1.5){this.base=this.current=Math.max(.1,Math.min(1.75,ratio));this.minimum=Math.max(.1,Math.min(this.base,minimum));this.resetWindow();this.healthy=0;}
+ setBase(ratio:number,minimum=.75){this.base=this.current=Math.max(.1,Math.min(1.75,ratio));this.minimum=Math.max(.1,Math.min(this.base,minimum));this.resetWindow();this.healthy=0;}
  private resetWindow(){this.samples.length=0;this.elapsed=0;}
- sample(frameMs:number,active:boolean):number|null {
+ sample(frameMs:number,active:boolean,cpuMs=0):number|null {
   if(!active){this.resetWindow();this.healthy=0;if(this.current!==this.base){this.current=this.base;return this.current;}return null;}
   const floor=this.minimum;
   if(floor===this.base||!Number.isFinite(frameMs)||frameMs<=0||frameMs>250)return null;
+  // Pixel reduction cannot cure a frame spent mostly in game/driver CPU work.
+  // Skip those windows; no expensive synchronous GPU query is introduced.
+  if(cpuMs>=Math.max(16,frameMs*.7)){this.resetWindow();this.healthy=0;return null;}
   this.samples.push(frameMs);this.elapsed+=frameMs;
   if(this.elapsed<2500||this.samples.length<45)return null;
   const sorted=this.samples.sort((a,b)=>a-b),p80=sorted[Math.floor(sorted.length*.8)],elapsed=this.elapsed;this.resetWindow();

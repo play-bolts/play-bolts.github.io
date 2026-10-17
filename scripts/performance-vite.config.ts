@@ -12,7 +12,7 @@ export default defineConfig({server:{host:'127.0.0.1',hmr:false},plugins:[{
    if(req.method!=='POST'||req.headers.origin!==`http://${req.headers.host}`){res.statusCode=403;res.end();return;}
    try{
     let body='';for await(const chunk of req){body+=chunk;if(body.length>5_000_000)throw new Error('Report too large');}
-    const parsed=JSON.parse(body),directory=resolve('temp/performance-audit');await mkdir(directory,{recursive:true});
+    const parsed=JSON.parse(body),directory=resolve(process.env.BOLTS_PERFORMANCE_OUTPUT==='implementation'?'temp/performance-implementation':'temp/performance-audit');await mkdir(directory,{recursive:true});
     await writeFile(resolve(directory,`browser-${match[1]}.json`),JSON.stringify(parsed,null,2)+'\n');res.statusCode=204;res.end();
    }catch(error){res.statusCode=400;res.end(String(error));}
   });

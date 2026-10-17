@@ -1,18 +1,26 @@
 Bolts performance audit tools
 
 These diagnostic entries and prototypes are outside src/ and are not imported
-by the production application. They do not implement the proposed optimizations.
+by the production application. They exercise the current production code.
 Run commands from the repository root. Keep the browser foreground, close other
 active games, and run CPU probes only after browser measurements have finished.
 
 Browser server (no automatic reloads; results persist after each scenario):
   npm run dev -- --config scripts/performance-vite.config.ts --port 5184 --strictPort
 
+Preserve the original audit evidence when measuring the implemented changes:
+  BOLTS_PERFORMANCE_OUTPUT=implementation npm run dev -- --config scripts/performance-vite.config.ts --port 5184 --strictPort
+This writes browser results to temp/performance-implementation/ instead.
+
 Open the following URLs one at a time in the same browser tab:
   http://127.0.0.1:5184/scripts/performance-device-profile.html
     Run matrix, then Repeat focused comparisons. 24 runs total, about 5 minutes.
     Renderer/effects only; three-second warmup and nine-second sample per run.
     Phone-sized buffers are pixel workloads, not actual phone emulation.
+    Implementation comparisons runs six interleaved controls/current presets.
+    Controls restore full model indices, original texture tier and 2048 world
+    shadows. The current Medium/Low rows use real texture switches and LOD.
+    Add ?quality=medium or ?quality=low to verify direct startup variant URLs.
   http://127.0.0.1:5184/scripts/performance-session-profile.html?visits=0
     Run 30-second local session. Actual main loop, HUD, audio and offline AI.
     Five-second warmup. Scripted player, fixed settings, spawn protection reset
@@ -35,6 +43,7 @@ CPU and source probes (Node; these are not mobile or end-to-end FPS estimates):
   node --import tsx scripts/performance-cpu-audit.ts --profile
   node --import tsx scripts/performance-cpu-audit.ts --instrument
   node --import tsx scripts/performance-navigation-prototype.ts
+  node --import tsx scripts/performance-navigation-production.ts
   node --import tsx scripts/performance-animation-audit.ts
   node --import tsx scripts/performance-audio-synthesis.ts
   python3 scripts/performance-asset-audit.py
@@ -43,6 +52,19 @@ The asset script requires Pillow. The Node animation probe stubs image textures;
 the browser animation entry decodes the real images. Navigation's test-only
 prototype verifies 528 exact path comparisons before timing. Shared scratch
 arrays are not a production-ready concurrency/lifetime design.
+The production comparison uses the preserved original implementation and the
+new reentrant indexed heap, writing only temp/performance-implementation/.
+
+Regenerate shipped visual variants after modifying source meshes or textures:
+  python3 scripts/build-asset-texture-tiers.py
+  node --import tsx scripts/build-world-model-lods.ts
+Texture variants preserve all non-image GLB bytes. LODs preserve original
+vertex attributes and simplify only material-group indices, with skin-weight,
+normal and UV error constraints. The offline simplifier is pinned at 0.22.0;
+its WASM is not part of the production browser bundle. Source identity and
+fingerprints reject stale LOD bakes. Run asset, LOD and pose regression tests
+after regeneration, then visually inspect all factions at tier transitions.
+Original model licenses and provenance apply to the generated derivatives.
 
 Generate the detailed report from available measurements:
   python3 scripts/performance-report.py

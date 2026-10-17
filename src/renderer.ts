@@ -20,10 +20,12 @@ import {sampleFirstPersonMotion} from './firstPersonMotion';
 import {keepADSBoltInFront} from './weaponPresentation';
 import {LEAN_CAMERA_RADIUS,leanEye} from './lean';
 import {VIEWMODEL_HIP_POSITION,VIEWMODEL_GRENADE_POSITION} from './viewmodelArms';
+import {graphicsBudget,qualityPixelRatio} from './graphicsQuality';
+import {prepareWorldModelLods,setWorldModelLod,updateWorldModelLod,disposeWorldModelLods} from './worldModelLod';
 const V=new THREE.Vector3();
 function rand(seed:number){return()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};}
 const mat=(color:number,roughness=.85)=>new THREE.MeshStandardMaterial({color,roughness});
-function disposeModel(group:THREE.Object3D){const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>(),textures=new Set<THREE.Texture>(),skeletons=new Set<THREE.Skeleton>();group.traverse(o=>{if(o instanceof THREE.SkinnedMesh)skeletons.add(o.skeleton);if(o instanceof THREE.InstancedMesh)o.dispose();if(o instanceof THREE.Mesh){geometries.add(o.geometry);for(const material of Array.isArray(o.material)?o.material:[o.material]){materials.add(material);for(const value of Object.values(material))if(value instanceof THREE.Texture)textures.add(value);}}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());skeletons.forEach(s=>s.dispose());}
+function disposeModel(group:THREE.Object3D){if(group instanceof THREE.Group)disposeWorldModelLods(group);const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>(),textures=new Set<THREE.Texture>(),skeletons=new Set<THREE.Skeleton>();group.traverse(o=>{if(o instanceof THREE.SkinnedMesh)skeletons.add(o.skeleton);if(o instanceof THREE.InstancedMesh)o.dispose();if(o instanceof THREE.Mesh){geometries.add(o.geometry);for(const material of Array.isArray(o.material)?o.material:[o.material]){materials.add(material);for(const value of Object.values(material))if(value instanceof THREE.Texture)textures.add(value);}}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());skeletons.forEach(s=>s.dispose());}
 function box(parent:THREE.Object3D,w:number,h:number,d:number,x:number,y:number,z:number,material:THREE.Material,tile?:number){const geometry=new THREE.BoxGeometry(w,h,d);if(tile){const uv=geometry.getAttribute('uv'),faces=[[d,h],[d,h],[w,d],[w,d],[w,h],[w,h]];for(let face=0;face<6;face++)for(let i=0;i<4;i++){const index=face*4+i;uv.setXY(index,uv.getX(index)*faces[face][0]/tile,uv.getY(index)*faces[face][1]/tile);}uv.needsUpdate=true;}const mesh=new THREE.Mesh(geometry,material);mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData.arenaStaticBatch=true;parent.add(mesh);return mesh;}
 export class View {
  grenade:THREE.Group|null=null;
@@ -36,7 +38,7 @@ export class View {
  arenaBatches={before:0,after:0};
  private preparation?:Promise<void>;
  private readonly firstPersonModels=new Map<Faction,{rifle:THREE.Group;grenade:THREE.Group}>();
- private readonly soldierPool=new ModelPool<Faction,THREE.Group>(makeSoldier,model=>{
+ private readonly soldierPool=new ModelPool<Faction,THREE.Group>(faction=>{const model=makeSoldier(faction);prepareWorldModelLods(model,faction);return model;},model=>{
   delete model.userData.soldierState;delete model.userData.animationPose;delete model.userData.animationStage;delete model.userData.lastShadowTime;
   model.visible=false;model.position.set(0,0,0);model.rotation.set(0,0,0);model.scale.set(1,1,1);
  },disposeModel);
@@ -66,7 +68,15 @@ export class View {
   this.setFaction('british');this.resize();window.addEventListener('resize',()=>this.resize());
   this.renderer.domElement.addEventListener('webglcontextrestored',()=>{this.worldSun.shadow.needsUpdate=this.weaponSun.shadow.needsUpdate=true;});
  }
- setQuality(q:string,touch=false){this.quality=q;this.renderer.setPixelRatio(q==='high'?Math.min(devicePixelRatio,touch?1:1.75):1);this.renderer.shadowMap.enabled=q!=='low';const size=q==='high'?2048:1024;if(this.weaponSun.shadow.mapSize.x!==size){this.weaponSun.shadow.mapSize.set(size,size);this.weaponSun.shadow.map?.dispose();this.weaponSun.shadow.map=null;}this.worldSun.shadow.needsUpdate=true;this.resize();}
+ setQuality(q:string,touch=false){
+  this.quality=q;this.renderer.setPixelRatio(qualityPixelRatio(q,devicePixelRatio,innerWidth,innerHeight,touch));this.renderer.shadowMap.enabled=q!=='low';
+  const budget=graphicsBudget(q);
+  for(const [light,size]of [[this.worldSun,budget.worldShadow],[this.weaponSun,budget.weaponShadow]] as const){
+   if(light.shadow.mapSize.x!==size){light.shadow.mapSize.set(size,size);light.shadow.map?.dispose();light.shadow.map=null;light.shadow.mapPass?.dispose();light.shadow.mapPass=null;}
+   light.shadow.needsUpdate=true;
+  }
+  this.resize();
+ }
  private updateCameraProjection(){
   const tangent=Math.tan(this.camera.fov*Math.PI/360);
   this.camera.near=Math.min(.05,.95*LEAN_CAMERA_RADIUS/Math.sqrt(1+tangent*tangent*(1+this.camera.aspect*this.camera.aspect)));
@@ -140,11 +150,15 @@ export class View {
    const dust=this.burstPool().acquireImpact(shot),blood=this.burstPool().acquireImpact({...shot,hit:1});
    updateImpactEffect(dust,.025);updateImpactEffect(blood,.025);warmEffects.push(muzzle,dust,blood);this.scene.add(...warmEffects);
    onProgress?.(.25);
-   await prepareScenes(this.renderer,[{scene:this.scene,camera:this.camera},{scene:this.weaponScene,camera:this.weaponCamera}],value=>onProgress?.(.25+.75*value));
+   const scenes=[{scene:this.scene,camera:this.camera},{scene:this.weaponScene,camera:this.weaponCamera}];
+   await prepareScenes(this.renderer,scenes,value=>onProgress?.(.25+.55*value));
+   // Upload each retained index buffer before a distant opponent first needs
+   // it. All LODs share the original skin attributes and shader programs.
+   for(const level of [1,2]){for(const model of reserves)setWorldModelLod(model,level);await prepareScenes(this.renderer,[scenes[0]],value=>onProgress?.(.8+.1*(level-1)+.1*value));}
   }finally{
    for(const effect of warmEffects)this.burstPool().release(effect);
    for(const object of attached)object.removeFromParent();
-   for(const model of reserves){model.removeFromParent();this.soldierPool.release(model);}
+   for(const model of reserves){setWorldModelLod(model,0);model.removeFromParent();this.soldierPool.release(model);}
    this.worldSun.shadow.needsUpdate=this.weaponSun.shadow.needsUpdate=true;
   }
  }
@@ -245,6 +259,7 @@ export class View {
    const visible=!inMenu&&!!a&&!a.spectator&&i!==viewedId&&soldierContributesToView(this.viewFrustum,a,this.renderer.shadowMap.enabled?this.shadowDirection:null);
    if(model.visible!==visible)this.worldSun.shadow.needsUpdate=true;
    if(a){
+    if(visible&&updateWorldModelLod(model,Math.hypot(a.x-this.camera.position.x,a.y+1-this.camera.position.y,a.z-this.camera.position.z),this.camera.fov,this.renderer.domElement.height,this.quality))this.worldSun.shadow.needsUpdate=true;
     updateSoldier(model,a,dt,time,visible);
     if(visible&&model.userData.lastShadowTime!==time)this.worldSun.shadow.needsUpdate=true;
     if(visible)model.userData.lastShadowTime=time;

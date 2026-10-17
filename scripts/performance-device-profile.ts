@@ -8,11 +8,11 @@ import {View} from '../src/renderer';
 import {Game,createActor,type Shot} from '../src/engine';
 import {FACTIONS,WEAPONS} from '../src/config';
 import {loadHandAssets} from '../src/hands';
-import {preloadHumanHead} from '../src/humanHead';
-import {preloadSoldierMaterials} from '../src/soldier';
-import {preloadModelDetails} from '../src/modelDetails';
+import {preloadSoldierModels} from '../src/soldierModelAssets';
 import {preloadImportedWeapons} from '../src/importedWeapons';
 import {preloadSurfaceAssets} from '../src/materials';
+import {preloadWorldModelLods,setWorldModelLod} from '../src/worldModelLod';
+import {assetTierForQuality,setInitialAssetTier,changeAssetTier} from '../src/assetTiers';
 
 const progress=document.querySelector<HTMLElement>('#progress')!;
 const output=document.querySelector<HTMLElement>('#results')!;
@@ -23,7 +23,8 @@ const longTasks:{start:number;duration:number}[]=[];
 try{new PerformanceObserver(list=>{for(const entry of list.getEntries())longTasks.push({start:entry.startTime,duration:entry.duration});}).observe({type:'longtask',buffered:true});}catch{}
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
 startup.contextMs=performance.now()-boot;
-await Promise.all(Object.entries({hands:loadHandAssets,head:preloadHumanHead,soldierMaterials:preloadSoldierMaterials,details:preloadModelDetails,weapons:preloadImportedWeapons,surfaces:()=>preloadSurfaceAssets(renderer)}).map(async([name,load])=>{const start=performance.now();await load();startup[name+'Ms']=performance.now()-start;}));
+setInitialAssetTier(assetTierForQuality(new URLSearchParams(location.search).get('quality')??'high'));
+await Promise.all(Object.entries({hands:loadHandAssets,lods:preloadWorldModelLods,soldiers:preloadSoldierModels,weapons:preloadImportedWeapons,surfaces:()=>preloadSurfaceAssets(renderer,{includeLegacy:false})}).map(async([name,load])=>{const start=performance.now();await load();startup[name+'Ms']=performance.now()-start;}));
 startup.assetsReadyMs=performance.now()-boot;
 const constructionStart=performance.now();
 const view=new View(document.querySelector<HTMLElement>('#world')!,renderer);
@@ -39,7 +40,7 @@ const debug=gl.getExtension('WEBGL_debug_renderer_info');
 const stats=(values:number[])=>{const sorted=values.slice().sort((a,b)=>a-b);const at=(p:number)=>sorted[Math.min(sorted.length-1,Math.floor(sorted.length*p))]??0;return{n:values.length,mean:values.reduce((a,b)=>a+b,0)/Math.max(1,values.length),p50:at(.5),p95:at(.95),p99:at(.99),max:sorted.at(-1)??0};};
 const resources=performance.getEntriesByType('resource').map(entry=>{const r=entry as PerformanceResourceTiming;return{path:new URL(r.name).pathname,duration:r.duration,transferBytes:r.transferSize,encodedBytes:r.encodedBodySize,decodedBytes:r.decodedBodySize};});
 const report:any={method:'Deterministic six-actor renderer/effects only. 3s warmup + 9s measured per scenario. Pixel workloads, not device emulation. CPU times include submission, not GPU completion. Timer queries asynchronous. Cold startup is loopback development build with unknown browser disk-cache state. Effects, poses and camera repeat with identical elapsed-time script.',createdAt:new Date().toISOString(),environment:{userAgent:navigator.userAgent,hardwareConcurrency:navigator.hardwareConcurrency,deviceMemory:(navigator as any).deviceMemory,dpr:devicePixelRatio,renderer:debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),vendor:debug?gl.getParameter(debug.UNMASKED_VENDOR_WEBGL):gl.getParameter(gl.VENDOR),antialias:gl.getContextAttributes()?.antialias,gpuTimers:!!timer,extensions:gl.getSupportedExtensions()},startup,resources,startupLongTasks:longTasks.slice(),runs:[]};
-type Scenario={name:string;width:number;height:number;ratio:number;quality:'high'|'medium'|'low';worldSize?:number;worldShadow?:boolean;weaponShadow?:boolean;freezeWorld?:boolean;hideSoldiers?:boolean};
+type Scenario={name:string;width:number;height:number;ratio:number;quality:'high'|'medium'|'low';worldSize?:number;worldShadow?:boolean;weaponShadow?:boolean;freezeWorld?:boolean;hideSoldiers?:boolean;fullDetail?:boolean;textureQuality?:'high'|'medium'|'low'};
 const desktop={width:1280,height:720,ratio:1,quality:'medium' as const};
 const scenarios:Scenario[]=[
  {name:'desktop-high-1.75',...desktop,quality:'high',ratio:1.75},
@@ -64,7 +65,7 @@ function configure(s:Scenario){
  view.setQuality(s.quality);renderer.setPixelRatio(s.ratio);renderer.setSize(s.width,s.height,false);
  view.camera.aspect=view.weaponCamera.aspect=s.width/s.height;view.camera.updateProjectionMatrix();view.weaponCamera.updateProjectionMatrix();
  view.worldSun.castShadow=s.worldShadow!==false;view.weaponSun.castShadow=s.weaponShadow!==false;
- setShadowSize(view.worldSun,s.worldSize??2048);setShadowSize(view.weaponSun,s.quality==='high'?2048:1024);
+ if(s.worldSize)setShadowSize(view.worldSun,s.worldSize);
  for(const a of game.actors)a.spectator=!!s.hideSoldiers&&a.id!==0;
  view.clearEffects();
 }
@@ -78,12 +79,14 @@ function sample(t:number){
 }
 let busy=false;
 async function run(s:Scenario){
+ await changeAssetTier(s.textureQuality??s.quality);
  configure(s);let start=0,previous=0,lastShot=-1,valid=!document.hidden,frameWorld=0,frameWeapon=0;
  const samples:Record<string,number[]>={frame:[],cpu:[],presentationCpu:[],worldSubmissionCpu:[],weaponSubmissionCpu:[],gpu:[],drawCalls:[],triangles:[]};
  const pending:WebGLQuery[]=[];let disjoints=0;
  const visibility=()=>{if(document.hidden)valid=false;},resize=()=>{valid=false;};document.addEventListener('visibilitychange',visibility);window.addEventListener('resize',resize);
  const originalRender=renderer.render;
  renderer.render=function(scene,camera){
+  if(scene===view.scene&&s.fullDetail)for(const model of view.soldiers)setWorldModelLod(model,0);
   if(scene===view.scene&&s.freezeWorld&&start&&performance.now()-start>2500)view.worldSun.shadow.needsUpdate=false;
   const before=performance.now();originalRender.call(this,scene,camera);const elapsed=performance.now()-before;
   if(scene===view.scene)frameWorld+=elapsed;else frameWeapon+=elapsed;
@@ -112,11 +115,19 @@ async function run(s:Scenario){
 }
 function publish(){
  output.textContent=JSON.stringify(report,null,2);
- void fetch('/__performance-results/renderer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)}).catch(()=>{});
+ if(report.runs.length)void fetch('/__performance-results/renderer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)}).catch(()=>{});
  summaryOutput.textContent=report.runs.map((r:any)=>`${r.valid?'OK':'INVALID'} ${r.scenario.name.padEnd(40)} frame p95 ${r.metrics.frame.p95.toFixed(1)} ms | CPU ${r.metrics.cpu.mean.toFixed(2)} ms | GPU ${r.metrics.gpu.n?r.metrics.gpu.mean.toFixed(2)+' ms':'unavailable'} | draws ${r.metrics.drawCalls.mean.toFixed(0)} | tris ${r.metrics.triangles.mean.toFixed(0)}`).join('\n');
 }
 async function matrix(selected:Scenario[]){if(busy)return;busy=true;buttons.forEach(b=>b.disabled=true);try{for(const s of selected)await run(s);progress.textContent='Complete';}catch(error){progress.textContent=String(error);throw error;}finally{busy=false;buttons.forEach(b=>b.disabled=false);}}
 document.querySelector<HTMLButtonElement>('#run')!.onclick=()=>void matrix(scenarios);
 document.querySelector<HTMLButtonElement>('#repeat')!.onclick=()=>void matrix([scenarios[4],scenarios[3],scenarios[8],scenarios[3],scenarios[6],scenarios[3],scenarios[7],scenarios[3]]);
+document.querySelector<HTMLButtonElement>('#implementation')!.onclick=()=>void matrix([
+ {...desktop,name:'control-full-detail-world2048',worldSize:2048,fullDetail:true,textureQuality:'high'},
+ {...desktop,name:'implemented-medium'},
+ {...desktop,name:'control-full-detail-world2048-repeat',worldSize:2048,fullDetail:true,textureQuality:'high'},
+ {...desktop,name:'implemented-medium-repeat'},
+ {...desktop,name:'implemented-low',quality:'low'},
+ {...desktop,name:'implemented-medium-final'},
+]);
 document.querySelector<HTMLButtonElement>('#download')!.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='bolts-device-profile.json';a.click();URL.revokeObjectURL(url);};
 configure(scenarios[0]);sample(0);view.render(game,1/60,false,true);publish();progress.textContent=`Ready · ${report.environment.renderer}`;buttons.forEach(b=>b.disabled=false);

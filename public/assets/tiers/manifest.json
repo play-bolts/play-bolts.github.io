@@ -1,0 +1,2839 @@
+{
+  "schema": 1,
+  "generator": "scripts/build-asset-texture-tiers.py",
+  "note": "Image-only derivatives; original model licenses/provenance remain alongside high-tier GLBs. RGBA8 mip totals are estimates, not measured GPU memory.",
+  "limits": {
+    "low": {
+      "soldier": [
+        256,
+        128
+      ],
+      "weapon": [
+        512,
+        256
+      ]
+    },
+    "medium": {
+      "soldier": [
+        512,
+        256
+      ],
+      "weapon": [
+        1024,
+        512
+      ]
+    }
+  },
+  "assets": [
+    {
+      "path": "imported-soldiers/british.glb",
+      "tier": "low",
+      "sourceBytes": 8037000,
+      "bytes": 3738516,
+      "sourceSha256": "6c0cb1c22e392527b759631b3ce2932b93e9a0a6341840778c71fa2a8846246b",
+      "sha256": "6f894d101b6345ff675f7d358b3667e66168e2eed6bcee1302c7d8df2faaf9e4",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 15019,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 10209,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 20604,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 3,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 27312,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 4,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 18120,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 5,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 8007,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 6,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 18422,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 7,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 12332,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 8,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 10789,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 9,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 28135,
+          "mimeType": "image/png",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 10,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 14953,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 11,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 10735,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 12,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 13452,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 13,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 12514,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 14,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 8044,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 15,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 7615,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 16,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 7411,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 17,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 27968,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 18,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 13280,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 19,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 3287,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 20,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 2121,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 21,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 13683,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 22,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 6744,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 23,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 3548,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 24,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 5017,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 25,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 31106,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 26,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 16664,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 27,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 16484,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 28,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 16533,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        }
+      ],
+      "rgba8MipBytes": 6990468
+    },
+    {
+      "path": "imported-soldiers/russian.glb",
+      "tier": "low",
+      "sourceBytes": 4796204,
+      "bytes": 1410012,
+      "sourceSha256": "434bd4ebd13c0e3b1b69c50833f0bb123adc97d8b7d94ae4858a1aaeb7936c8c",
+      "sha256": "32d7787707ba7597e14f2c54b14b39221497391efea83ae3412bc64e1efcba25",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 24807,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 18584,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 11357,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 3,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 91449,
+          "mimeType": "image/png",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 4,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 25462,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 5,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 14980,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 6,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 9865,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 7,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 31310,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 8,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 19113,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 9,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 10734,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        }
+      ],
+      "rgba8MipBytes": 1922376
+    },
+    {
+      "path": "imported-soldiers/german.glb",
+      "tier": "low",
+      "sourceBytes": 6376128,
+      "bytes": 1873260,
+      "sourceSha256": "a1545b9693ecef16a93e6da9164303894b7ee23a74e814f2830fddb7b4b7b2f0",
+      "sha256": "175dcce3c6148eba172be36e6e6cbc985e0399777807aac5f35bf7ab14517c0d",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 29734,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 24849,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 33146,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 3,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 25658,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 4,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 24931,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 5,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 26845,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 6,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 21723,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 7,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 28534,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 8,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 37133,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 9,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 23927,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 10,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 18997,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 11,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 26379,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 12,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 26694,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 13,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 25761,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 14,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 30866,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 15,
+          "dimensions": [
+            128,
+            128
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 20526,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 87380,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 16,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 18667,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        }
+      ],
+      "rgba8MipBytes": 2796180
+    },
+    {
+      "path": "imported-weapons/enfield.glb",
+      "tier": "low",
+      "sourceBytes": 9973608,
+      "bytes": 1423892,
+      "sourceSha256": "4b05614591de084d43971708e38bfe57595888ea45b5ab84591ed576ea231844",
+      "sha256": "4ccf807bdfbe14bf9699ea9200a8d32dcaeb2d6a10ed53a793462b3c8a825f5f",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 73754,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 73475,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 64705,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 3,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 22931,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 4,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 66738,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 5,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 56877,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 6,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 94497,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 7,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 44957,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 8,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 67629,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 9,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 82812,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 10,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 93613,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 11,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 74148,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 12,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 76009,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 13,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 19522,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 14,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 42444,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        }
+      ],
+      "rgba8MipBytes": 10485740
+    },
+    {
+      "path": "imported-weapons/mosin.glb",
+      "tier": "low",
+      "sourceBytes": 7211112,
+      "bytes": 1017924,
+      "sourceSha256": "42538534c8c2df654fc2998dad2551c489dae8d4e938b756d4263fa778c45f61",
+      "sha256": "4ffb951f8169f7ccac9dbcfc96ab1ad7a30a4a29f5e455f3ce60c15a43dffffc",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 45902,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 22369620
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 89201,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 22369620
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 67901,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 22369620
+        }
+      ],
+      "rgba8MipBytes": 2097148
+    },
+    {
+      "path": "imported-weapons/kar98k.glb",
+      "tier": "low",
+      "sourceBytes": 6617756,
+      "bytes": 964568,
+      "sourceSha256": "bcf8b329426e90d3190616f7d74ae3124063f8f533284735dd8d195d23d4ab3f",
+      "sha256": "ecd76f56abff465ebd8f660edc13f2cece44aaacf11db711239d0fc9f928cfc3",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 74451,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 75782,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 22369620
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 91179,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 3,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 101216,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 4,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 82880,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 22369620
+        },
+        {
+          "index": 5,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 73288,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        }
+      ],
+      "rgba8MipBytes": 4194296
+    },
+    {
+      "path": "models/imported-stielhandgranate.glb",
+      "tier": "low",
+      "sourceBytes": 3024212,
+      "bytes": 448340,
+      "sourceSha256": "3625068cf735117cc712327933533ddbfe08c9b594328aceaff09089b94846bf",
+      "sha256": "9f192c48483e830d59728a2be6e759750c543fc005d9997152fefe0826adf1d8",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 41732,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 96323,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 22369620
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 81010,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 5592404
+        }
+      ],
+      "rgba8MipBytes": 2097148
+    },
+    {
+      "path": "imported-soldiers/british.glb",
+      "tier": "medium",
+      "sourceBytes": 8037000,
+      "bytes": 4701892,
+      "sourceSha256": "6c0cb1c22e392527b759631b3ce2932b93e9a0a6341840778c71fa2a8846246b",
+      "sha256": "0922487f5acecdcc765abe5ff6d930e11a36bcb1309b7ca93e2522d24a85e9e7",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 66488,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 35655,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 78233,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 3,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 87367,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 4,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 72721,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 5,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 31504,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 6,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 38587,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 7,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 44659,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 8,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 39180,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 9,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 94612,
+          "mimeType": "image/png",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 10,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 51887,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 11,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 40443,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 12,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 49147,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 13,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 41208,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 14,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 27684,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 15,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 26960,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 16,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 25936,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 17,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 93085,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 18,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 50519,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 19,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 7681,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 20,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 5073,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 21,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 39458,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 22,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 21114,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 23,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 8910,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 24,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 12685,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 25,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 106767,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 26,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 61221,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 27,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 52334,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 28,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 52345,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        }
+      ],
+      "rgba8MipBytes": 27961988
+    },
+    {
+      "path": "imported-soldiers/russian.glb",
+      "tier": "medium",
+      "sourceBytes": 4796204,
+      "bytes": 2106664,
+      "sourceSha256": "434bd4ebd13c0e3b1b69c50833f0bb123adc97d8b7d94ae4858a1aaeb7936c8c",
+      "sha256": "37e3502f50cea6573852ec9a187ed715e21e6088c64202240a642587467e4b31",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 87272,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 57134,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 46996,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 3,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 347296,
+          "mimeType": "image/png",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 4,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 94230,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 5,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 60866,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 6,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 37404,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 7,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 118094,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 8,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 64213,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 9,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 40797,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        }
+      ],
+      "rgba8MipBytes": 7689544
+    },
+    {
+      "path": "imported-soldiers/german.glb",
+      "tier": "medium",
+      "sourceBytes": 6376128,
+      "bytes": 2975188,
+      "sourceSha256": "a1545b9693ecef16a93e6da9164303894b7ee23a74e814f2830fddb7b4b7b2f0",
+      "sha256": "efab167810dea28734e1c021b2b91c72faf603082c54b7fb4d16d2a0eeabc700",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 109071,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 80370,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 100138,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 3,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 83408,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 4,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 80659,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 5,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 99042,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 6,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 72738,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 7,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 105202,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 8,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 157803,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 9,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 85695,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 10,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 63600,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 11,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 84839,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 12,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 91058,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 13,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 89292,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 14,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 104196,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 15,
+          "dimensions": [
+            256,
+            256
+          ],
+          "sourceDimensions": [
+            512,
+            512
+          ],
+          "bytes": 70996,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 349524,
+          "sourceRgba8MipBytes": 1398100
+        },
+        {
+          "index": 16,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 68189,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        }
+      ],
+      "rgba8MipBytes": 11184788
+    },
+    {
+      "path": "imported-weapons/enfield.glb",
+      "tier": "medium",
+      "sourceBytes": 9973608,
+      "bytes": 3979708,
+      "sourceSha256": "4b05614591de084d43971708e38bfe57595888ea45b5ab84591ed576ea231844",
+      "sha256": "27938a541c2ade04de7c04c7cf517f1fd291d5188c484fc55a02fed301d50725",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 328364,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 253747,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 235320,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 5592404,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 3,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 97819,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 4,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 227311,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 5,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 199670,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 5592404,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 6,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 364874,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 7,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 138798,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 8,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 249858,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 5592404,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 9,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 334567,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 10,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 337833,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 11,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 256680,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 5592404,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 12,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 279182,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 13,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 49611,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 14,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 156274,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 5592404,
+          "sourceRgba8MipBytes": 5592404
+        }
+      ],
+      "rgba8MipBytes": 41943020
+    },
+    {
+      "path": "imported-weapons/mosin.glb",
+      "tier": "medium",
+      "sourceBytes": 7211112,
+      "bytes": 1503472,
+      "sourceSha256": "42538534c8c2df654fc2998dad2551c489dae8d4e938b756d4263fa778c45f61",
+      "sha256": "8970f2becd0133e9c45f9d5a26c774e528143288ed41c189dcb5919fca324c63",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 157422,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 22369620
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 298866,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 22369620
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 232248,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 5592404,
+          "sourceRgba8MipBytes": 22369620
+        }
+      ],
+      "rgba8MipBytes": 8388604
+    },
+    {
+      "path": "imported-weapons/kar98k.glb",
+      "tier": "medium",
+      "sourceBytes": 6617756,
+      "bytes": 2256868,
+      "sourceSha256": "bcf8b329426e90d3190616f7d74ae3124063f8f533284735dd8d195d23d4ab3f",
+      "sha256": "2cdadd062468c9191f814ea8aa085eededfae08639031be50d19a2f16822c365",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 251469,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 252189,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 5592404,
+          "sourceRgba8MipBytes": 22369620
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 334931,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 3,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 395961,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 4,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 285761,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 5592404,
+          "sourceRgba8MipBytes": 22369620
+        },
+        {
+          "index": 5,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 270759,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        }
+      ],
+      "rgba8MipBytes": 16777208
+    },
+    {
+      "path": "models/imported-stielhandgranate.glb",
+      "tier": "medium",
+      "sourceBytes": 3024212,
+      "bytes": 1011948,
+      "sourceSha256": "3625068cf735117cc712327933533ddbfe08c9b594328aceaff09089b94846bf",
+      "sha256": "975bd2b7a4478dbeb4ca1821d22ae95bd9ededaf4e64e706d8828302d2244bf0",
+      "images": [
+        {
+          "index": 0,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 165817,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        },
+        {
+          "index": 1,
+          "dimensions": [
+            1024,
+            1024
+          ],
+          "sourceDimensions": [
+            2048,
+            2048
+          ],
+          "bytes": 329922,
+          "mimeType": "image/jpeg",
+          "role": "color",
+          "rgba8MipBytes": 5592404,
+          "sourceRgba8MipBytes": 22369620
+        },
+        {
+          "index": 2,
+          "dimensions": [
+            512,
+            512
+          ],
+          "sourceDimensions": [
+            1024,
+            1024
+          ],
+          "bytes": 286927,
+          "mimeType": "image/png",
+          "role": "data",
+          "rgba8MipBytes": 1398100,
+          "sourceRgba8MipBytes": 5592404
+        }
+      ],
+      "rgba8MipBytes": 8388604
+    }
+  ]
+}

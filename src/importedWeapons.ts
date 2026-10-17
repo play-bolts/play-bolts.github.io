@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import type {Faction} from './config';
+import {assetUrl,registerTieredAsset,trackAssetTextureCopy} from './assetTiers';
+import {rememberLodGeometryClone} from './lodGeometryIdentity';
 
 export type WeaponPoint=[number,number,number];
 export interface ImportedWeaponProfile {
@@ -51,9 +53,10 @@ function validateProfile(profile:ImportedWeaponProfile) {
 }
 
 /** The offline validator uses the same parser, profile and mesh tree as the app. */
-export async function loadImportedWeaponFromBuffer(buffer:ArrayBuffer,profile:ImportedWeaponProfile,loader=new GLTFLoader()):Promise<void> {
+export async function loadImportedWeaponFromBuffer(buffer:ArrayBuffer,profile:ImportedWeaponProfile,loader=new GLTFLoader(),assetPath?:string):Promise<void> {
  validateProfile(profile);
  const gltf=await loader.parseAsync(buffer,'');
+ if(assetPath)await registerTieredAsset(assetPath,gltf);
  const furniture=gltf.scene.getObjectByName('furniture'),bolt=gltf.scene.getObjectByName('bolt');
  if(!furniture||!bolt)throw new Error(`${profile.faction} source rifle lacks independent furniture/bolt groups`);
  gltf.scene.updateMatrixWorld(true);
@@ -73,8 +76,9 @@ export function getImportedWeaponProfile(faction:Faction):Readonly<ImportedWeapo
  return cache.get(faction)?.profile;
 }
 
-export async function loadImportedGrenadeFromBuffer(buffer:ArrayBuffer,loader=new GLTFLoader()):Promise<void> {
+export async function loadImportedGrenadeFromBuffer(buffer:ArrayBuffer,loader=new GLTFLoader(),assetPath?:string):Promise<void> {
  const gltf=await loader.parseAsync(buffer,'');
+ if(assetPath)await registerTieredAsset(assetPath,gltf);
  if(!gltf.scene.getObjectByName('furniture'))throw new Error('Imported grenade has no source furniture');
  let vertices=0;
  gltf.scene.traverse(object=>{if(object instanceof THREE.Mesh){
@@ -89,28 +93,28 @@ export async function loadImportedGrenadeFromBuffer(buffer:ArrayBuffer,loader=ne
 export function preloadImportedWeapons():Promise<void> {
  if(typeof window==='undefined')return Promise.resolve();
  return loading??=Promise.all([...Object.entries(files).map(async([faction,name])=>{
-  const base=`${import.meta.env?.BASE_URL??'/'}assets/imported-weapons/${name}`;
-  const [modelResponse,profileResponse]=await Promise.all([fetch(`${base}.glb`),fetch(`${base}-profile.json`)]);
+  const path=`imported-weapons/${name}.glb`,base=`${import.meta.env?.BASE_URL??'/'}assets/imported-weapons/${name}`;
+  const [modelResponse,profileResponse]=await Promise.all([fetch(assetUrl(path)),fetch(`${base}-profile.json`)]);
   if(!modelResponse.ok||!profileResponse.ok)throw new Error(`Unable to load ${faction} source rifle`);
   const [buffer,profile]=await Promise.all([modelResponse.arrayBuffer(),profileResponse.json()]);
   if(profile.faction!==faction)throw new Error(`Wrong ${faction} rifle profile`);
-  await loadImportedWeaponFromBuffer(buffer,profile);
- }),fetch(`${import.meta.env?.BASE_URL??'/'}assets/models/imported-stielhandgranate.glb`).then(async response=>{
+  await loadImportedWeaponFromBuffer(buffer,profile,new GLTFLoader(),path);
+ }),fetch(assetUrl('models/imported-stielhandgranate.glb')).then(async response=>{
   if(!response.ok)throw new Error('Unable to load source grenade');
-  await loadImportedGrenadeFromBuffer(await response.arrayBuffer());
+  await loadImportedGrenadeFromBuffer(await response.arrayBuffer(),new GLTFLoader(),'models/imported-stielhandgranate.glb');
  })]).then(()=>{});
 }
 
 /** Clone disposable GPU resources per rifle. Disposing an old faction must not
  * invalidate the cache or another actor's geometry, maps or materials. Images
- * remain immutable shared decode results; textures themselves are independent. */
+ * remain shared decode results; live tiers replace them atomically for all views. */
 function cloneImportedScene(scene:THREE.Group):THREE.Group {
  const root=scene.clone(true),geometries=new Map<THREE.BufferGeometry,THREE.BufferGeometry>(),materials=new Map<THREE.Material,THREE.Material>(),textures=new Map<THREE.Texture,THREE.Texture>();
  const cloneMaterial=(material:THREE.Material)=>{
   let copy=materials.get(material);if(copy)return copy;
   copy=material.clone();materials.set(material,copy);
   for(const [key,value] of Object.entries(material))if(value instanceof THREE.Texture){
-   let texture=textures.get(value);if(!texture){texture=value.clone();textures.set(value,texture);}
+   let texture=textures.get(value);if(!texture){texture=value.clone();trackAssetTextureCopy(value,texture);textures.set(value,texture);}
    (copy as unknown as Record<string,unknown>)[key]=texture;
   }
   return copy;
@@ -118,7 +122,7 @@ function cloneImportedScene(scene:THREE.Group):THREE.Group {
  root.traverse(object=>{
   if(!(object instanceof THREE.Mesh))return;
   const original=object.geometry as THREE.BufferGeometry;
-  let geometry=geometries.get(original);if(!geometry){geometry=original.clone();geometries.set(original,geometry);}
+  let geometry=geometries.get(original);if(!geometry){geometry=original.clone();rememberLodGeometryClone(original,geometry);geometries.set(original,geometry);}
   object.geometry=geometry;object.material=Array.isArray(object.material)?object.material.map(cloneMaterial):cloneMaterial(object.material);
   object.castShadow=object.receiveShadow=true;
  });

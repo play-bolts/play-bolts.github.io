@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -111,6 +112,90 @@ func TestDirectoryPreservesVisitorTrackingAndPrivateRouteBoundary(t *testing.T) 
 	}
 	if calls != 1 {
 		t.Fatalf("unexpected backend calls: %d", calls)
+	}
+}
+
+func TestDirectoryProxyOwnsCORSOnSuccessAndErrorResponses(t *testing.T) {
+	r := testRuntime()
+	origin := "https://play-bolts.github.io"
+	r.cfg.Origins = []string{origin}
+	var calls atomic.Int32
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Methods", "DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "X-Upstream")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Upstream")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		var value map[string]string
+		if json.NewDecoder(q.Body).Decode(&value) != nil {
+			problem(w, 400, "Invalid JSON.")
+			return
+		}
+		respond(w, 200, map[string]bool{"ok": true})
+	}))
+	defer backend.Close()
+	r.local = backend.URL
+	front := httptest.NewServer((&directory{r: r}).handler())
+	defer front.Close()
+	request := func(method, requestOrigin, body string) (*http.Response, []byte) {
+		t.Helper()
+		q, err := http.NewRequest(method, front.URL+"/api/session", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		q.Header.Set("Origin", requestOrigin)
+		q.Header.Set("Content-Type", "application/json")
+		response, err := front.Client().Do(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return response, data
+	}
+	for _, test := range []struct {
+		body   string
+		status int
+		result string
+	}{{`{}`, 200, `"ok":true`}, {`{`, 400, "Invalid JSON."}} {
+		response, data := request("POST", origin, test.body)
+		if response.StatusCode != test.status || !strings.Contains(string(data), test.result) {
+			t.Fatalf("upstream status/body changed: HTTP %d", response.StatusCode)
+		}
+		if values := response.Header.Values("Access-Control-Allow-Origin"); len(values) != 1 || values[0] != origin {
+			t.Fatalf("browser requires one validated Allow-Origin: %v", values)
+		}
+		if values := response.Header.Values("Access-Control-Allow-Methods"); len(values) != 1 || values[0] != "GET, POST, OPTIONS" {
+			t.Fatalf("upstream overrode allowed methods: %v", values)
+		}
+		if values := response.Header.Values("Access-Control-Allow-Headers"); len(values) != 1 || values[0] != "Content-Type" {
+			t.Fatalf("upstream overrode allowed headers: %v", values)
+		}
+		for _, header := range []string{"Access-Control-Allow-Credentials", "Access-Control-Expose-Headers", "Access-Control-Max-Age"} {
+			if response.Header.Get(header) != "" {
+				t.Errorf("upstream CORS header leaked: %s", header)
+			}
+		}
+		if response.Header.Get("X-Content-Type-Options") != "nosniff" {
+			t.Fatal("unrelated upstream response headers removed")
+		}
+	}
+	response, _ := request("OPTIONS", origin, "")
+	if values := response.Header.Values("Access-Control-Allow-Origin"); response.StatusCode != 204 || len(values) != 1 || values[0] != origin {
+		t.Fatal("allowed preflight changed")
+	}
+	response, _ = request("POST", "https://other.example", `{}`)
+	if response.StatusCode != 403 || len(response.Header.Values("Access-Control-Allow-Origin")) != 0 {
+		t.Fatal("foreign origin bypassed the directory allowlist")
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("preflight or rejected origin reached upstream: %d calls", calls.Load())
 	}
 }
 
@@ -559,7 +644,18 @@ func TestRealRustAdmissionHeartbeatReconnectAndReplication(t *testing.T) {
 		}
 		c.WriteJSON(map[string]any{"type": "join", "lobbyId": session, "name": "Alice", "faction": "british"})
 		for {
-			if err = c.ReadJSON(&m); err != nil {
+			kind, data, err := c.ReadMessage()
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Reconnect can resume v3 snapshots before the join acknowledgement.
+			if kind == websocket.BinaryMessage {
+				continue
+			}
+			if kind != websocket.TextMessage {
+				t.Fatalf("unexpected join message kind: %d", kind)
+			}
+			if err = json.Unmarshal(data, &m); err != nil {
 				t.Fatal(err)
 			}
 			if m["type"] == "joined" {

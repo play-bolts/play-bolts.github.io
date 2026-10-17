@@ -558,6 +558,16 @@ func (d *directory) handler() http.Handler {
 	proxy := &httputil.ReverseProxy{Rewrite: func(p *httputil.ProxyRequest) {
 		p.SetURL(local)
 		p.Out.Header.Set("X-Forwarded-For", clientIP(p.In, true))
+	}, ModifyResponse: func(response *http.Response) error {
+		// The outer middleware validates the browser's origin and owns CORS.
+		// Forwarding Rust's CORS headers adds a second Allow-Origin value, which
+		// browsers reject even when both values name the same allowed origin.
+		for name := range response.Header {
+			if strings.HasPrefix(strings.ToLower(name), "access-control-") {
+				delete(response.Header, name)
+			}
+		}
+		return nil
 	}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/lobbies", d.list)

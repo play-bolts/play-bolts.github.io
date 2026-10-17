@@ -67,30 +67,15 @@ function blendRotation(a:Triple,b:THREE.Quaternion,t:number):Triple {
   return [euler.x,euler.y,euler.z];
 }
 
-function stepFoot(phase:number,stride:number,lift:number,duty:number):{z:number;y:number} {
-  const p=((phase%1)+1)%1;
-  if(p<duty)return{z:lerp(stride,-stride,p/duty),y:0};
-  const swing=(p-duty)/(1-duty);
-  return{z:lerp(-stride,stride,ease(swing)),y:Math.sin(Math.PI*swing)*lift};
-}
-
 /** Pure pose layer: locomotion/stance, aim, manipulation and additive hit
  * response are composed in model space. The clock is simulation/replay time. */
 export function sampleSoldierPose(actor:SoldierActor,faction:Faction,time:number,blend?:Partial<SoldierBlend>,profileOverride?:Readonly<ImportedWeaponProfile>):SoldierPose {
   const variation=actor.pose?0:actor.id;
   const crouch=blend?.crouch??Number(actor.stance==='crouch'),prone=blend?.prone??Number(actor.stance==='prone');
   const aim=blend?.aim??Number(actor.ads),speed=blend?.speed??actor.moving;
-  const intensity=clamp(speed/.85,0,1),run=clamp((speed-2.1)/2.4,0,1);
   const phase=blend?.phase??time*sourceGaitRate(speed,crouch,prone)+actor.id*.19;
-  const stride=lerp(.22,.36,run)*intensity*(1-crouch*.60)*(1-prone*.60);
-  const lift=lerp(.065,.15,run)*intensity*(1-crouch*.50)*(1-prone*.80);
-  const duty=lerp(.62,.38,run),left=stepFoot(phase,stride,lift,duty),right=stepFoot(phase+.5,stride,lift,duty);
   const fwd=blend?.forward??1,side=blend?.sideways??0;
-  const bob=Math.sin(phase*TAU*2)*lerp(.008,.027,run)*intensity*(1-prone);
   const breathe=Math.sin(time*1.85+variation)*.0023;
-  const moveDrop=(.065+run*.05)*intensity;
-  const pelvisY=lerp(lerp(.84-moveDrop,.33,crouch),.245,prone)+bob*(1-crouch*.3);
-  const pelvisZ=lerp(-.105*crouch,-.07,prone);
   const hurtElapsed=elapsed(time,actor.lastHurtTime),hurt=hurtElapsed>=0&&hurtElapsed<.42?Math.sin(hurtElapsed/.42*Math.PI)*Math.exp(-hurtElapsed*3):0;
   const shotElapsed=elapsed(time,actor.lastShotTime),meleeElapsed=elapsed(time,actor.lastMeleeTime);
   let action:WeaponAction='idle',progress=0;
@@ -104,48 +89,24 @@ export function sampleSoldierPose(actor:SoldierActor,faction:Faction,time:number
   // Applying the full look pitch to a first-person charger track can send
   // the wrist through the shoulder when the player looks steeply upwards.
   const heldPitch=actor.pitch*(1-manipulation*.75),heldAim=aim*(1-manipulation*.75);
-  const spineX=lerp(.27*crouch+.09*run*intensity,.02,prone)-actor.pitch*.15*aim-hurt*.13;
-  const pelvisPitch=prone*1.52;
-  const neckPitch=-pelvisPitch-spineX-actor.pitch*.73;
-  const rifleY=lerp(lerp(1.285,1.53,aim)-crouch*.53-moveDrop*(1-crouch),.39,prone)+breathe;
-  const rifleZ=lerp(lerp(.115,.025,aim)+crouch*.10,.57,prone);
-  const foot=(sign:number,motion:{z:number;y:number}):Triple=>[
-    sign*lerp(.13,.18,crouch)+motion.z*side,
-    lerp(.095+motion.y,.115+motion.y*.25,prone),
-    lerp(motion.z*fwd+(sign<0?.055:-.055)*crouch,-.70+motion.z*.35,prone),
-  ];
-  const pose:SoldierPose={
-    pelvis:[Math.sin(phase*TAU)*.012*intensity*(1-prone),pelvisY,pelvisZ],
-    pelvisRotation:[pelvisPitch,Math.sin(phase*TAU)*.035*intensity*(1-prone),Math.sin(phase*TAU)*.022*intensity*(1-prone)],
-    spineRotation:[spineX,-Math.sin(phase*TAU)*.055*intensity*(1-prone),hurt*(variation%2?-.06:.06)],
-    neckRotation:[neckPitch,Math.sin(time*.7+variation)*.016*(1-aim),0],
-    leftFoot:foot(-1,left),rightFoot:foot(1,right),
-    leftKneeHint:[lerp(-.18,-.48,prone),lerp(.38,.16,prone),lerp(.50,-.35,prone)],rightKneeHint:[lerp(.18,.48,prone),lerp(.38,.16,prone),lerp(.50,-.35,prone)],
-    footRotation:[prone*.10,prone*Math.PI,0],
-    riflePosition:[-.085-weapon.position[0]*.65,rifleY+weapon.position[1]*.65-hurt*.025,rifleZ-weapon.position[2]*.65],
-    rifleRotation:[-heldPitch-Math.min(.09,actor.recoil)-weapon.rotation[0]*worldRotationScale,weapon.rotation[1]*worldRotationScale,-weapon.rotation[2]*worldRotationScale],
-    leftElbowHint:[-.40,lerp(.99-.53*crouch,.17,prone),lerp(.20,.70,prone)],
-    rightElbowHint:[.45,lerp(1.04-.53*crouch,.17,prone),lerp(.07,.58,prone)],
-    weapon,heldWeapon:actor.selectedWeapon??'rifle',itemVisible:true,grenadeRotation:[0,0,0],handRelease:0,death:0,stage:action!=='idle'?weapon.stage:prone>.5?'Prone':crouch>.5?'Crouched':speed>.1?(run>.5?'Running':'Walking'):aim>.5?'Aiming':'Idle',
-  };
   const motionTime=actor.alive?time:(Number.isFinite(actor.deadAt)?actor.deadAt!:time);
   const body=sampleBodyMotion({speed,crouch,prone,phase:actor.alive?phase:(blend?.phase??motionTime*sourceGaitRate(speed,crouch,prone)+actor.id*.19),time:motionTime,forward:fwd,sideways:side,
     grounded:actor.grounded,vy:actor.vy,jumpStarted:actor.jumpStarted,landedAt:actor.landedAt,landingSpeed:actor.landingSpeed});
-  pose.pelvis=body.pelvis;pose.pelvisRotation=body.pelvisRotation;
-  pose.spineRotation=[body.spineRotation[0]-actor.pitch*.15*aim-hurt*.13,body.spineRotation[1],body.spineRotation[2]+hurt*(variation%2?-.06:.06)];
-  pose.neckRotation[0]=-pose.pelvisRotation[0]-pose.spineRotation[0]-actor.pitch*.73;
-  pose.leftFoot=body.leftFoot;pose.rightFoot=body.rightFoot;pose.leftKneeHint=body.leftKnee;pose.rightKneeHint=body.rightKnee;
-  pose.leftFootRotation=body.leftFootRotation;pose.rightFootRotation=body.rightFootRotation;
-  // The weapon and elbow poles follow the retargeted torso, not the former
-  // fixed standing height. This keeps a landing compression from pushing both
-  // upper arms over the face while preserving all weapon-local hand contacts.
-  const hipOrientation=new THREE.Quaternion().setFromEuler(new THREE.Euler(...pose.pelvisRotation));
-  const chestOrientation=hipOrientation.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...pose.spineRotation)));
-  const neck=new THREE.Vector3(...pose.pelvis).add(new THREE.Vector3(0,.11,0).applyQuaternion(hipOrientation)).add(new THREE.Vector3(0,.51,0).applyQuaternion(chestOrientation));
-  pose.riflePosition=[neck.x-.085-weapon.position[0]*.65,neck.y+lerp(lerp(-.175,.04,heldAim)-manipulation*.07,.11-manipulation*.035,prone)+breathe+weapon.position[1]*.65-hurt*.025,neck.z+lerp(lerp(.115,.025,heldAim),.025,prone)-weapon.position[2]*.65];
-  pose.leftElbowHint=[neck.x+.34,neck.y+lerp(-.47,-.10,prone),neck.z+lerp(.20,.15,prone)];
-  pose.rightElbowHint=[neck.x-.36,neck.y+lerp(-.42,-.10,prone),neck.z+lerp(.07,.03,prone)];
-  if(action==='idle')pose.stage=body.stage==='Idle'&&aim>.5?'Aiming':body.stage;
+  const spineRotation:Triple=[body.spineRotation[0]-actor.pitch*.15*aim-hurt*.13,body.spineRotation[1],body.spineRotation[2]+hurt*(variation%2?-.06:.06)];
+  // Weapon contacts follow the solved torso, including landing compression.
+  const hipOrientation=new THREE.Quaternion().setFromEuler(new THREE.Euler(...body.pelvisRotation));
+  const chestOrientation=hipOrientation.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...spineRotation)));
+  const neck=new THREE.Vector3(...body.pelvis).add(new THREE.Vector3(0,.11,0).applyQuaternion(hipOrientation)).add(new THREE.Vector3(0,.51,0).applyQuaternion(chestOrientation));
+  const pose:SoldierPose={
+    pelvis:body.pelvis,pelvisRotation:body.pelvisRotation,spineRotation,
+    neckRotation:[-body.pelvisRotation[0]-spineRotation[0]-actor.pitch*.73,Math.sin(time*.7+variation)*.016*(1-aim),0],
+    leftFoot:body.leftFoot,rightFoot:body.rightFoot,leftKneeHint:body.leftKnee,rightKneeHint:body.rightKnee,
+    footRotation:[prone*.10,prone*Math.PI,0],leftFootRotation:body.leftFootRotation,rightFootRotation:body.rightFootRotation,
+    riflePosition:[neck.x-.085-weapon.position[0]*.65,neck.y+lerp(lerp(-.175,.04,heldAim)-manipulation*.07,.11-manipulation*.035,prone)+breathe+weapon.position[1]*.65-hurt*.025,neck.z+lerp(lerp(.115,.025,heldAim),.025,prone)-weapon.position[2]*.65],
+    rifleRotation:[-heldPitch-Math.min(.09,actor.recoil)-weapon.rotation[0]*worldRotationScale,weapon.rotation[1]*worldRotationScale,-weapon.rotation[2]*worldRotationScale],
+    leftElbowHint:[neck.x+.34,neck.y+lerp(-.47,-.10,prone),neck.z+lerp(.20,.15,prone)],rightElbowHint:[neck.x-.36,neck.y+lerp(-.42,-.10,prone),neck.z+lerp(.07,.03,prone)],
+    weapon,heldWeapon:actor.selectedWeapon??'rifle',itemVisible:true,grenadeRotation:[0,0,0],handRelease:0,death:0,stage:action!=='idle'?weapon.stage:body.stage==='Idle'&&aim>.5?'Aiming':body.stage,
+  };
   const equipmentTime=!actor.alive&&Number.isFinite(actor.deadAt)?actor.deadAt!:time;
   const switchAge=elapsed(equipmentTime,actor.switchStarted),switchDuration=actor.switchDuration??WEAPON_SWITCH_SECONDS;
   const switching=switchAge>=0&&switchAge<switchDuration,switchPose=sampleWeaponSwitch(switching?switchAge/switchDuration:1);
@@ -607,7 +568,7 @@ export function updateSoldier(model:THREE.Group,actor:SoldierActor,dt:number,sim
   // start/stop advances different gait phases at 30, 60 and 144 Hz. Gaussian
   // sampling keeps this inexpensive while matching the same smooth envelope.
   const targetSpeed=actor.alive?actor.moving:0,targetCrouch=Number(actor.stance==='crouch'),targetProne=Number(actor.stance==='prone');
-  const rateAt=(t:number)=>sourceGaitRate(lerp(targetSpeed,s.speed,Math.exp(-t*9)),lerp(targetCrouch,s.crouch,Math.exp(-t*12)),lerp(targetProne,s.prone,Math.exp(-t*12)));
+  const rateAt=(t:number)=>targetSpeed>0&&actor.grounded!==false?sourceGaitRate(lerp(targetSpeed,s.speed,Math.exp(-t*9)),lerp(targetCrouch,s.crouch,Math.exp(-t*12)),lerp(targetProne,s.prone,Math.exp(-t*12))):0;
   const steps=Math.max(1,Math.ceil(elapsedTime/.02)),step=elapsedTime/steps,offset=Math.sqrt(3/5)*step*.5;
   for(let i=0;i<steps;i++){
     const middle=(i+.5)*step;

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import {sampleSourceMotion,sampleLoopedSourceMotion,sourceMotionAverage,sourceMotionBind,type MotionVector,type SourceMotionFrame} from './humanoidMotion';
+import {groundGait} from './soldierGait';
+export {gaitRate as sourceGaitRate} from './soldierGait';
 
 const clamp=(v:number,a=0,b=1)=>Math.max(a,Math.min(b,v));
 const ease=(v:number)=>{const t=clamp(v);return t*t*(3-2*t);};
@@ -28,10 +30,23 @@ export interface BodyMotion {
  leftFootRotation:MotionVector;rightFootRotation:MotionVector;stage:string;
 }
 
-/** The clip provides joint directions, while the target rig retains its own
- * limb lengths. Weapon hands remain constrained separately to their contacts. */
+function contactBody(input:BodyMotionInput):BodyMotion {
+ const {speed,crouch,phase,forward,sideways}=input,gait=groundGait(speed,crouch,phase,forward,sideways);
+ const landAge=input.time-(input.landedAt??-Infinity);
+ const impact=input.grounded!==false&&landAge>=0&&landAge<.38?ease(landAge/.035)*(1-ease((landAge-.24)/.14))*clamp((input.landingSpeed??7.3)/7.3):0;
+ gait.pelvis[1]-=impact*.13;
+ const knee=(sign:number):MotionVector=>[sign*mix(.13,.18,crouch)*Math.cos(gait.heading)+Math.sin(gait.heading)*.28,mix(.44,.17,crouch),Math.cos(gait.heading)*.28-sign*.13*Math.sin(gait.heading)];
+ for(const foot of [gait.left,gait.right])foot.position[1]+=proceduralBootClearance(foot.rotation);
+ return {pelvis:gait.pelvis,pelvisRotation:gait.pelvisRotation,spineRotation:gait.spineRotation,
+  leftFoot:gait.left.position,rightFoot:gait.right.position,leftFootRotation:gait.left.rotation,rightFootRotation:gait.right.rotation,leftKnee:knee(-1),rightKnee:knee(1),
+  stage:impact>0?'Landing':crouch>.5?(gait.moving>.1?'Crouch walk':'Crouched'):gait.moving>.1?(speed>3.8?'Sprint':gait.run>.5?'Jog':'Walk'):'Idle'};
+}
+
+/** Grounded steps follow travel; source clips supply the air tuck and crawl.
+ * Fixed-length IK and weapon contacts retain the target rig's anatomy. */
 export function sampleBodyMotion(input:BodyMotionInput):BodyMotion {
  const {speed,crouch,prone,phase,time,forward,sideways}=input;
+ if(prone===0&&input.grounded!==false)return contactBody(input);
  const moving=ease(speed/.65),run=ease((speed-1.8)/1.3),sprint=ease((speed-3.2)/1.6),p=wrap(phase);
  const idle=sampleLoopedSourceMotion('Idle_Subtle',time/2.583333+0.17);
  let gait=blend(sampleLoopedSourceMotion('Walk',p),sampleLoopedSourceMotion('Jog',p),run);
@@ -125,15 +140,17 @@ export function sampleBodyMotion(input:BodyMotionInput):BodyMotion {
   const bodyClearance=Math.max(0,.245*prone-pelvis[1]);
   pelvis[1]+=bodyClearance;left.knee.y+=bodyClearance;right.knee.y+=bodyClearance;
  }
- return{pelvis,pelvisRotation,spineRotation,leftFoot:triple(left.foot),rightFoot:triple(right.foot),leftKnee:triple(left.knee),rightKnee:triple(right.knee),leftFootRotation:left.footRotation,rightFootRotation:right.footRotation,stage};
-}
-
-/** Distance-driven cycle rate avoids accelerating a stationary gait when the
- * simulation is paused. Caps keep slow crouched shuffles from becoming jittery. */
-export function sourceGaitRate(speed:number,crouch:number,prone:number){
- // Each source cycle contains TWO steps. Treating its stride as one step
- // played a full run at over five footfalls per second.
- const stride=mix(mix(1.65,2.95,ease((speed-1.8)/3)),1.80,crouch);
- const limit=mix(mix(1.75,1.60,crouch),1.20,prone);
- return Math.min(limit,Math.max(0,speed)/mix(stride,1.10,prone));
+ const result={pelvis,pelvisRotation,spineRotation,leftFoot:triple(left.foot),rightFoot:triple(right.foot),leftKnee:triple(left.knee),rightKnee:triple(right.knee),leftFootRotation:left.footRotation,rightFootRotation:right.footRotation,stage};
+ // Source clips retain the airborne tuck and crawl; grounded landing
+ // compression follows the support legs in contactBody.
+ // Upright locomotion has a shared contact phase instead of blending unrelated
+ // clip contacts (which can lift both feet during a walk or reverse a stride).
+ const airWeight=input.grounded===false?(Number.isFinite(jumpAge)?ease(Math.max(0,jumpAge)/.07):1):0;
+ const contactWeight=(1-prone)*(1-airWeight);
+ if(contactWeight>0){
+  const contact=contactBody(input);
+  for(const key of ['pelvis','pelvisRotation','spineRotation','leftFoot','rightFoot','leftFootRotation','rightFootRotation','leftKnee','rightKnee'] as const)
+   result[key]=result[key].map((v,i)=>mix(v,contact[key][i],contactWeight)) as MotionVector;
+ }
+ return result;
 }

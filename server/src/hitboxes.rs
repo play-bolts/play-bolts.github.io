@@ -65,8 +65,7 @@ pub(crate) struct Motion {pub phase:f64,pub crouch:f64,pub prone:f64,pub aim:f64
 fn motion(actor:&Actor,time:f64)->Motion {
     if let Some(s)=&actor.pose {return Motion{phase:s.phase,crouch:s.crouch,prone:s.prone,aim:s.aim,speed:s.speed,forward:s.forward,sideways:s.sideways};}
     let crouch=if actor.stance==Stance::Crouch{1.0}else{0.0};let prone=if actor.stance==Stance::Prone{1.0}else{0.0};
-    let stride=mix_number(mix_number(1.65,2.95,ease((actor.moving-1.8)/3.0)),1.80,crouch);
-    let rate=mix_number(mix_number(1.75,1.60,crouch),1.20,prone).min(actor.moving.max(0.0)/mix_number(stride,1.10,prone));
+    let rate=crate::sim::gait_rate(actor.moving,crouch,prone);
     Motion{phase:time*rate+actor.id as f64*0.19,crouch,prone,aim:if actor.ads{1.0}else{0.0},speed:actor.moving,forward:1.0,sideways:0.0}
 }
 pub(crate) fn faction(actor:&Actor)->&'static str {match actor.faction {Faction::British=>"british",Faction::Russian=>"russian",Faction::German=>"german"}}

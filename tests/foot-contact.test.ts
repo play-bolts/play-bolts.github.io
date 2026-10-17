@@ -7,6 +7,7 @@ import {FACTIONS} from '../src/config.ts';
 import {makeSoldier} from '../src/soldier.ts';
 import {loadSoldierModelFromBuffer} from '../src/soldierModelAssets.ts';
 import {sampleSoldierPose,applySoldierPose,type SoldierActor,type SoldierRig} from '../src/soldierAnimation.ts';
+import {gaitRate,groundGait} from '../src/soldierGait.ts';
 
 before(async()=>{
  const loader=new GLTFLoader();loader.register(()=>({name:'foot-test-images',loadTexture:()=>Promise.resolve(new THREE.Texture())}));
@@ -60,5 +61,25 @@ test('source sole fitting retains lifted running feet and fixed IK segment lengt
    }
   }
   assert.ok(highest>.15,'swinging foot must retain its running lift');assert.ok(lowest>-.012&&lowest<.012,'running still has ground contacts');
+ }
+});
+
+test('all three fitted skeletons hold their support boots still as the actor travels',()=>{
+ for(const faction of FACTIONS){
+  const model=makeSoldier(faction),rig=model.userData.soldierRig as SoldierRig;
+  for(const [stance,speed] of [['stand',1.7],['stand',4.5],['crouch',1.3]] as const)for(let direction=0;direction<8;direction++){
+   const forward=Math.cos(direction*Math.PI/4),sideways=Math.sin(direction*Math.PI/4),crouch=Number(stance==='crouch'),rate=gaitRate(speed,crouch,0),yaw=.57,dt=.001;
+   const poseAt=(phase:number,time:number)=>{
+    model.position.set(speed*time*(sideways*Math.cos(yaw)+forward*Math.sin(yaw)),0,speed*time*(forward*Math.cos(yaw)-sideways*Math.sin(yaw)));model.rotation.y=yaw;
+    applySoldierPose(model,sampleSoldierPose(actor(stance,speed),faction,2,{phase,forward,sideways,crouch}));model.updateMatrixWorld(true);
+    return [rig.leftLeg.end.getWorldPosition(new THREE.Vector3()),rig.rightLeg.end.getWorldPosition(new THREE.Vector3())];
+   };
+   for(let i=0;i<24;i++){
+    const phase=i/24,a=groundGait(speed,crouch,phase,forward,sideways),b=groundGait(speed,crouch,phase+rate*dt,forward,sideways);
+    const before=poseAt(phase,0),after=poseAt(phase+rate*dt,dt);
+    for(const [index,side] of (['left','right'] as const).entries())if(a[side].support&&b[side].support)
+     assert.ok(before[index].distanceTo(after[index])<1e-6,`${faction}/${stance}/${direction}/${i}/${side}: planted boot drifts ${before[index].distanceTo(after[index])}m`);
+   }
+  }
  }
 });

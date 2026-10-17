@@ -57,7 +57,7 @@ test('round timeout stops live movement and weapon actions without altering scor
  const corpse=g.actors.at(-1)!;Object.assign(corpse,{alive:false,deadAt:g.time-.4,deathYaw:.7,deathHeadshot:true});
  const deadState=structuredClone(corpse);
  const preserved=g.actors.map(({x,y,z,yaw,pitch,stance,hp,ammo,reserve,kills,deaths,selectedWeapon})=>({x,y,z,yaw,pitch,stance,hp,ammo,reserve,kills,deaths,selectedWeapon}));
- const held={forward:1,right:1,jump:true,walk:false,lean:1};g.stepClock=.3;
+ const held={forward:1,right:1,jump:true,walk:false,lean:1};
  g.update(.02,held);assert.equal(g.state,'ended');assert.equal(g.remaining,0);
  assert.equal(g.winner,corpse,'final ranking is preserved even when its winner is dead');
  assert.deepEqual(g.actors.map(({x,y,z,yaw,pitch,stance,hp,ammo,reserve,kills,deaths,selectedWeapon})=>({x,y,z,yaw,pitch,stance,hp,ammo,reserve,kills,deaths,selectedWeapon})),preserved);
@@ -68,7 +68,7 @@ test('round timeout stops live movement and weapon actions without altering scor
   assert.equal(a.ads,false);assert.equal(g.isSwitching(a),false);assert.equal(a.switchFrom,a.selectedWeapon);
   assert.deepEqual(a.ai.path,[]);assert.equal(a.ai.mode,'idle');assert.equal(a.ai.sight,false);assert.equal(a.ai.target,null);
  }
- assert.equal(g.stepClock,0);
+ assert.equal(g.events.some(event=>event.type==='step'),false,'round timeout cannot emit a footstep');
  const endedActors=structuredClone(g.actors),time=g.time;
  g.update(1,held);g.move(g.player,1,1,.1,true);g.setStance('crouch');g.fire();g.fire(g.player,true);g.reload();g.selectWeapon('rifle');g.finish();
  assert.deepEqual(g.actors,endedActors,'held input and public action APIs cannot restart movement');

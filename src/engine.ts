@@ -9,6 +9,7 @@ import {SpectatorCamera} from './spectator';
 import {advanceLean,leanEye} from './lean';
 import {sampleHitVolumes,rayHitVolumes} from './hitboxes';
 import {initialMotion,advanceSoldierMotion,type SoldierMotionState} from './soldierMotionState';
+import {crossedFootContact} from './soldierGait';
 export interface AIBrain {
  survival:SurvivalState;
  target:number|null;known:Vec|null;seen:number;reaction:number;decision:number;path:{x:number;z:number}[];mode:string;role:number;stuck:number;heard:number;strafe:number;engage:number;
@@ -36,16 +37,15 @@ export interface Event {type:'shot'|'kill'|'reload'|'bolt'|'hurt'|'spawn'|'end'|
 export interface Snapshot {time:number;actors:Pick<Actor,'id'|'pose'|'x'|'y'|'z'|'yaw'|'pitch'|'stance'|'eyeHeight'|'spectator'|'alive'|'ads'|'moving'|'lean'|'recoil'|'ammo'|'reserve'|'hp'|'cooldown'|'reload'|'reloadTotal'|'deadAt'|'lastShotTime'|'lastHurtTime'|'lastMeleeTime'|'selectedWeapon'|'switchFrom'|'switchStarted'|'switchDuration'|'deathYaw'|'deathHeadshot'|'grounded'|'vy'|'leftGroundAt'|'jumpStarted'|'landedAt'|'landingSpeed'>[]}
 export interface Input {forward:number;right:number;jump:boolean;walk:boolean;lean:number}
 export class Game {
- private actorStepClocks=new Map<number,number>();
  spectator=new SpectatorCamera();
  get viewedActor(){return this.player?.spectator?this.spectator.target(this.actors):this.player??null;}
  playerHipSpread=playerShotSpread(false,'stand',0);
  motionRecordPending=false;
- actors:Actor[]=[];time=0;remaining=RULES.roundSeconds;state:'menu'|'playing'|'paused'|'killcam'|'ended'='menu';difficulty:Difficulty='regular';events:Event[]=[];shots:Shot[]=[];history:Snapshot[]=[];replay:Snapshot[]=[];replayShots:Shot[]=[];killer=0;replayTime=0;replayEnd=0;recordClock=0;stepClock=0;winner:Actor|null=null;seed=51235;
+ actors:Actor[]=[];time=0;remaining=RULES.roundSeconds;state:'menu'|'playing'|'paused'|'killcam'|'ended'='menu';difficulty:Difficulty='regular';events:Event[]=[];shots:Shot[]=[];history:Snapshot[]=[];replay:Snapshot[]=[];replayShots:Shot[]=[];killer=0;replayTime=0;replayEnd=0;recordClock=0;winner:Actor|null=null;seed=51235;
  get player(){return this.actors[0];}
  random(){this.seed=(Math.imul(this.seed,1664525)+1013904223)>>>0;return this.seed/4294967296;}
  start(faction:Faction,difficulty:Difficulty,playerName=DEFAULT_PLAYER_NAME){
-  this.spectator.reset();this.actorStepClocks.clear();this.difficulty=difficulty;this.actors=[];this.events=[];this.shots=[];this.history=[];this.replay=[];this.time=0;this.remaining=RULES.roundSeconds;this.winner=null;this.seed=Date.now()>>>0;
+  this.spectator.reset();this.difficulty=difficulty;this.actors=[];this.events=[];this.shots=[];this.history=[];this.replay=[];this.time=0;this.remaining=RULES.roundSeconds;this.winner=null;this.seed=Date.now()>>>0;
   const names=[sanitizePlayerName(playerName),'Cpl. Evans','Pvt. Sokolov','Sgt. Adler','Lt. Fletcher','Pvt. Volkov'];
   for(let i=0;i<=RULES.botCount;i++){
    const f=i===0?faction:FACTIONS[(i-1)%3];const a=createActor(i,f,names[i]);
@@ -66,7 +66,7 @@ export class Game {
   const player=this.player;if(!player||this.state==='menu'||this.state==='ended'||player.spectator)return false;
   this.spectator.enter(player);Object.assign(player,{spectator:true,alive:false,hp:0,moving:0,ads:false,lean:0,reload:0,reloadTotal:0,cooldown:0,recoil:0,vy:0,deadAt:-Infinity});
   for(const actor of this.actors){actor.ai.survival.threats=actor.ai.survival.threats.filter(threat=>threat.id!==player.id);if(actor.ai.target===player.id){actor.ai.target=null;actor.ai.sight=false;actor.ai.known=null;actor.ai.path=[];}}
-  this.events=this.events.filter(event=>event.actor!==player.id);this.history=[];this.replay=[];this.replayShots=[];this.shots=[];this.stepClock=0;
+  this.events=this.events.filter(event=>event.actor!==player.id);this.history=[];this.replay=[];this.replayShots=[];this.shots=[];
   if(this.state==='killcam')this.state='playing';return true;
  }
  spawn(a:Actor){
@@ -158,7 +158,7 @@ export class Game {
    Object.assign(a,{moving:0,vy:0,grounded:true,leftGroundAt:-Infinity,jumpStarted:-Infinity,landedAt:-Infinity,landingSpeed:0,ads:false,lean:0,recoil:0,cooldown:0,reload:0,reloadTotal:0,lastShotTime:-Infinity,lastMeleeTime:-Infinity,lastHurtTime:-Infinity,switchFrom:a.selectedWeapon,switchStarted:-Infinity});
    a.ai.path=[];a.ai.mode='idle';a.ai.sight=false;a.ai.target=null;
   }
-  this.stepClock=0;this.events.push({type:'end',actor:this.winner?.id??0});
+  this.events.push({type:'end',actor:this.winner?.id??0});
  }
  skipReplay(){if(this.state!=='killcam')return;this.spawn(this.player);this.state='playing';this.history=[];this.replay=[];}
  move(a:Actor,dx:number,dz:number,dt:number,jump=false,colliders?:readonly CollisionActor[]){
@@ -183,6 +183,9 @@ export class Game {
   if(wasGrounded!==a.grounded)this.motionRecordPending=true;
   a.moving=movement.distance/Math.max(dt,.001);advanceSoldierMotion(a,dt,oldX,oldZ);
  }
+ footstep(actor:Actor,previousPhase:number){
+  if(actor.alive&&actor.grounded&&actor.moving>.2&&actor.pose&&crossedFootContact(previousPhase,actor.pose.phase))this.events.push({type:'step',actor:actor.id,value:actor.moving});
+ }
  update(dt:number,input:Input){
   if(this.state==='killcam'){this.replayTime+=dt;if(this.replayTime>this.replayEnd+.65)this.skipReplay();return;}
   if(this.state!=='playing')return;
@@ -199,10 +202,11 @@ export class Game {
   }
   const p=this.player;
   if(p.alive&&!p.spectator){const l=Math.max(1,Math.hypot(input.forward,input.right));const f=input.forward/l,r=input.right/l,walk=input.walk?.55:1;
+   const previousPhase=p.pose?.phase??0;
    this.move(p,(Math.sin(p.yaw)*f-Math.cos(p.yaw)*r)*walk,(Math.cos(p.yaw)*f+Math.sin(p.yaw)*r)*walk,dt,input.jump);
    this.playerHipSpread=advanceHipSpread(this.playerHipSpread,p.stance,p.moving,dt);
    p.lean=advanceLean(p,input.lean,dt);
-   if(p.moving>.2&&p.grounded){this.stepClock+=dt*(p.stance==='stand'?1:0.65);if(this.stepClock>.37){this.stepClock=0;this.events.push({type:'step',actor:0,value:p.moving});}}
+   this.footstep(p,previousPhase);
   }
   for(const a of this.actors)if(a.id&&a.alive&&!a.spectator&&this.state==='playing')this.updateAI(a,dt);
   if(this.state!=='playing')return;
@@ -279,8 +283,8 @@ export class Game {
    if(len<arrival)brain.path.shift();else{dx=(p.x-a.x)/len;dz=(p.z-a.z)/len;if(!hasSight&&!survival?.lookAt){const goal=Math.atan2(dx,dz);a.yaw+=Math.atan2(Math.sin(goal-a.yaw),Math.cos(goal-a.yaw))*Math.min(1,dt*6);}if(!skilled||!brain.survival.cover)a.stance='stand';}
   }else if(hasSight&&target&&dist(a,target)<8&&(!skilled||!brain.survival.cover)){dx=Math.cos(a.yaw)*brain.strafe*.6;dz=-Math.sin(a.yaw)*brain.strafe*.6;}
   if(survival?.lookAt){const goal=Math.atan2(survival.lookAt.x-a.x,survival.lookAt.z-a.z),diff=Math.atan2(Math.sin(goal-a.yaw),Math.cos(goal-a.yaw));a.yaw+=clamp(diff,-dt*settings.turn,dt*settings.turn);a.ads=false;}
-  const before={x:a.x,z:a.z};this.move(a,dx*settings.speed,dz*settings.speed,dt);
-  if(a.grounded&&a.moving>.2){const clock=(this.actorStepClocks.get(a.id)??0)+dt*(a.stance==='stand'?1:.65);if(clock>.37){this.actorStepClocks.set(a.id,0);this.events.push({type:'step',actor:a.id,value:a.moving});}else this.actorStepClocks.set(a.id,clock);}
+  const before={x:a.x,z:a.z},previousPhase=a.pose?.phase??0;this.move(a,dx*settings.speed,dz*settings.speed,dt);
+  this.footstep(a,previousPhase);
   if(Math.hypot(dx,dz)>.1&&dist(before,a)<.001){brain.stuck+=dt;if(brain.stuck>.5){brain.path=[];brain.decision=0;brain.strafe*=-1;brain.stuck=0;if(skilled&&brain.survival.cover){brain.survival.avoid={...brain.survival.cover.hide};brain.survival.cover=null;brain.survival.phase='none';}}}else brain.stuck=0;
  }
  record(){this.motionRecordPending=false;this.history.push({time:this.time,actors:this.actors.map(a=>({id:a.id,pose:a.pose?{...a.pose}:undefined,x:a.x,y:a.y,z:a.z,yaw:a.yaw,pitch:a.pitch,stance:a.stance,eyeHeight:a.eyeHeight,spectator:a.spectator,alive:a.alive,ads:a.ads,moving:a.moving,lean:a.lean,recoil:a.recoil,ammo:a.ammo,reserve:a.reserve,hp:a.hp,cooldown:a.cooldown,reload:a.reload,reloadTotal:a.reloadTotal,deadAt:a.deadAt,lastShotTime:a.lastShotTime,lastHurtTime:a.lastHurtTime,lastMeleeTime:a.lastMeleeTime,selectedWeapon:a.selectedWeapon,switchFrom:a.switchFrom,switchStarted:a.switchStarted,switchDuration:a.switchDuration,deathYaw:a.deathYaw,deathHeadshot:a.deathHeadshot,grounded:a.grounded,vy:a.vy,leftGroundAt:a.leftGroundAt,jumpStarted:a.jumpStarted,landedAt:a.landedAt,landingSpeed:a.landingSpeed}))});while(this.history.length&&this.time-this.history[0].time>4.5)this.history.shift();}

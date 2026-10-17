@@ -44,7 +44,7 @@ test('stance and locomotion foot targets remain grounded and reachable throughou
     const pose=sampleSoldierPose(actor({stance,moving}),'british',i/40);applySoldierPose(model,pose);model.updateMatrixWorld(true);
     for(const [chain,target] of [[rig.leftLeg,pose.leftFoot],[rig.rightLeg,pose.rightFoot]] as const) {
       const foot=chain.end.getWorldPosition(new THREE.Vector3());
-      assert.ok(foot.y>=.09,`${stance} feet cannot pass below ground`);
+      assert.ok(foot.y>=.09-1e-8,`${stance}/${moving}/${i} feet cannot pass below ground: ${foot.y}`);
       assert.ok(foot.distanceTo(new THREE.Vector3(...target))<.035,`${stance}/${moving} feet should reach planted/swing targets`);
     }
   }
@@ -69,7 +69,7 @@ test('rifle running keeps the torso steady while retaining a full articulated st
     }
     const range=(values:number[])=>Math.max(...values)-Math.min(...values);
     for(const values of [neckX,rifleX])assert.ok(range(values)>.025&&range(values)<.06,'head and held rifle retain a small, sub-6cm lateral weight shift');
-    assert.ok(range(footZ)>.8,'running must retain its forward/back stride');
+    assert.ok(range(footZ)>.6,'running must retain its forward/back stride without forcing short legs into a squat');
     assert.ok(range(footY)>.2,'running must retain its lifted swing leg');
   }
 });

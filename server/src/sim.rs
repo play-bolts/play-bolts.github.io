@@ -126,10 +126,11 @@ impl MotionPose {
         }
     }
 }
-fn gait_rate(speed: f64, crouch: f64, prone: f64) -> f64 {
+pub(crate) fn gait_rate(speed: f64, crouch: f64, prone: f64) -> f64 {
     let v = ((speed - 1.8) / 3.0).clamp(0.0, 1.0);
-    let stride = lerp(lerp(1.65, 2.95, v * v * (3.0 - 2.0 * v)), 1.80, crouch);
-    lerp(lerp(1.75, 1.60, crouch), 1.20, prone).min(speed.max(0.0) / lerp(stride, 1.10, prone))
+    let stride = lerp(lerp(1.40, 2.95, v * v * (3.0 - 2.0 * v)), 1.35, crouch);
+    let distance = lerp(stride, 1.10, prone) * speed.max(0.0) / speed.hypot(0.4);
+    if distance > 0.0 {lerp(lerp(1.75, 1.60, crouch), 1.20, prone).min(speed / distance)} else {0.0}
 }
 fn advance_motion(a: &mut Actor, dt: f64, old_x: f64, old_z: f64) {
     let mut s = a.pose.unwrap_or_else(|| MotionPose::initial(a));
@@ -141,6 +142,7 @@ fn advance_motion(a: &mut Actor, dt: f64, old_x: f64, old_z: f64) {
     let step = dt / steps as f64;
     let offset = (3.0_f64 / 5.0).sqrt() * step * 0.5;
     let rate_at = |t: f64| {
+        if speed<=0.0 || !a.grounded {return 0.0;}
         gait_rate(
             lerp(speed, s.speed, (-t * 9.0).exp()),
             lerp(crouch, s.crouch, (-t * 12.0).exp()),
@@ -518,7 +520,6 @@ struct Control {
     reload: Option<u64>,
     fire: Option<PendingAttack>,
     melee: Option<PendingAttack>,
-    step_clock: f64,
     timing: InputTiming,
     observed_seq: u64,
     first_scheduled_tick: Option<u64>,
@@ -977,7 +978,6 @@ impl Simulation {
             c.reload = None;
             c.fire = None;
             c.melee = None;
-            c.step_clock = 0.0;
         }
         if let Some(winner) = self.winner {
             self.events.push(GameEvent::new("end", winner, None));
@@ -1102,6 +1102,7 @@ impl Simulation {
             // in this input cancels the reload without a false reload cue.
             let started_reload = reload.filter(|_| self.begin_reload(index));
             self.actors[index].ads = input.ads && self.actors[index].can_ads(self.time);
+            let previous_phase = self.actors[index].pose.map_or(0.0, |s| s.phase);
             self.move_actor(index, &input, jump, dt);
             let a = &mut self.actors[index];
             let target = player_spread(a.stance, a.moving);
@@ -1110,10 +1111,8 @@ impl Simulation {
             let next = a.lean + (input.lean - a.lean) * (1.0 - (-12.0 * dt).exp());
             a.lean = constrain_lean(a, next, &self.boxes);
             if a.moving > 0.2 && a.grounded {
-                let control = self.controls.get_mut(&id).unwrap();
-                control.step_clock += dt * if a.stance == Stance::Stand { 1.0 } else { 0.65 };
-                if control.step_clock > 0.37 {
-                    control.step_clock = 0.0;
+                let phase = a.pose.map_or(previous_phase, |s| s.phase);
+                if phase > previous_phase && phase - previous_phase < 0.5 && ((phase + 1e-9) * 2.0).floor() > ((previous_phase + 1e-9) * 2.0).floor() {
                     let mut event = GameEvent::new("step", id, None);
                     event.value = Some(a.moving);
                     self.events.push(event);
@@ -2009,6 +2008,31 @@ mod tests {
             let dt = remaining.min(TICK_SECONDS);
             sim.tick(dt);
             remaining -= dt;
+        }
+    }
+    #[test]
+    fn footsteps_follow_grounded_contacts_and_stop_without_coasting() {
+        let mut sim=arena(1);let mut contacts=0;
+        for _ in 0..120 {
+            sim.events.clear();let before=sim.actor(1).unwrap().pose.unwrap().phase;
+            input(&mut sim,1,InputFrame{forward:1.0,..Default::default()});sim.tick(TICK_SECONDS);
+            let after=sim.actor(1).unwrap().pose.unwrap().phase;
+            let count=sim.events.iter().filter(|e|e.kind=="step").count();
+            let expected=((after+1e-9)*2.0).floor()>((before+1e-9)*2.0).floor();
+            assert_eq!(count,usize::from(expected));contacts+=count;
+        }
+        assert!(contacts>=4);
+        let phase=sim.actor(1).unwrap().pose.unwrap().phase;
+        for _ in 0..30 {
+            sim.events.clear();input(&mut sim,1,InputFrame::default());sim.tick(TICK_SECONDS);
+            assert_eq!(sim.actor(1).unwrap().pose.unwrap().phase,phase);
+            assert!(!sim.events.iter().any(|e|e.kind=="step"));
+        }
+        for i in 0..10 {
+            sim.events.clear();input(&mut sim,1,InputFrame{forward:1.0,jump:i==0,..Default::default()});sim.tick(TICK_SECONDS);
+            assert!(!sim.actor(1).unwrap().grounded);
+            assert_eq!(sim.actor(1).unwrap().pose.unwrap().phase,phase);
+            assert!(!sim.events.iter().any(|e|e.kind=="step"));
         }
     }
     fn shoot(sim: &mut Simulation, id: u32, pitch: f64, melee: bool) {

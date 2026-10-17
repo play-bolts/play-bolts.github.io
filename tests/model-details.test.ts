@@ -81,10 +81,11 @@ test('tailored uniforms remain attached and grounded through stance changes',()=
     for(const stance of ['stand','crouch','prone'] as const) for(const moving of [0,1.7,4.5]) for(let i=0;i<=40;i++) {
       const actor={id:1,x:0,y:0,z:0,yaw:0,pitch:0,stance,alive:true,moving,ads:true,recoil:0,cooldown:0,reload:0,reloadTotal:0};
       applySoldierPose(soldier,sampleSoldierPose(actor,faction,i/20,{phase:i/40}));
-      const box=new THREE.Box3().setFromObject(soldier);assert.ok(box.min.y>=-.015,`${faction}/${stance}/${moving}/${i/40} must remain above the floor (${box.min.y})`);
+      const box=new THREE.Box3().setFromObject(soldier);assert.ok(Number.isFinite(box.min.y));
       // A rotated mesh's AABB corners can extend below its actual surface.
       // Resolve those candidates against vertices; no real cloth/boot vertex
-      // may use the conservative bounds' small tolerance to enter the floor.
+      // may enter the floor. Longer grounded strides rotate the trouser bounds
+      // farther, so the enclosing box itself is not a contact measurement.
       if(box.min.y<0)assert.ok(new THREE.Box3().setFromObject(soldier,true).min.y>=0,'actual uniform and sole vertices must clear the floor');
       const rig=soldier.userData.soldierRig;assert.ok(rig.grenade,'world weapon switch has its own grenade model');
       for(const chain of [rig.leftArm,rig.rightArm,rig.leftLeg,rig.rightLeg])assert.ok(chain.root.parent&&chain.middle.parent===chain.root&&chain.end.parent===chain.middle);

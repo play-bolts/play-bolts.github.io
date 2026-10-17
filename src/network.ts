@@ -296,6 +296,7 @@ export class NetworkClient {
   if(input.reload&&p.selectedWeapon==='rifle'&&!game.isSwitching(p)&&!game.isMeleeRecovery(p)&&!p.reload&&p.ammo<WEAPONS[p.faction].capacity&&p.reserve>0){p.reloadTotal=WEAPONS[p.faction].reload*(p.faction==='british'&&p.ammo>=5?.66:1);p.reload=p.reloadTotal;p.ads=false;startedReload=true;}
   p.ads=input.ads&&game.canADS(p);
   const length=Math.max(1,Math.hypot(input.forward,input.right)),f=input.forward/length,r=input.right/length,walk=input.walk?.55:1;
+  const previousPhase=p.pose?.phase??0;
   game.move(p,(Math.sin(p.yaw)*f-Math.cos(p.yaw)*r)*walk,(Math.cos(p.yaw)*f+Math.sin(p.yaw)*r)*walk,dt,input.jump,sampleNetworkColliders(this.snapshots,game.time,this.actorId));
   game.playerHipSpread=advanceHipSpread(game.playerHipSpread,p.stance,p.moving,dt);
   p.lean=advanceLean(p,input.lean,dt);
@@ -308,7 +309,7 @@ export class NetworkClient {
   // Resolve coalesced R+melee after actual movement/prone eligibility. A
   // cancelled provisional reload must not play a reload sound or effect.
   if(startedReload&&p.reload>0)emit({type:'reload',actor:0});
-  if(effects&&p.grounded&&p.moving>.2){game.stepClock+=dt*(p.stance==='stand'?1:.65);if(game.stepClock>.37){game.stepClock=0;game.events.push({type:'step',actor:0,value:p.moving});}}
+  if(effects)game.footstep(p,previousPhase);
   game.state=priorState;
  }
  private validSnapshot(value:unknown):value is WireSnapshot {

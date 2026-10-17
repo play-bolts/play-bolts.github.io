@@ -80,6 +80,8 @@ const phase=document.querySelector<HTMLSpanElement>('#phase')!;
 const soldierControls=document.querySelector<HTMLDivElement>('#soldier-controls')!;
 const soldierAnimation=document.querySelector<HTMLSelectElement>('#soldier-animation')!;
 const soldierFraming=document.querySelector<HTMLSelectElement>('#soldier-framing')!;
+const soldierDirection=document.querySelector<HTMLSelectElement>('#soldier-direction')!;
+const groundTravel=document.querySelector<HTMLInputElement>('#ground-travel')!;
 const soldierTimeline=document.querySelector<HTMLInputElement>('#soldier-timeline')!;
 const soldierPitch=document.querySelector<HTMLInputElement>('#soldier-pitch')!;
 const soldierLean=document.querySelector<HTMLInputElement>('#soldier-lean')!;
@@ -110,6 +112,7 @@ function resetView() {
   camera.fov=mode==='soldiers'?36:sights.checked?ADS_WEAPON_FOV:firstPerson.checked?HIP_WEAPON_FOV:37;
   camera.updateProjectionMatrix();
   if(mode==='soldiers') {
+    soldiers.children.forEach(model=>model.rotation.y=soldierFraming.value==='stride-side'?Math.PI/2:-.13);
     const head=FACTIONS.indexOf(soldierFraming.value as Faction);
     if(head>=0){const x=(head-1)*1.35;camera.position.set(x+.05,1.66,.78);orbit.target.set(x,1.66,0);}
     else if(soldierFraming.value==='death-front'){camera.position.set(0,1.5,6.5);orbit.target.set(0,.55,0);}
@@ -192,6 +195,8 @@ if(params.get('sights')==='1')sights.checked=true;
 animationTime=Math.max(0,Math.min(1,Number(params.get('phase'))||0));timeline.value=String(Math.round(animationTime*1000));
 const initialSoldier=params.get('soldier');
 const initialFraming=params.get('framing');if(initialFraming&&[...soldierFraming.options].some(option=>option.value===initialFraming))soldierFraming.value=initialFraming;
+if(params.has('direction'))soldierDirection.value=params.get('direction')!;
+groundTravel.checked=params.get('travel')==='1';
 if(initialSoldier&&[...soldierAnimation.options].some(option=>option.value===initialSoldier))soldierAnimation.value=initialSoldier;
 soldierTime=animationTime;soldierTimeline.value=timeline.value;
 changeMode(FACTIONS.includes(initialMode as Faction)?initialMode as Faction:'soldiers');
@@ -209,6 +214,7 @@ canvasRenderer.setAnimationLoop(()=>{
     const duration=action==='death'?5.2:action==='reload'?WEAPONS.british.reload:action==='melee'?MELEE_ANIMATION_SECONDS:action==='jump'?1.6:action==='fire'?1.8:action==='hit'?1.4:action==='switch'?WEAPON_SWITCH_SECONDS:action==='grenade-bash'?1.1:4.5;
     if(soldierPlaying){soldierTime=Math.min(1,soldierTime+delta/duration);soldierTimeline.value=String(Math.round(soldierTime*1000));if(soldierTime===1){soldierPlaying=false;soldierPlay.textContent='Play soldier action';}}
     const t=soldierTime*duration;
+    const travelAngle=Number(soldierDirection.value)*Math.PI/180,forward=Math.cos(travelAngle),sideways=Math.sin(travelAngle);
     const smooth=(n:number)=>{const v=Math.max(0,Math.min(1,n));return v*v*(3-2*v);};
     const stanceWeight=smooth((t-.30)/.65)-smooth((t-3.30)/.65);
     for(let i=0;i<soldiers.children.length;i++) {
@@ -220,7 +226,12 @@ canvasRenderer.setAnimationLoop(()=>{
       const actor:SoldierActor={id:i,x:0,y:0,z:0,yaw:0,pitch:Number(soldierPitch.value)/180*Math.PI+(action==='aim'?Math.sin(t*1.7)*.42:0),stance:['crouch','crouch-walk'].includes(action)?'crouch':action==='prone'?'prone':'stand',alive:action!=='death'||t<.35||t>=4.6,moving:speed,ads:!['idle','walk','run','crouch-walk','jump','reload','grenade','grenade-bash','switch'].includes(action),recoil:action==='fire'&&t>=.2?Math.exp(-(t-.2)*7)*.07:0,cooldown:0,reload:action==='reload'?WEAPONS[faction].reload*(1-soldierTime):0,reloadTotal:WEAPONS[faction].reload,deadAt:.35,lastShotTime:action==='fire'?.2:-Infinity,lastHurtTime:action==='hit'?.15:-Infinity,lastMeleeTime:action==='grenade-bash'?.15:-Infinity,selectedWeapon:['grenade','grenade-bash','switch'].includes(action)?'grenade':'rifle',switchFrom:'rifle',switchStarted:action==='switch'?0:-Infinity,switchDuration:WEAPON_SWITCH_SECONDS,deathYaw:i===0?Math.PI:i===1?0:Math.PI/2,grounded:!airborne,vy:airborne?RULES.jump-RULES.gravity*airTime:0,jumpStarted:action==='jump'&&t>=launch?launch:-Infinity,landedAt:action==='jump'&&t>=land?land:-Infinity,landingSpeed:action==='jump'?RULES.jump:0};
       Object.assign(actor,{lean:Number(soldierLean.value)/100,lastMeleeTime:action==='melee'?0:actor.lastMeleeTime});
       const crouch=action==='crouch-walk'?1:action==='crouch'?stanceWeight:0,prone=action==='prone'?stanceWeight:0;
-      actor.pose={phase:t*gaitRate(speed,crouch,prone)+i*.19,crouch,prone,aim:Number(actor.ads),speed,forward:1,sideways:0};
+      actor.pose={phase:t*gaitRate(speed,crouch,prone)+i*.19,crouch,prone,aim:Number(actor.ads),speed,forward,sideways};
+      if(i===0){
+        const travel=groundTravel.checked?speed*t:0,yaw=model.rotation.y;
+        grid.position.x=(-travel*(sideways*Math.cos(yaw)+forward*Math.sin(yaw)))%.5;
+        grid.position.z=(-travel*(forward*Math.cos(yaw)-sideways*Math.sin(yaw)))%.5;
+      }
       actor.x=model.position.x;actor.y=model.position.y;actor.z=model.position.z;actor.yaw=model.rotation.y;
       const pose=sampleSoldierPose(actor,faction,t,actor.pose);
       applySoldierPose(model,pose);

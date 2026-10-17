@@ -37,7 +37,36 @@ pub(crate) fn procedural_boot_clearance(rotation:[f64;3])->f64 {
     0.003-lowest
 }
 
+// Exact mirror of soldierGait.ts: a supported foot moves backwards in model
+// space at the actor's travel speed; both swing endpoints match that velocity.
+fn contact_body(actor:&Actor,time:f64,s:Motion)->BodyMotion {
+    let run=ease((s.speed-1.8)/1.3)*(1.0-s.crouch);let moving=ease(s.speed/0.65);
+    let rate=crate::sim::gait_rate(s.speed,s.crouch,0.0);let distance=if rate>0.0{s.speed/rate}else{0.0};
+    let duty=mix_number(mix_number(0.54,0.24,run),0.64,s.crouch).min(if distance>0.0{mix_number(1.05,0.88,s.crouch)/distance}else{1.0});let span=distance*duty;
+    let length=s.forward.hypot(s.sideways);let (f,sideways)=if length>1e-6{(s.forward/length,s.sideways/length)}else{(1.0,0.0)};
+    let heading=sideways.atan2(f.abs())*0.70;let cos=heading.cos();let sin=heading.sin();
+    let width=mix_number(0.13,0.18,s.crouch);let sway=-((s.phase-duty/2.0)*std::f64::consts::TAU).cos()*0.018*moving;
+    let foot=|side:f64| {
+        let p=(s.phase+if side>0.0{0.5}else{0.0}).rem_euclid(1.0);let swing=(p-duty)/(1.0-duty);
+        let travel=if p<duty{span/2.0-distance*p}else{-span/2.0-distance*(1.0-duty)*swing+distance*ease(swing)};
+        let arch=if p<duty{0.0}else{(std::f64::consts::PI*swing).sin().powi(2)};
+        let lift=arch*mix_number(0.07,0.27,run)*(1.0-s.crouch*0.35)*moving;
+        let pitch=if p<duty{0.0}else{(std::f64::consts::TAU*swing).sin()*mix_number(0.28,0.48,run)*moving};
+        let rotation=[pitch,heading+side*0.06,0.0];
+        (Vec3{x:side*width*cos+travel*sideways,y:lift+procedural_boot_clearance(rotation),z:-side*width*sin+travel*f},rotation)
+    };
+    let reach=(0.70_f64.powi(2)-(span/2.0).powi(2)).max(0.10).sqrt();
+    let height=mix_number((0.09+reach).min(0.80),0.43,s.crouch);
+    let bounce=mix_number((1.0-(s.phase*std::f64::consts::PI*4.0).cos())*0.015,(1.0-((s.phase-duty/2.0)*std::f64::consts::PI*4.0).cos())*0.012,run)*moving;
+    let land_age=time-actor.landed_at;
+    let impact=if actor.grounded&&(0.0..0.38).contains(&land_age){ease(land_age/0.035)*(1.0-ease((land_age-0.24)/0.14))*(actor.landing_speed/7.3).clamp(0.0,1.0)}else{0.0};
+    let knee=|side:f64|Vec3{x:side*width*cos+sin*0.28,y:mix_number(0.44,0.17,s.crouch),z:cos*0.28-side*0.13*sin};
+    let (left_foot,left_foot_rotation)=foot(-1.0);let (right_foot,right_foot_rotation)=foot(1.0);
+    BodyMotion{pelvis:Vec3{x:sway*cos,y:height+bounce-impact*0.13,z:-0.07*s.crouch-sway*sin},pelvis_rotation:[0.0,heading,0.0],spine_rotation:[mix_number(0.04+0.12*run,0.27,s.crouch),-heading,0.0],left_foot,right_foot,left_knee:knee(-1.0),right_knee:knee(1.0),left_foot_rotation,right_foot_rotation}
+}
+
 pub(crate) fn sample_body_motion(data:&SourceMotion,actor:&Actor,time:f64,s:Motion)->BodyMotion {
+    if s.prone==0.0&&actor.grounded{return contact_body(actor,time,s);}
     let speed=s.speed;let crouch=s.crouch;let prone=s.prone;let phase=s.phase.rem_euclid(1.0);
     let moving=ease(speed/0.65);let run=ease((speed-1.8)/1.3);let sprint=ease((speed-3.2)/1.6);
     let idle=looped(data,"Idle_Subtle",time/2.583333+0.17);
@@ -99,5 +128,9 @@ pub(crate) fn sample_body_motion(data:&SourceMotion,actor:&Actor,time:f64,s:Moti
         left_foot.y=left_foot.y.max(procedural_boot_clearance(left_rotation));right_foot.y=right_foot.y.max(procedural_boot_clearance(right_rotation));
         let body_clearance=(0.245*prone-pelvis.y).max(0.0);pelvis.y+=body_clearance;left_knee.y+=body_clearance;right_knee.y+=body_clearance;
     }
-    BodyMotion{pelvis,pelvis_rotation,spine_rotation,left_foot,right_foot,left_knee,right_knee,left_foot_rotation:left_rotation,right_foot_rotation:right_rotation}
+    let air_weight=if !actor.grounded{if jump_age.is_finite(){ease(jump_age.max(0.0)/0.07)}else{1.0}}else{0.0};
+    let weight=(1.0-prone)*(1.0-air_weight);let contact=contact_body(actor,time,s);
+    let blend_vec=|a:Vec3,b:Vec3|add(a,scale(sub(b,a),weight));
+    let blend_rotation=|a:[f64;3],b:[f64;3]|std::array::from_fn(|i|mix_number(a[i],b[i],weight));
+    BodyMotion{pelvis:blend_vec(pelvis,contact.pelvis),pelvis_rotation:blend_rotation(pelvis_rotation,contact.pelvis_rotation),spine_rotation:blend_rotation(spine_rotation,contact.spine_rotation),left_foot:blend_vec(left_foot,contact.left_foot),right_foot:blend_vec(right_foot,contact.right_foot),left_knee:blend_vec(left_knee,contact.left_knee),right_knee:blend_vec(right_knee,contact.right_knee),left_foot_rotation:blend_rotation(left_rotation,contact.left_foot_rotation),right_foot_rotation:blend_rotation(right_rotation,contact.right_foot_rotation)}
 }

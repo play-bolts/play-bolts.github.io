@@ -1,3 +1,4 @@
+v1.0.15 - Fix GameLift installer permissions and verify regional identity continuity.
 v1.0.13 - Stabilize the torso-hit test and verify regional capacity, database recovery and preserved identities during rollout.
 v1.0.12 - Add warm London, Singapore and São Paulo lobbies, preserve Oregon games, and guard regional deployment and event recovery.
 v1.0.11 - Add loading tips for aiming down iron sights and multiplayer chat controls.

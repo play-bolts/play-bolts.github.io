@@ -22,7 +22,7 @@ export function sampleHitboxCore(actor:HitActor,time:number):{pose:SoldierPose;b
   const suffix=side==='left'?'L':'R',hip=new THREE.Vector3(...bind[`thigh${suffix}`]).sub(new THREE.Vector3(...bind.pelvis));
   const upper=new THREE.Vector3(...bind[`calf${suffix}`]).distanceTo(new THREE.Vector3(...bind[`thigh${suffix}`])),lower=new THREE.Vector3(...bind[`foot${suffix}`]).distanceTo(new THREE.Vector3(...bind[`calf${suffix}`]));
   const footRotation=pose[`${side}FootRotation`]??pose.footRotation;
-  const foot=fitSourceFoot(pose[`${side}Foot`],footRotation,rig.solePoints[side] as Triple[]);
+  const foot=fitSourceFoot(pose[`${side}Foot`],footRotation,rig.solePoints[side] as Triple[],pose.footRoll);
   const inverse=bones[0].rotation.clone().invert(),local=(v:Triple)=>new THREE.Vector3(...v).sub(bones[0].position).applyQuaternion(inverse);
   const floor=local([0,.11,0]),normal=local([0,1.11,0]).sub(floor).normalize();
   const result=solveTwoBone(hip,local(foot),local(pose[`${side}KneeHint`]),upper,lower,{normal,constant:floor.dot(normal)});

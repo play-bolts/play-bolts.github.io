@@ -67,19 +67,73 @@ test('source sole fitting retains lifted running feet and fixed IK segment lengt
 test('all three fitted skeletons hold their support boots still as the actor travels',()=>{
  for(const faction of FACTIONS){
   const model=makeSoldier(faction),rig=model.userData.soldierRig as SoldierRig;
-  for(const [stance,speed] of [['stand',1.7],['stand',4.5],['crouch',1.3]] as const)for(let direction=0;direction<8;direction++){
-   const forward=Math.cos(direction*Math.PI/4),sideways=Math.sin(direction*Math.PI/4),crouch=Number(stance==='crouch'),rate=gaitRate(speed,crouch,0),yaw=.57,dt=.001;
+  for(const [stance,speed] of [['stand',1.7],['stand',4.5],['crouch',1.3],['crouch',2.82]] as const)for(let direction=0;direction<8;direction++){
+   const forward=Math.cos(direction*Math.PI/4),sideways=Math.sin(direction*Math.PI/4),crouch=Number(stance==='crouch'),rate=gaitRate(speed,crouch,0),yaw=.57,dt=.00001;
    const poseAt=(phase:number,time:number)=>{
     model.position.set(speed*time*(sideways*Math.cos(yaw)+forward*Math.sin(yaw)),0,speed*time*(forward*Math.cos(yaw)-sideways*Math.sin(yaw)));model.rotation.y=yaw;
     applySoldierPose(model,sampleSoldierPose(actor(stance,speed),faction,2,{phase,forward,sideways,crouch}));model.updateMatrixWorld(true);
-    return [rig.leftLeg.end.getWorldPosition(new THREE.Vector3()),rig.rightLeg.end.getWorldPosition(new THREE.Vector3())];
+    return [rig.leftLeg.end.matrixWorld.clone(),rig.rightLeg.end.matrixWorld.clone()];
    };
    for(let i=0;i<24;i++){
     const phase=i/24,a=groundGait(speed,crouch,phase,forward,sideways),b=groundGait(speed,crouch,phase+rate*dt,forward,sideways);
     const before=poseAt(phase,0),after=poseAt(phase+rate*dt,dt);
-    for(const [index,side] of (['left','right'] as const).entries())if(a[side].support&&b[side].support)
-     assert.ok(before[index].distanceTo(after[index])<1e-6,`${faction}/${stance}/${direction}/${i}/${side}: planted boot drifts ${before[index].distanceTo(after[index])}m`);
+    for(const [index,side] of (['left','right'] as const).entries())if(a[side].support&&b[side].support){
+     // Rolling raises the ankle. The actual supporting sole vertex, rather
+     // than the ankle joint, must stay still against the moving ground.
+     const points=rig.solePoints![side].map(p=>new THREE.Vector3(...p));
+     const contact=points.reduce((best,p)=>p.clone().applyMatrix4(before[index]).y<best.clone().applyMatrix4(before[index]).y?p:best);
+     const start=contact.clone().applyMatrix4(before[index]),end=contact.clone().applyMatrix4(after[index]);
+     assert.ok(Math.abs(start.y-.003)<1e-6,`${faction}/${stance}: support remains on the floor`);
+     assert.ok(start.distanceTo(end)<1e-8,`${faction}/${stance}/${direction}/${i}/${side}: planted sole drifts ${start.distanceTo(end)}m`);
+    }
    }
+  }
+ }
+});
+
+test('crouch walking stays off the knees with usable ankle bends at gameplay speeds',()=>{
+ for(const faction of FACTIONS){
+  const model=makeSoldier(faction),rig=model.userData.soldierRig as SoldierRig;
+  for(const speed of [0,.4,1.3,2.61,2.82])for(let direction=0;direction<8;direction++){
+   const forward=Math.cos(direction*Math.PI/4),sideways=Math.sin(direction*Math.PI/4);
+   for(let i=0;i<80;i++){
+    const phase=i/80,gait=groundGait(speed,1,phase,forward,sideways);
+    assert.ok(gait.left.support||gait.right.support,'crouch walking always has a supporting foot');
+    applySoldierPose(model,sampleSoldierPose(actor('crouch',speed),faction,2,{phase,crouch:1,forward,sideways}));model.updateMatrixWorld(true);
+    const headUp=new THREE.Vector3(0,1,0).applyQuaternion(rig.neck.getWorldQuaternion(new THREE.Quaternion()));
+    const chestUp=new THREE.Vector3(0,1,0).applyQuaternion(rig.spine.getWorldQuaternion(new THREE.Quaternion()));
+    assert.ok(headUp.distanceTo(new THREE.Vector3(0,1,0))<1e-7,'turned hips cannot tilt the crouching head sideways');
+    assert.ok(Math.abs(chestUp.x)<1e-7&&chestUp.z>.6,'crouch torso leans toward the rifle in every travel direction');
+    for(const chain of [rig.leftLeg,rig.rightLeg]){
+     const hip=chain.root.getWorldPosition(new THREE.Vector3()),knee=chain.middle.getWorldPosition(new THREE.Vector3()),ankle=chain.end.getWorldPosition(new THREE.Vector3());
+     const tibia=knee.clone().sub(ankle).applyQuaternion(chain.end.getWorldQuaternion(new THREE.Quaternion()).invert());
+     const bend=Math.atan2(-tibia.z,tibia.y)*180/Math.PI;
+     const context=`${faction}/${speed}/${direction}/${phase}`;
+     assert.ok(knee.y>.28,`${context}: crouch walk became a kneel (${knee.y}m)`);
+     assert.ok(bend>-40&&bend<50,`${context}: ankle folds through ${bend} degrees`);
+     assert.ok(Math.abs(hip.distanceTo(knee)-chain.upperLength)<1e-7,`${context}: fixed thigh length`);
+     assert.ok(Math.abs(knee.distanceTo(ankle)-chain.lowerLength)<1e-7,`${context}: fixed shin length`);
+    }
+   }
+  }
+ }
+});
+
+test('deformed crouching boots clear the floor and retain their roll at death',()=>{
+ for(const faction of FACTIONS){
+  const model=makeSoldier(faction),measure=soles(model),rig=model.userData.soldierRig as SoldierRig;
+  for(const speed of [1.3,2.82])for(const forward of [-1,1])for(let i=0;i<32;i++){
+   const phase=i/32,blend={phase,crouch:1,forward,sideways:0},gait=groundGait(speed,1,phase,forward,0);
+   const alive=actor('crouch',speed);
+   applySoldierPose(model,sampleSoldierPose(alive,faction,2,blend));const minimum=measure();
+   for(const side of ['left','right'] as const){
+    assert.ok(minimum[side]>-.005,`${faction}/${speed}/${forward}/${phase}: boot penetrates floor`);
+    if(gait[side].support)assert.ok(minimum[side]<.012,`${faction}/${speed}/${forward}/${phase}: support boot floats`);
+   }
+   const before=[rig.leftLeg.end.matrixWorld.clone(),rig.rightLeg.end.matrixWorld.clone()];
+   applySoldierPose(model,sampleSoldierPose({...alive,alive:false,deadAt:2},faction,2,blend));model.updateMatrixWorld(true);
+   for(const [index,chain] of [rig.leftLeg,rig.rightLeg].entries())
+    assert.ok(chain.end.matrixWorld.elements.every((v,j)=>Math.abs(v-before[index].elements[j])<1e-7),'death must start from the same rolled foot pose');
   }
  }
 });

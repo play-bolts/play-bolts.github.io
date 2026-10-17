@@ -128,9 +128,10 @@ impl MotionPose {
 }
 pub(crate) fn gait_rate(speed: f64, crouch: f64, prone: f64) -> f64 {
     let v = ((speed - 1.8) / 3.0).clamp(0.0, 1.0);
-    let stride = lerp(lerp(1.40, 2.95, v * v * (3.0 - 2.0 * v)), 1.35, crouch);
+    let c = ((speed - 1.2) / 1.6).clamp(0.0, 1.0);
+    let stride = lerp(lerp(1.40, 2.95, v * v * (3.0 - 2.0 * v)), lerp(0.90,1.35,c*c*(3.0-2.0*c)), crouch);
     let distance = lerp(stride, 1.10, prone) * speed.max(0.0) / speed.hypot(0.4);
-    if distance > 0.0 {lerp(lerp(1.75, 1.60, crouch), 1.20, prone).min(speed / distance)} else {0.0}
+    if distance > 0.0 {lerp(lerp(1.75, 2.20, crouch), 1.20, prone).min(speed / distance)} else {0.0}
 }
 fn advance_motion(a: &mut Actor, dt: f64, old_x: f64, old_z: f64) {
     let mut s = a.pose.unwrap_or_else(|| MotionPose::initial(a));

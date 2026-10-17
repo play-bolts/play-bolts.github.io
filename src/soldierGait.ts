@@ -7,15 +7,21 @@ const ease=(v:number)=>{const t=Math.max(0,Math.min(1,v));return t*t*(3-2*t);};
 function curve(t:number,a:number,b:number,va:number,vb:number){
  return (2*t*t*t-3*t*t+1)*a+(t*t*t-2*t*t+t)*va+(-2*t*t*t+3*t*t)*b+(t*t*t-t*t)*vb;
 }
+// Encode Ry(yaw)*Rx(pitch) for Three's XYZ Euler convention.
+function pitchedYaw(pitch:number,yaw:number):[number,number,number]{
+ return [Math.atan2(Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch)),Math.asin(Math.sin(yaw)*Math.cos(pitch)),Math.atan2(-Math.sin(yaw)*Math.sin(pitch),Math.cos(yaw))];
+}
 export function gaitRate(speed:number,crouch:number,prone:number){
- const stride=mix(mix(1.40,2.95,ease((speed-1.8)/3)),1.35,crouch);
+ const crouchStride=mix(.90,1.35,ease((speed-1.2)/1.6));
+ const stride=mix(mix(1.40,2.95,ease((speed-1.8)/3)),crouchStride,crouch);
  const distance=mix(stride,1.10,prone)*Math.max(0,speed)/Math.hypot(speed,.4);
- return distance>0?Math.min(mix(mix(1.75,1.60,crouch),1.20,prone),speed/distance):0;
+ return distance>0?Math.min(mix(mix(1.75,2.20,crouch),1.20,prone),speed/distance):0;
 }
 export function groundGait(speed:number,crouch:number,phase:number,forward:number,sideways:number){
  const run=ease((speed-1.8)/1.3)*(1-crouch),moving=ease(speed/.65);
  const rate=gaitRate(speed,crouch,0),distance=rate>0?speed/rate:0;
- const duty=Math.min(mix(mix(.54,.24,run),.64,crouch),distance>0?mix(1.05,.88,crouch)/distance:1),span=distance*duty;
+ const quick=ease((speed-1.2)/1.6);
+ const duty=Math.min(mix(mix(.54,.24,run),mix(.62,.52,quick),crouch),distance>0?mix(1.05,.80,crouch)/distance:1),span=distance*duty;
  const length=Math.hypot(forward,sideways),f=length>1e-6?forward/length:1,s=length>1e-6?sideways/length:0;
  // Turn the hips into a sidestep, keeping the chest free to aim. Backpedalling
  // still bends the knees forwards. Separate foot lanes prevent scissoring.
@@ -37,8 +43,16 @@ export function groundGait(speed:number,crouch:number,phase:number,forward:numbe
    curve((swing-1+turnaround)/turnaround,front,span/2,0,velocity*turnaround);
   const peak=mix(.45,.28,run),arch=p<duty?0:swing<peak?Math.sin(Math.PI*.5*swing/peak)**2:Math.cos(Math.PI*.5*(swing-peak)/(1-peak))**2;
   const lift=arch*mix(.07,.25,run)*(1-crouch*.35)*moving;
-  const pitch=p<duty?0:arch*mix(.25,.95,run)*moving;
-  return {position:[side*width*cos+travel*s,lift,-side*width*sin+travel*f] as [number,number,number],rotation:[pitch,heading+side*.06,0] as [number,number,number],support:p<duty};
+  // Lift the heel as the support leg trails, then recover the foot. Reverse
+  // the roll when backpedalling: toe contact settles onto a flat sole.
+  const backwards=ease((.15-f*cos-s*sin)/.30);
+  const roll=p<duty?mix(ease((p/duty-.30)/.70),ease((1-p/duty-.30)/.70),backwards):mix(1-ease(swing),ease(swing),backwards);
+  const pitch=mix(p<duty?0:arch*mix(.25,.95,run),.62*roll+.12*arch,crouch)*moving;
+  const yaw=heading+side*.06;
+  // Pitch about the boot's own lateral axis, then turn it into travel.
+  // Rx*Ry twists a pitched sidestep sideways and breaks its sole contact.
+  const rotation=pitchedYaw(pitch,yaw);
+  return {position:[side*width*cos+travel*s,lift,-side*width*sin+travel*f] as [number,number,number],rotation,support:p<duty};
  };
  // Lower the hips for the stance reach before adding a small weight-transfer
  // bob. A long stride must bend at the knee, never stretch the leg or drag it.
@@ -46,14 +60,18 @@ export function groundGait(speed:number,crouch:number,phase:number,forward:numbe
  // .090m above the pelvis control. Use those proportions, retaining a small
  // extension reserve; the old .70m reach held every model in a deep squat.
  const reach=Math.sqrt(Math.max(.10,.817**2-(span/2)**2));
- const height=mix(Math.min(.825,.095+reach-.09),.43,crouch);
+ // Crouch by folding at the hips as well as the knees. A .43m pelvis with
+ // an upright chest forces the trailing knee down into a kneeling pose.
+ const height=mix(Math.min(.825,.095+reach-.09),.62,crouch);
  // Walking rises over the support leg; running compresses it under load and
  // rises in flight. Using the same bob for both reverses the sense of weight.
- const bounce=mix((1-Math.cos(phase*Math.PI*4))*.022,(1-Math.cos((phase-duty/2)*Math.PI*4))*.012,run)*moving;
+ const bounce=mix((1-Math.cos(phase*Math.PI*4))*.022,(1-Math.cos((phase-duty/2)*Math.PI*4))*.012,run)*moving*(1-.65*crouch);
  return {left:foot(-1),right:foot(1),heading,duty,run,moving,
-  pelvis:[sway*cos,height+bounce,-.07*crouch-sway*sin] as [number,number,number],
+  pelvis:[sway*cos-.20*crouch*sin,height+bounce,-.20*crouch*cos-sway*sin] as [number,number,number],
   pelvisRotation:[0,heading,0] as [number,number,number],
-  spineRotation:[mix(.04+.12*run,.27,crouch),-heading,0] as [number,number,number]};
+  // Cancel hip yaw before leaning toward the rifle. Reversing these
+  // rotations turns a forward crouch into a sideways shoulder/head tilt.
+  spineRotation:pitchedYaw(mix(.04+.12*run,.82,crouch),-heading)};
 }
 
 /** Emit only newly crossed touchdown phases, never a backlog on reset/rewind. */

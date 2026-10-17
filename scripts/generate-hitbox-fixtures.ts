@@ -8,6 +8,8 @@ const gaitCases=Object.fromEntries([
  ['walkContact',1.7,0,1,0,.08],['backwardSwing',2.5,0,-1,0,.43],
  ['strafeContact',4.5,0,0,1,.62],['crouchDiagonal',1.3,1,Math.SQRT1_2,-Math.SQRT1_2,.31],
  ['runKneeForward',4.5,0,1,0,.80],['runLateSwing',4.5,0,1,0,.92],
+ ['crouchToeOff',1.3,1,1,0,.60],['crouchRecovery',1.3,1,1,0,.78],
+ ['crouchBackward',1.3,1,-1,0,.10],['crouchFast',2.82,1,1,0,.52],
 ].map(([name,speed,crouch,forward,sideways,phase])=>[name,{moving:speed,stance:crouch?'crouch':'stand',pose:{phase,crouch,prone:0,aim:0,speed,forward,sideways}}]));
 for(const faction of ['british','russian','german'] as const)for(const [name,patch]of Object.entries({...gaitCases,stand:{},crouch:{stance:'crouch'},prone:{stance:'prone'},lean:{lean:.8,yaw:.6,pitch:.42},run:{moving:4.2,pitch:-.35,ads:true},reload:{reload:1.3,reloadTotal:3.2,stance:'crouch',pitch:.7},jump:{grounded:false,jumpStarted:3.8,y:1.1,vy:3.2},melee:{lastMeleeTime:3.8,selectedWeapon:'rifle'},grenade:{selectedWeapon:'grenade',lastMeleeTime:3.7},land:{landedAt:3.94,landingSpeed:5.4},hurt:{lastHurtTime:3.9},switchRifle:{switchStarted:3.85,switchDuration:.6,switchFrom:'rifle',selectedWeapon:'grenade'},switchGrenade:{switchStarted:3.6,switchDuration:.6,switchFrom:'rifle',selectedWeapon:'grenade'},switchBack:{switchStarted:3.6,switchDuration:.6,switchFrom:'grenade',selectedWeapon:'rifle'},partialReload:{reload:.8,reloadTotal:2.1,pitch:-.35,ads:false},aimed:{pitch:.67,ads:true},transition:{stance:'prone',moving:1.7,pose:{phase:.27,crouch:.32,prone:.45,aim:.36,speed:2.6,forward:.45,sideways:-.55}}})){
  const actor=Object.assign(createActor(2,faction,'Fixture'),patch,{x:2,z:-3,yaw:.4,ack:0,hipSpread:.02});

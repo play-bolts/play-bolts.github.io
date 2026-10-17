@@ -29,7 +29,7 @@ fn bind(data:&SourceMotion,clip:&str)->Frame {unpack(&data.bind[&data.clips[clip
 pub(crate) struct BodyMotion {
     pub pelvis:Vec3,pub pelvis_rotation:[f64;3],pub spine_rotation:[f64;3],
     pub left_foot:Vec3,pub right_foot:Vec3,pub left_knee:Vec3,pub right_knee:Vec3,
-    pub left_foot_rotation:[f64;3],pub right_foot_rotation:[f64;3],
+    pub left_foot_rotation:[f64;3],pub right_foot_rotation:[f64;3],pub foot_roll:f64,
 }
 pub(crate) fn procedural_boot_clearance(rotation:[f64;3])->f64 {
     let q=qfromeuler(rotation);let mut lowest=f64::INFINITY;
@@ -37,15 +37,51 @@ pub(crate) fn procedural_boot_clearance(rotation:[f64;3])->f64 {
     0.003-lowest
 }
 
+// Exact mirror of footRoll.ts. Lower sole hulls are cached on the source rig.
+#[derive(Clone,Copy)]
+pub(crate) struct RollPoint {y:f64,z:f64,start:f64}
+pub(crate) fn sole_roll_profile(points:&[[f64;3]])->Vec<RollPoint> {
+    let mut sorted:Vec<_>=points.iter().map(|p|RollPoint{y:p[1],z:p[2],start:0.0}).collect();
+    sorted.sort_by(|a,b|a.z.total_cmp(&b.z).then(a.y.total_cmp(&b.y)));
+    let mut hull:Vec<RollPoint>=Vec::new();
+    for point in sorted {
+        if hull.last().is_some_and(|p|p.z==point.z){continue;}
+        while hull.len()>1 {
+            let a=hull[hull.len()-2];let b=hull[hull.len()-1];
+            if (b.z-a.z)*(point.y-a.y)-(b.y-a.y)*(point.z-a.z)>0.0{break;}
+            hull.pop();
+        }
+        hull.push(point);
+    }
+    for i in 0..hull.len(){hull[i].start=if i>0{(hull[i].y-hull[i-1].y).atan2(hull[i].z-hull[i-1].z)}else{-std::f64::consts::FRAC_PI_2};}
+    hull
+}
+pub(crate) fn sole_roll_offset(rotation:[f64;3],profile:Option<&[RollPoint]>)->Vec3 {
+    const BOX:[RollPoint;2]=[RollPoint{y:-0.087,z:-0.096,start:-std::f64::consts::FRAC_PI_2},RollPoint{y:-0.087,z:0.198,start:0.0}];
+    let hull=profile.unwrap_or(&BOX);let [x,y,_]=rotation;
+    let tx=y.sin();let ty=-x.sin()*y.cos();let tz=x.cos()*y.cos();
+    let pitch=(-ty).atan2(tx.hypot(tz));let yaw=tx.atan2(tz);
+    let lo=pitch.min(0.0);let hi=pitch.max(0.0);let mut distance=0.0;
+    for (i,p) in hull.iter().enumerate(){
+        let a=lo.max(p.start);let b=hi.min(hull.get(i+1).map_or(std::f64::consts::FRAC_PI_2,|p|p.start));
+        if b>a{distance+=p.y*(a.sin()-b.sin())+p.z*(a.cos()-b.cos());}
+    }
+    distance*=pitch.signum();Vec3{x:yaw.sin()*distance,y:0.0,z:yaw.cos()*distance}
+}
+
 // Exact mirror of soldierGait.ts: a supported foot moves backwards in model
 // space at the actor's travel speed; both swing endpoints match that velocity.
 fn curve(t:f64,a:f64,b:f64,va:f64,vb:f64)->f64 {
     (2.0*t*t*t-3.0*t*t+1.0)*a+(t*t*t-2.0*t*t+t)*va+(-2.0*t*t*t+3.0*t*t)*b+(t*t*t-t*t)*vb
 }
+fn pitched_yaw(pitch:f64,yaw:f64)->[f64;3] {
+    [pitch.sin().atan2(yaw.cos()*pitch.cos()),(yaw.sin()*pitch.cos()).asin(),(-yaw.sin()*pitch.sin()).atan2(yaw.cos())]
+}
 fn contact_body(actor:&Actor,time:f64,s:Motion)->BodyMotion {
     let run=ease((s.speed-1.8)/1.3)*(1.0-s.crouch);let moving=ease(s.speed/0.65);
     let rate=crate::sim::gait_rate(s.speed,s.crouch,0.0);let distance=if rate>0.0{s.speed/rate}else{0.0};
-    let duty=mix_number(mix_number(0.54,0.24,run),0.64,s.crouch).min(if distance>0.0{mix_number(1.05,0.88,s.crouch)/distance}else{1.0});let span=distance*duty;
+    let quick=ease((s.speed-1.2)/1.6);
+    let duty=mix_number(mix_number(0.54,0.24,run),mix_number(0.62,0.52,quick),s.crouch).min(if distance>0.0{mix_number(1.05,0.80,s.crouch)/distance}else{1.0});let span=distance*duty;
     let length=s.forward.hypot(s.sideways);let (f,sideways)=if length>1e-6{(s.forward/length,s.sideways/length)}else{(1.0,0.0)};
     let heading=sideways.atan2(f.abs())*0.70;let cos=heading.cos();let sin=heading.sin();
     let width=mix_number(0.13,0.18,s.crouch);let sway=-((s.phase-duty/2.0)*std::f64::consts::TAU).cos()*0.018*moving;
@@ -56,15 +92,19 @@ fn contact_body(actor:&Actor,time:f64,s:Motion)->BodyMotion {
         let peak=mix_number(0.45,0.28,run);
         let arch=if p<duty{0.0}else if swing<peak{(std::f64::consts::PI*0.5*swing/peak).sin().powi(2)}else{(std::f64::consts::PI*0.5*(swing-peak)/(1.0-peak)).cos().powi(2)};
         let lift=arch*mix_number(0.07,0.25,run)*(1.0-s.crouch*0.35)*moving;
-        let pitch=if p<duty{0.0}else{arch*mix_number(0.25,0.95,run)*moving};
-        let rotation=[pitch,heading+side*0.06,0.0];
-        (Vec3{x:side*width*cos+travel*sideways,y:lift+procedural_boot_clearance(rotation),z:-side*width*sin+travel*f},rotation)
+        let backwards=ease((0.15-f*cos-sideways*sin)/0.30);
+        let roll=if p<duty{mix_number(ease((p/duty-0.30)/0.70),ease((1.0-p/duty-0.30)/0.70),backwards)}else{mix_number(1.0-ease(swing),ease(swing),backwards)};
+        let pitch=mix_number(if p<duty{0.0}else{arch*mix_number(0.25,0.95,run)},0.62*roll+0.12*arch,s.crouch)*moving;
+        let yaw=heading+side*0.06;
+        let rotation=pitched_yaw(pitch,yaw);
+        let offset=scale(sole_roll_offset(rotation,None),s.crouch);
+        (Vec3{x:side*width*cos+travel*sideways+offset.x,y:lift+procedural_boot_clearance(rotation),z:-side*width*sin+travel*f+offset.z},rotation)
     };
     let reach=(0.817_f64.powi(2)-(span/2.0).powi(2)).max(0.10).sqrt();
-    let height=mix_number((0.095+reach-0.09).min(0.825),0.43,s.crouch);
-    let bounce=mix_number((1.0-(s.phase*std::f64::consts::PI*4.0).cos())*0.022,(1.0-((s.phase-duty/2.0)*std::f64::consts::PI*4.0).cos())*0.012,run)*moving;
+    let height=mix_number((0.095+reach-0.09).min(0.825),0.62,s.crouch);
+    let bounce=mix_number((1.0-(s.phase*std::f64::consts::PI*4.0).cos())*0.022,(1.0-((s.phase-duty/2.0)*std::f64::consts::PI*4.0).cos())*0.012,run)*moving*(1.0-0.65*s.crouch);
     let (left_foot,left_foot_rotation)=foot(-1.0);let (right_foot,right_foot_rotation)=foot(1.0);
-    let mut pelvis=Vec3{x:sway*cos,y:height+bounce,z:-0.07*s.crouch-sway*sin};
+    let mut pelvis=Vec3{x:sway*cos-0.20*s.crouch*sin,y:height+bounce,z:-0.20*s.crouch*cos-sway*sin};
     let mut maximum=f64::INFINITY;
     for (side,foot,rotation) in [(-1.0,left_foot,left_foot_rotation),(1.0,right_foot,right_foot_rotation)] {
         let dx=foot.x-pelvis.x-side*0.115*cos;let dz=foot.z-pelvis.z+side*0.115*sin;
@@ -77,7 +117,7 @@ fn contact_body(actor:&Actor,time:f64,s:Motion)->BodyMotion {
     let impact=if actor.grounded&&(0.0..0.38).contains(&land_age){ease(land_age/0.035)*(1.0-ease((land_age-0.24)/0.14))*(actor.landing_speed/7.3).clamp(0.0,1.0)}else{0.0};
     pelvis.y-=impact*0.13;
     let knee=|side:f64|Vec3{x:pelvis.x+side*width*cos+sin,y:pelvis.y+0.09,z:pelvis.z+cos-side*width*sin};
-    BodyMotion{pelvis,pelvis_rotation:[0.0,heading,0.0],spine_rotation:[mix_number(0.04+0.12*run,0.27,s.crouch),-heading,0.0],left_foot,right_foot,left_knee:knee(-1.0),right_knee:knee(1.0),left_foot_rotation,right_foot_rotation}
+    BodyMotion{pelvis,pelvis_rotation:[0.0,heading,0.0],spine_rotation:pitched_yaw(mix_number(0.04+0.12*run,0.82,s.crouch),-heading),left_foot,right_foot,left_knee:knee(-1.0),right_knee:knee(1.0),left_foot_rotation,right_foot_rotation,foot_roll:s.crouch}
 }
 
 pub(crate) fn sample_body_motion(data:&SourceMotion,actor:&Actor,time:f64,s:Motion)->BodyMotion {
@@ -147,5 +187,5 @@ pub(crate) fn sample_body_motion(data:&SourceMotion,actor:&Actor,time:f64,s:Moti
     let weight=(1.0-prone)*(1.0-air_weight);let contact=contact_body(actor,time,s);
     let blend_vec=|a:Vec3,b:Vec3|add(a,scale(sub(b,a),weight));
     let blend_rotation=|a:[f64;3],b:[f64;3]|std::array::from_fn(|i|mix_number(a[i],b[i],weight));
-    BodyMotion{pelvis:blend_vec(pelvis,contact.pelvis),pelvis_rotation:blend_rotation(pelvis_rotation,contact.pelvis_rotation),spine_rotation:blend_rotation(spine_rotation,contact.spine_rotation),left_foot:blend_vec(left_foot,contact.left_foot),right_foot:blend_vec(right_foot,contact.right_foot),left_knee:blend_vec(left_knee,contact.left_knee),right_knee:blend_vec(right_knee,contact.right_knee),left_foot_rotation:blend_rotation(left_rotation,contact.left_foot_rotation),right_foot_rotation:blend_rotation(right_rotation,contact.right_foot_rotation)}
+    BodyMotion{pelvis:blend_vec(pelvis,contact.pelvis),pelvis_rotation:blend_rotation(pelvis_rotation,contact.pelvis_rotation),spine_rotation:blend_rotation(spine_rotation,contact.spine_rotation),left_foot:blend_vec(left_foot,contact.left_foot),right_foot:blend_vec(right_foot,contact.right_foot),left_knee:blend_vec(left_knee,contact.left_knee),right_knee:blend_vec(right_knee,contact.right_knee),left_foot_rotation:blend_rotation(left_rotation,contact.left_foot_rotation),right_foot_rotation:blend_rotation(right_rotation,contact.right_foot_rotation),foot_roll:contact.foot_roll*weight}
 }

@@ -4,7 +4,7 @@ use crate::sim::{Actor, Faction, Stance, Vec3};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
-use crate::hitbox_motion::{SourceMotion,sample_body_motion,procedural_boot_clearance};
+use crate::hitbox_motion::{SourceMotion,sample_body_motion,procedural_boot_clearance,RollPoint,sole_roll_profile,sole_roll_offset};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +24,10 @@ struct PoseTable {
 }
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase")]
-pub(crate) struct RigData {pub bone_positions:BTreeMap<String,[f64;3]>,pub sole_points:BTreeMap<String,Vec<[f64;3]>>}
+pub(crate) struct RigData {
+    pub bone_positions:BTreeMap<String,[f64;3]>,pub sole_points:BTreeMap<String,Vec<[f64;3]>>,
+    #[serde(skip)] sole_roll:OnceLock<BTreeMap<String,Vec<RollPoint>>>,
+}
 fn table() -> &'static PoseTable {
     static TABLE:OnceLock<PoseTable>=OnceLock::new();
     TABLE.get_or_init(||serde_json::from_str(include_str!("../../src/generated/hitboxData.json")).expect("validated shared hit-volume pose table"))
@@ -98,15 +101,19 @@ pub(crate) fn sample_hitbox_core(actor:&Actor,time:f64)->([Transform;15],Motion)
     let variation=if actor.pose.is_some(){0}else{actor.id};
     let hurt_age=time-actor.last_hurt_time;let hurt=if (0.0..0.42).contains(&hurt_age){(hurt_age/0.42*std::f64::consts::PI).sin()*(-hurt_age*3.0).exp()}else{0.0};
     let spine_rotation=[body.spine_rotation[0]-actor.pitch*0.15*s.aim-hurt*0.13,body.spine_rotation[1],body.spine_rotation[2]+hurt*if variation%2!=0{-0.06}else{0.06}];
-    let neck_rotation=[-body.pelvis_rotation[0]-spine_rotation[0]-actor.pitch*0.73,(time*0.7+variation as f64).sin()*0.016*(1.0-s.aim),0.0];
+    let head_rotation=qfromeuler([-actor.pitch*0.73,(time*0.7+variation as f64).sin()*0.016*(1.0-s.aim),0.0]);
     let mut bones=[IDENTITY;15];bones[0]=Transform{position:body.pelvis,rotation:qfromeuler(body.pelvis_rotation)};
     bones[1]=combine(bones[0],Transform{position:sub(vec(bind["spine"]),vec(bind["pelvis"])),rotation:qfromeuler(spine_rotation)});
-    bones[2]=combine(bones[1],Transform{position:sub(vec(bind["neck"]),vec(bind["spine"])),rotation:qfromeuler(neck_rotation)});
+    bones[2]=combine(bones[1],Transform{position:sub(vec(bind["neck"]),vec(bind["spine"])),rotation:qmultiply(inverse(bones[1].rotation),head_rotation)});
     for (side,suffix,start,foot,knee,foot_rotation) in [("left","L",9,body.left_foot,body.left_knee,body.left_foot_rotation),("right","R",12,body.right_foot,body.right_knee,body.right_foot_rotation)] {
         let hip=vec(bind[&format!("thigh{suffix}")]);let calf=vec(bind[&format!("calf{suffix}")]);let ankle=vec(bind[&format!("foot{suffix}")]);
         let upper=dot(sub(calf,hip),sub(calf,hip)).sqrt();let lower=dot(sub(ankle,calf),sub(ankle,calf)).sqrt();let hip=sub(hip,vec(bind["pelvis"]));
         let q=qfromeuler(foot_rotation);let lowest=rig.sole_points[side].iter().map(|p|rotate(vec(*p),q).y).fold(f64::INFINITY,f64::min);
-        let foot=Vec3{y:foot.y+0.003-lowest-procedural_boot_clearance(foot_rotation),..foot};
+        let offset=if body.foot_roll>0.0 {
+            let profiles=rig.sole_roll.get_or_init(||rig.sole_points.iter().map(|(k,p)|(k.clone(),sole_roll_profile(p))).collect());
+            scale(sub(sole_roll_offset(foot_rotation,Some(&profiles[side])),sole_roll_offset(foot_rotation,None)),body.foot_roll)
+        }else{vec([0.0,0.0,0.0])};
+        let foot=Vec3{x:foot.x+offset.x,y:foot.y+0.003-lowest-procedural_boot_clearance(foot_rotation),z:foot.z+offset.z};
         let local=|p:Vec3|rotate(sub(p,bones[0].position),inverse(bones[0].rotation));
         let floor=local(vec([0.0,0.11,0.0]));let normal=normalize(sub(local(vec([0.0,1.11,0.0])),floor));
         let (middle,end)=solve_two_bone(hip,local(foot),local(knee),upper,lower,Some((normal,dot(floor,normal))));

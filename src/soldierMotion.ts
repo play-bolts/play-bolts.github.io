@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {sampleSourceMotion,sampleLoopedSourceMotion,sourceMotionAverage,sourceMotionBind,type MotionVector,type SourceMotionFrame} from './humanoidMotion';
 import {groundGait} from './soldierGait';
+import {soleRollOffset} from './footRoll';
 export {gaitRate as sourceGaitRate} from './soldierGait';
 
 const clamp=(v:number,a=0,b=1)=>Math.max(a,Math.min(b,v));
@@ -27,11 +28,15 @@ export interface BodyMotionInput {
 export interface BodyMotion {
  pelvis:MotionVector;pelvisRotation:MotionVector;spineRotation:MotionVector;
  leftFoot:MotionVector;rightFoot:MotionVector;leftKnee:MotionVector;rightKnee:MotionVector;
- leftFootRotation:MotionVector;rightFootRotation:MotionVector;stage:string;
+ leftFootRotation:MotionVector;rightFootRotation:MotionVector;footRoll:number;stage:string;
 }
 
 function contactBody(input:BodyMotionInput):BodyMotion {
  const {speed,crouch,phase,forward,sideways}=input,gait=groundGait(speed,crouch,phase,forward,sideways);
+ if(crouch>0)for(const foot of [gait.left,gait.right]){
+  const roll=soleRollOffset(foot.rotation);
+  foot.position[0]+=roll[0]*crouch;foot.position[2]+=roll[2]*crouch;
+ }
  // Keep an extension reserve at the low, forward end of the swing too.
  // Otherwise a reachable contact can still contain an unreachable airborne
  // target, locking the knee straight for several frames before it snaps back.
@@ -56,7 +61,7 @@ function contactBody(input:BodyMotionInput):BodyMotion {
  const knee=(sign:number):MotionVector=>[gait.pelvis[0]+sign*mix(.13,.18,crouch)*Math.cos(gait.heading)+Math.sin(gait.heading),gait.pelvis[1]+.09,gait.pelvis[2]+Math.cos(gait.heading)-sign*mix(.13,.18,crouch)*Math.sin(gait.heading)];
  for(const foot of [gait.left,gait.right])foot.position[1]+=proceduralBootClearance(foot.rotation);
  return {pelvis:gait.pelvis,pelvisRotation:gait.pelvisRotation,spineRotation:gait.spineRotation,
-  leftFoot:gait.left.position,rightFoot:gait.right.position,leftFootRotation:gait.left.rotation,rightFootRotation:gait.right.rotation,leftKnee:knee(-1),rightKnee:knee(1),
+  leftFoot:gait.left.position,rightFoot:gait.right.position,leftFootRotation:gait.left.rotation,rightFootRotation:gait.right.rotation,leftKnee:knee(-1),rightKnee:knee(1),footRoll:crouch,
   stage:impact>0?'Landing':crouch>.5?(gait.moving>.1?'Crouch walk':'Crouched'):gait.moving>.1?(speed>3.8?'Sprint':gait.run>.5?'Jog':'Walk'):'Idle'};
 }
 
@@ -158,7 +163,7 @@ export function sampleBodyMotion(input:BodyMotionInput):BodyMotion {
   const bodyClearance=Math.max(0,.245*prone-pelvis[1]);
   pelvis[1]+=bodyClearance;left.knee.y+=bodyClearance;right.knee.y+=bodyClearance;
  }
- const result={pelvis,pelvisRotation,spineRotation,leftFoot:triple(left.foot),rightFoot:triple(right.foot),leftKnee:triple(left.knee),rightKnee:triple(right.knee),leftFootRotation:left.footRotation,rightFootRotation:right.footRotation,stage};
+ const result={pelvis,pelvisRotation,spineRotation,leftFoot:triple(left.foot),rightFoot:triple(right.foot),leftKnee:triple(left.knee),rightKnee:triple(right.knee),leftFootRotation:left.footRotation,rightFootRotation:right.footRotation,footRoll:0,stage};
  // Source clips retain the airborne tuck and crawl; grounded landing
  // compression follows the support legs in contactBody.
  // Upright locomotion has a shared contact phase instead of blending unrelated
@@ -167,6 +172,7 @@ export function sampleBodyMotion(input:BodyMotionInput):BodyMotion {
  const contactWeight=(1-prone)*(1-airWeight);
  if(contactWeight>0){
   const contact=contactBody(input);
+  result.footRoll=contact.footRoll*contactWeight;
   for(const key of ['pelvis','pelvisRotation','spineRotation','leftFoot','rightFoot','leftFootRotation','rightFootRotation','leftKnee','rightKnee'] as const)
    result[key]=result[key].map((v,i)=>mix(v,contact[key][i],contactWeight)) as MotionVector;
  }

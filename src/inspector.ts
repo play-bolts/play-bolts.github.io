@@ -112,10 +112,16 @@ function resetView() {
   camera.fov=mode==='soldiers'?36:sights.checked?ADS_WEAPON_FOV:firstPerson.checked?HIP_WEAPON_FOV:37;
   camera.updateProjectionMatrix();
   if(mode==='soldiers') {
-    soldiers.children.forEach(model=>model.rotation.y=['stride-side','german-stride','german-legs'].includes(soldierFraming.value)?Math.PI/2:-.13);
+    const closeup=/^(british|russian|german)-(stride|legs)$/.exec(soldierFraming.value);
+    soldiers.children.forEach((model,i)=>{
+      model.rotation.y=soldierFraming.value==='stride-side'||closeup?Math.PI/2:-.13;
+      model.visible=!closeup||FACTIONS[i]===closeup[1];
+    });
     const head=FACTIONS.indexOf(soldierFraming.value as Faction);
-    if(soldierFraming.value==='german-legs'){camera.position.set(1.35,.57,2.05);orbit.target.set(1.35,.53,0);}
-    else if(soldierFraming.value==='german-stride'){camera.position.set(1.35,1.1,3.65);orbit.target.set(1.35,.87,0);}
+    if(closeup){const x=(FACTIONS.indexOf(closeup[1] as Faction)-1)*1.35;
+      if(closeup[2]==='legs'){camera.position.set(x,.57,2.05);orbit.target.set(x,.53,0);}
+      else{camera.position.set(x,1.1,3.65);orbit.target.set(x,.87,0);}
+    }
     else if(head>=0){const x=(head-1)*1.35;camera.position.set(x+.05,1.66,.78);orbit.target.set(x,1.66,0);}
     else if(soldierFraming.value==='death-front'){camera.position.set(0,1.5,6.5);orbit.target.set(0,.55,0);}
     else if(soldierFraming.value==='death-side'){camera.position.set(4.4,1.6,3.2);orbit.target.set(0,.55,0);}
@@ -206,10 +212,10 @@ let frame=0;
 canvasRenderer.setAnimationLoop(()=>{
   const now=performance.now(),delta=Math.min(.05,(now-lastTime)/1000);lastTime=now;
   if(orbit.enabled) orbit.update();
-  if(mode==='soldiers') for(const {element,point} of labelData) {
+  if(mode==='soldiers') for(const [i,{element,point}] of labelData.entries()) {
     const screen=point.clone().project(camera);
     element.style.left=`${(screen.x*.5+.5)*innerWidth}px`;element.style.top=`${(-screen.y*.5+.5)*innerHeight}px`;
-    element.style.visibility=screen.z<1?'visible':'hidden';
+    element.style.visibility=screen.z<1&&soldiers.children[i].visible?'visible':'hidden';
   }
   if(mode==='soldiers') {
     const action=soldierAnimation.value;
@@ -221,13 +227,13 @@ canvasRenderer.setAnimationLoop(()=>{
     const stanceWeight=smooth((t-.30)/.65)-smooth((t-3.30)/.65);
     for(let i=0;i<soldiers.children.length;i++) {
       const model=soldiers.children[i] as THREE.Group,faction=FACTIONS[i];
-      const speed=action==='walk'?1.7:action==='run'?4.5:action==='crouch-walk'?1.3:0;
+      const speed=action==='walk'?1.7:action==='run'?4.5:action==='crouch-fast'?2.82:action==='crouch-walk'?1.3:0;
       const launch=.3,land=launch+2*RULES.jump/RULES.gravity,airTime=t-launch;
       const airborne=action==='jump'&&t>=launch&&t<land;
       model.position.y=airborne?RULES.jump*airTime-.5*RULES.gravity*airTime*airTime:0;
-      const actor:SoldierActor={id:i,x:0,y:0,z:0,yaw:0,pitch:Number(soldierPitch.value)/180*Math.PI+(action==='aim'?Math.sin(t*1.7)*.42:0),stance:['crouch','crouch-walk'].includes(action)?'crouch':action==='prone'?'prone':'stand',alive:action!=='death'||t<.35||t>=4.6,moving:speed,ads:!['idle','walk','run','crouch-walk','jump','reload','grenade','grenade-bash','switch'].includes(action),recoil:action==='fire'&&t>=.2?Math.exp(-(t-.2)*7)*.07:0,cooldown:0,reload:action==='reload'?WEAPONS[faction].reload*(1-soldierTime):0,reloadTotal:WEAPONS[faction].reload,deadAt:.35,lastShotTime:action==='fire'?.2:-Infinity,lastHurtTime:action==='hit'?.15:-Infinity,lastMeleeTime:action==='grenade-bash'?.15:-Infinity,selectedWeapon:['grenade','grenade-bash','switch'].includes(action)?'grenade':'rifle',switchFrom:'rifle',switchStarted:action==='switch'?0:-Infinity,switchDuration:WEAPON_SWITCH_SECONDS,deathYaw:i===0?Math.PI:i===1?0:Math.PI/2,grounded:!airborne,vy:airborne?RULES.jump-RULES.gravity*airTime:0,jumpStarted:action==='jump'&&t>=launch?launch:-Infinity,landedAt:action==='jump'&&t>=land?land:-Infinity,landingSpeed:action==='jump'?RULES.jump:0};
+      const actor:SoldierActor={id:i,x:0,y:0,z:0,yaw:0,pitch:Number(soldierPitch.value)/180*Math.PI+(action==='aim'?Math.sin(t*1.7)*.42:0),stance:['crouch','crouch-walk','crouch-fast'].includes(action)?'crouch':action==='prone'?'prone':'stand',alive:action!=='death'||t<.35||t>=4.6,moving:speed,ads:!['idle','walk','run','crouch-walk','crouch-fast','jump','reload','grenade','grenade-bash','switch'].includes(action),recoil:action==='fire'&&t>=.2?Math.exp(-(t-.2)*7)*.07:0,cooldown:0,reload:action==='reload'?WEAPONS[faction].reload*(1-soldierTime):0,reloadTotal:WEAPONS[faction].reload,deadAt:.35,lastShotTime:action==='fire'?.2:-Infinity,lastHurtTime:action==='hit'?.15:-Infinity,lastMeleeTime:action==='grenade-bash'?.15:-Infinity,selectedWeapon:['grenade','grenade-bash','switch'].includes(action)?'grenade':'rifle',switchFrom:'rifle',switchStarted:action==='switch'?0:-Infinity,switchDuration:WEAPON_SWITCH_SECONDS,deathYaw:i===0?Math.PI:i===1?0:Math.PI/2,grounded:!airborne,vy:airborne?RULES.jump-RULES.gravity*airTime:0,jumpStarted:action==='jump'&&t>=launch?launch:-Infinity,landedAt:action==='jump'&&t>=land?land:-Infinity,landingSpeed:action==='jump'?RULES.jump:0};
       Object.assign(actor,{lean:Number(soldierLean.value)/100,lastMeleeTime:action==='melee'?0:actor.lastMeleeTime});
-      const crouch=action==='crouch-walk'?1:action==='crouch'?stanceWeight:0,prone=action==='prone'?stanceWeight:0;
+      const crouch=['crouch-walk','crouch-fast'].includes(action)?1:action==='crouch'?stanceWeight:0,prone=action==='prone'?stanceWeight:0;
       actor.pose={phase:t*gaitRate(speed,crouch,prone)+i*.19,crouch,prone,aim:Number(actor.ads),speed,forward,sideways};
       if(i===0){
         const travel=groundTravel.checked?speed*t:0,yaw=model.rotation.y;
@@ -237,7 +243,7 @@ canvasRenderer.setAnimationLoop(()=>{
       actor.x=model.position.x;actor.y=model.position.y;actor.z=model.position.z;actor.yaw=model.rotation.y;
       const pose=sampleSoldierPose(actor,faction,t,actor.pose);
       applySoldierPose(model,pose);
-      hitDebug[i].visible=hitVolumes.checked;
+      hitDebug[i].visible=hitVolumes.checked&&model.visible;
       if(hitVolumes.checked)hitDebug[i].update(sampleHitVolumes({...actor,faction,lean:actor.lean??0},t));
       if(i===0)soldierPhase.textContent=`${pose.stage} · ${t.toFixed(2)} s`;
     }

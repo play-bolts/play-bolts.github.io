@@ -3,6 +3,7 @@ import {ConvexHull} from 'three/addons/math/ConvexHull.js';
 import {WEAPONS,WEAPON_SWITCH_SECONDS,clamp,lerp,type Faction,type Stance,type WeaponSlot} from './config';
 import {applyWeaponAnimation,sampleWeaponAnimation,sampleWeaponSwitch,sampleGrenadeMelee,MELEE_ANIMATION_SECONDS,type WeaponPose,type WeaponAction} from './weaponAnimation';
 import {sampleBodyMotion,sourceGaitRate,proceduralBootClearance} from './soldierMotion';
+import {soleRollOffset} from './footRoll';
 import {solveTwoBone,solveArmGrip,solveHeldArms} from './hitboxArms';
 export {solveTwoBone,solveArmGrip} from './hitboxArms';
 import type {ImportedWeaponProfile} from './importedWeapons';
@@ -40,7 +41,7 @@ export interface SoldierBlend {
 export interface SoldierPose {
   pelvis:Triple;pelvisRotation:Triple;spineRotation:Triple;neckRotation:Triple;
   leftFoot:Triple;rightFoot:Triple;leftKneeHint:Triple;rightKneeHint:Triple;footRotation:Triple;
-  leftFootRotation?:Triple;rightFootRotation?:Triple;
+  leftFootRotation?:Triple;rightFootRotation?:Triple;footRoll?:number;
   riflePosition:Triple;rifleRotation:Triple;weapon:WeaponPose;
   heldWeapon:WeaponSlot;itemVisible:boolean;grenadeRotation:Triple;
   leftElbowHint:Triple;rightElbowHint:Triple;
@@ -97,11 +98,13 @@ export function sampleSoldierPose(actor:SoldierActor,faction:Faction,time:number
   const hipOrientation=new THREE.Quaternion().setFromEuler(new THREE.Euler(...body.pelvisRotation));
   const chestOrientation=hipOrientation.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...spineRotation)));
   const neck=new THREE.Vector3(...body.pelvis).add(new THREE.Vector3(0,.11,0).applyQuaternion(hipOrientation)).add(new THREE.Vector3(0,.51,0).applyQuaternion(chestOrientation));
+  const head=new THREE.Quaternion().setFromEuler(new THREE.Euler(-actor.pitch*.73,Math.sin(time*.7+variation)*.016*(1-aim),0));
+  const neckOrientation=new THREE.Euler().setFromQuaternion(chestOrientation.clone().invert().multiply(head));
   const pose:SoldierPose={
     pelvis:body.pelvis,pelvisRotation:body.pelvisRotation,spineRotation,
-    neckRotation:[-body.pelvisRotation[0]-spineRotation[0]-actor.pitch*.73,Math.sin(time*.7+variation)*.016*(1-aim),0],
+    neckRotation:[neckOrientation.x,neckOrientation.y,neckOrientation.z],
     leftFoot:body.leftFoot,rightFoot:body.rightFoot,leftKneeHint:body.leftKnee,rightKneeHint:body.rightKnee,
-    footRotation:[prone*.10,prone*Math.PI,0],leftFootRotation:body.leftFootRotation,rightFootRotation:body.rightFootRotation,
+    footRotation:[prone*.10,prone*Math.PI,0],leftFootRotation:body.leftFootRotation,rightFootRotation:body.rightFootRotation,footRoll:body.footRoll,
     riflePosition:[neck.x-.085-weapon.position[0]*.65,neck.y+lerp(lerp(-.175,.04,heldAim)-manipulation*.07,.11-manipulation*.035,prone)+breathe+weapon.position[1]*.65-hurt*.025,neck.z+lerp(lerp(.115,.025,heldAim),.025,prone)-weapon.position[2]*.65],
     rifleRotation:[-heldPitch-Math.min(.09,actor.recoil)-weapon.rotation[0]*worldRotationScale,weapon.rotation[1]*worldRotationScale,-weapon.rotation[2]*worldRotationScale],
     leftElbowHint:[neck.x+.34,neck.y+lerp(-.47,-.10,prone),neck.z+lerp(.20,.15,prone)],rightElbowHint:[neck.x-.36,neck.y+lerp(-.42,-.10,prone),neck.z+lerp(.07,.03,prone)],
@@ -137,7 +140,7 @@ export function sampleSoldierPose(actor:SoldierActor,faction:Faction,time:number
   if(!actor.alive) {
     const deathTime=Number.isFinite(actor.deadAt)?actor.deadAt!:time;
     pose.deathStart=sampleSoldierPose({...actor,alive:true},faction,deathTime,blend,profileOverride);
-    delete pose.leftFootRotation;delete pose.rightFootRotation;
+    if(body.footRoll===0){delete pose.leftFootRotation;delete pose.rightFootRotation;}
     const age=Math.max(0,time-(Number.isFinite(actor.deadAt)?actor.deadAt!:time));
     const death=ease(age/1.03),fall=ease((age-.12)/.59),release=ease((age-.08)/.26);
     // Fall in the recorded impact direction. A prone soldier only slumps;
@@ -188,6 +191,14 @@ export function sampleSoldierPose(actor:SoldierActor,faction:Faction,time:number
       pose.leftHand=point(.54,.31,.13);pose.rightHand=point(.64,-.26,.14);pose.handRelease=release;
       pose.leftElbowHint=blend3(pose.leftElbowHint,point(.38,.40,.12),fall);pose.rightElbowHint=blend3(pose.rightElbowHint,point(.40,-.42,.12),fall);
       pose.pelvis[1]-=faceDownDrop*Math.max(0,dz)**4*groundSettle;
+    }
+    // A crouched heel may still be raised at impact. Preserve that contact
+    // until the feet release, instead of snapping the boot flat at death.
+    if(body.footRoll>0){
+      const release=ease((age-.22)/.51);
+      pose.footRoll=body.footRoll*(1-release);
+      pose.leftFootRotation=blend3(body.leftFootRotation,pose.footRotation,release);
+      pose.rightFootRotation=blend3(body.rightFootRotation,pose.footRotation,release);
     }
     pose.weapon=sampleWeaponAnimation(faction,'idle',0,false,profileOverride);
   }
@@ -428,14 +439,16 @@ function importedHand(model:THREE.Group,side:'left'|'right',weapon:WeaponPose,or
   return{rotation:orientation.clone().multiply(desired).multiply(source),contact:bind.contact.clone()};
 }
 
-export function fitSourceFoot(target:Triple,rotation:Triple,points?:ReadonlyArray<Triple>):Triple {
+export function fitSourceFoot(target:Triple,rotation:Triple,points?:ReadonlyArray<Triple>,rollWeight=0):Triple {
   if(!points?.length)return target;
   const orientation=new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)),point=new THREE.Vector3();
   let lowest=Infinity;
   for(const local of points)lowest=Math.min(lowest,point.set(...local).applyQuaternion(orientation).y);
   // The sampled pose includes the former procedural boot's floor allowance.
-  // Replace only that allowance; any extra swing/airborne height is retained.
-  return [target[0],target[1]+.003-lowest-proceduralBootClearance(rotation),target[2]];
+  // Replace that allowance and the box's roll with the real sole's shape;
+  // any extra swing/airborne height is retained.
+  const actual=rollWeight?soleRollOffset(rotation,points):[0,0,0],procedural=rollWeight?soleRollOffset(rotation):[0,0,0];
+  return [target[0]+(actual[0]-procedural[0])*rollWeight,target[1]+.003-lowest-proceduralBootClearance(rotation),target[2]+(actual[2]-procedural[2])*rollWeight];
 }
 
 export function applySoldierPose(model:THREE.Group,pose:SoldierPose) {
@@ -454,8 +467,8 @@ export function applySoldierPose(model:THREE.Group,pose:SoldierPose) {
   rig.clipRounds.position.y=-pose.weapon.clipPress*.064;rig.clipRounds.visible=pose.weapon.clipPress<.98;
   model.updateMatrixWorld(true);
   const feetOrientation=new THREE.Quaternion().setFromEuler(new THREE.Euler(...pose.footRotation));
-  applyChain(model,rig.leftLeg,fitSourceFoot(pose.leftFoot,pose.leftFootRotation??pose.footRotation,rig.solePoints?.left),pose.leftKneeHint,pose.leftFootRotation?new THREE.Quaternion().setFromEuler(new THREE.Euler(...pose.leftFootRotation)):feetOrientation,.11);
-  applyChain(model,rig.rightLeg,fitSourceFoot(pose.rightFoot,pose.rightFootRotation??pose.footRotation,rig.solePoints?.right),pose.rightKneeHint,pose.rightFootRotation?new THREE.Quaternion().setFromEuler(new THREE.Euler(...pose.rightFootRotation)):feetOrientation,.11);
+  applyChain(model,rig.leftLeg,fitSourceFoot(pose.leftFoot,pose.leftFootRotation??pose.footRotation,rig.solePoints?.left,pose.footRoll),pose.leftKneeHint,pose.leftFootRotation?new THREE.Quaternion().setFromEuler(new THREE.Euler(...pose.leftFootRotation)):feetOrientation,.11);
+  applyChain(model,rig.rightLeg,fitSourceFoot(pose.rightFoot,pose.rightFootRotation??pose.footRotation,rig.solePoints?.right,pose.footRoll),pose.rightKneeHint,pose.rightFootRotation?new THREE.Quaternion().setFromEuler(new THREE.Euler(...pose.rightFootRotation)):feetOrientation,.11);
   const rightSource=new THREE.Vector3(...pose.weapon.right);
   const leftSource=new THREE.Vector3(pose.weapon.left[0],pose.weapon.left[1],pose.weapon.left[2]+.16);
   if(model.userData.importedSoldier){

@@ -43,7 +43,10 @@ test('rifle locomotion uses a two-step cadence and a steady upright torso',()=>{
   assert.ok(Math.max(...heights)-Math.min(...heights)<.075,'hips do not bound up and down through the running cycle');
   for(const pose of poses)assert.ok(pose.spineRotation[0]<16*Math.PI/180,'carrying a rifle does not use the source sprinter chest lean');
  }
- assert.ok(sourceGaitRate(2.8,1,0)<1.65,'crouch walk cannot become a rapid shuffle');
+ // A low stance needs shorter steps. At the game's fast crouch speed,
+ // capping cadence at 1.6 forced a 1.75m cycle and collapsed the rear leg.
+ assert.ok(1.3/sourceGaitRate(1.3,1,0)<.90,'ordinary crouch uses a short stride');
+ assert.ok(sourceGaitRate(2.82,1,0)<=2.2&&2.82/sourceGaitRate(2.82,1,0)<1.4,'fast crouch keeps both cadence and reach bounded');
  assert.equal(sourceGaitRate(0,0,0),0);
 });
 

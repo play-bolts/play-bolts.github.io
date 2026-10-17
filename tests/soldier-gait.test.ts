@@ -41,6 +41,16 @@ test('blocked, stopped and airborne actors do not advance the grounded gait',()=
  }
 });
 
+test('crouch feet turn continuously through sideways and backward travel',()=>{
+ for(const phase of [.05,.3,.65,.8])for(let degree=0;degree<360;degree++){
+  const angle=degree*Math.PI/180,epsilon=1e-5;
+  const before=groundGait(1.3,1,phase,Math.cos(angle-epsilon),Math.sin(angle-epsilon));
+  const after=groundGait(1.3,1,phase,Math.cos(angle+epsilon),Math.sin(angle+epsilon));
+  for(const side of ['left','right'] as const)for(let i=0;i<3;i++)
+   assert.ok(Math.abs(after[side].rotation[i]-before[side].rotation[i])<.001,'heel roll cannot switch abruptly when travel turns backward');
+ }
+});
+
 test('footstep events occur at alternating visual contacts and never during air or rewind',()=>{
  const game=new Game(),actor=createActor(0,'british','Test');actor.moving=4.5;actor.pose=initialMotion(actor);
  for(let i=0;i<160;i++){

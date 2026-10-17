@@ -32,10 +32,28 @@ export interface BodyMotion {
 
 function contactBody(input:BodyMotionInput):BodyMotion {
  const {speed,crouch,phase,forward,sideways}=input,gait=groundGait(speed,crouch,phase,forward,sideways);
+ // Keep an extension reserve at the low, forward end of the swing too.
+ // Otherwise a reachable contact can still contain an unreachable airborne
+ // target, locking the knee straight for several frames before it snaps back.
+ let maximum=Infinity;
+ for(const [sign,foot] of [[-1,gait.left],[1,gait.right]] as const){
+  const dx=foot.position[0]-gait.pelvis[0]-sign*.115*Math.cos(gait.heading);
+  const dz=foot.position[2]-gait.pelvis[2]+sign*.115*Math.sin(gait.heading);
+  maximum=Math.min(maximum,foot.position[1]+Math.sqrt(Math.max(.1,.815**2-dx*dx-dz*dz)));
+ }
+ const gap=Math.max(0,.02-Math.abs(gait.pelvis[1]-maximum));
+ const bounded=Math.min(gait.pelvis[1],maximum)-gap*gap/.08;
+ gait.pelvis[1]=mix(gait.pelvis[1],bounded,gait.moving);
+ // A walking body rises over its support leg. Keeping the contact-height
+ // crouch for the entire cycle makes the knees stay bent even at midstance.
+ gait.pelvis[1]=mix(gait.pelvis[1],maximum-.004,.65*(1-gait.run)*(1-crouch)*gait.moving);
  const landAge=input.time-(input.landedAt??-Infinity);
  const impact=input.grounded!==false&&landAge>=0&&landAge<.38?ease(landAge/.035)*(1-ease((landAge-.24)/.14))*clamp((input.landingSpeed??7.3)/7.3):0;
  gait.pelvis[1]-=impact*.13;
- const knee=(sign:number):MotionVector=>[sign*mix(.13,.18,crouch)*Math.cos(gait.heading)+Math.sin(gait.heading)*.28,mix(.44,.17,crouch),Math.cos(gait.heading)*.28-sign*.13*Math.sin(gait.heading)];
+ // A low, fixed pole can pass behind the hip-to-ankle line during the
+ // forward swing. That flips the IK branch and bends the knee backwards.
+ // Keep the pole ahead of the hip, at hip height, throughout the stride.
+ const knee=(sign:number):MotionVector=>[gait.pelvis[0]+sign*mix(.13,.18,crouch)*Math.cos(gait.heading)+Math.sin(gait.heading),gait.pelvis[1]+.09,gait.pelvis[2]+Math.cos(gait.heading)-sign*mix(.13,.18,crouch)*Math.sin(gait.heading)];
  for(const foot of [gait.left,gait.right])foot.position[1]+=proceduralBootClearance(foot.rotation);
  return {pelvis:gait.pelvis,pelvisRotation:gait.pelvisRotation,spineRotation:gait.spineRotation,
   leftFoot:gait.left.position,rightFoot:gait.right.position,leftFootRotation:gait.left.rotation,rightFootRotation:gait.right.rotation,leftKnee:knee(-1),rightKnee:knee(1),

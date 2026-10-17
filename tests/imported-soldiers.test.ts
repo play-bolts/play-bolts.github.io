@@ -167,6 +167,42 @@ test('actual skinned bodies remain finite and grounded across stance, gait, relo
  }
 });
 
+test('imported hip offsets and leg lengths match the locomotion anatomy',()=>{
+ for(const faction of FACTIONS){
+  const p=profiles[faction].bonePositions;
+  for(const side of ['L','R'] as const){
+   assert.ok(Math.abs(p[`thigh${side}`][1]-p.pelvis[1]-.09)<1e-6);
+   assert.ok(Math.abs(new THREE.Vector3(...p[`thigh${side}`]).distanceTo(new THREE.Vector3(...p[`calf${side}`]))-.420)<1e-6);
+   assert.ok(Math.abs(new THREE.Vector3(...p[`calf${side}`]).distanceTo(new THREE.Vector3(...p[`foot${side}`]))-.415)<1e-6);
+  }
+ }
+});
+
+test('German boots retain source topology and flex at the ankle instead of the shin',async()=>{
+ const bytes=readFileSync(new URL('../public/assets/imported-soldiers/german.glb',import.meta.url));
+ const loader=new GLTFLoader();loader.register(()=>({name:'german-boot-source-textures',loadTexture:()=>Promise.resolve(new THREE.Texture())}));
+ const source=await loader.parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');source.scene.updateMatrixWorld(true);
+ const model=makeSoldier('german'),bounds=[new THREE.Box3(),new THREE.Box3()];let shaftVertices=0;
+ for(const mesh of skins(model)){
+  const original=source.scene.getObjectByName(mesh.name) as THREE.SkinnedMesh;
+  const before=original.geometry.clone().applyMatrix4(original.matrixWorld),after=mesh.geometry;
+  assert.deepEqual(after.index!.array,before.index!.array,'no replacement geometry or lost triangles');
+  assert.deepEqual(after.getAttribute('uv').array,before.getAttribute('uv').array,'source material placement is retained');
+  const a=before.getAttribute('position'),b=after.getAttribute('position'),weights=after.getAttribute('skinWeight'),indices=after.getAttribute('skinIndex');
+  for(let i=0;i<a.count;i++){
+   assert.equal(a.getY(i),b.getY(i),'sole and garment heights are preserved');
+   if(a.getY(i)>=.4){assert.equal(a.getX(i),b.getX(i));assert.equal(a.getZ(i),b.getZ(i));}
+   if(b.getY(i)<.12)bounds[b.getX(i)<0?0:1].expandByPoint(new THREE.Vector3().fromBufferAttribute(b,i));
+   if(b.getY(i)>.185&&b.getY(i)<.245){
+    let calf=0,foot=0;for(let j=0;j<4;j++){const index=indices.getComponent(i,j),w=weights.getComponent(i,j);if(index===10||index===13)calf+=w;if(index===11||index===14)foot+=w;}
+    assert.ok(calf>.9999&&foot<1e-7,'upper boot shaft moves rigidly with the shin');shaftVertices++;
+   }
+  }
+ }
+ assert.ok(shaftVertices>0,'checks actual leather shaft surface');
+ for(const box of bounds){const size=box.getSize(new THREE.Vector3());assert.ok(size.x<.17&&size.z>.28&&size.z<.31,'adult boot footprint, including the source feet’s slight outward turn');}
+});
+
 test('source skeletons replay exact poses and actor disposal cannot damage other clones',()=>{
  for(const faction of FACTIONS){
   const one=makeSoldier(faction),two=makeSoldier(faction),pose=sampleSoldierPose(actor({stance:'crouch',ads:true}),faction,2);

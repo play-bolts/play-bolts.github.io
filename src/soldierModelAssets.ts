@@ -23,24 +23,41 @@ function soleHull(points:Point[]):Point[]{
 /** Fit the source's oversized boots without changing the ankle pivots, sole
  * height or continuous skin. The correction fades out before the knee, so
  * the boot tops remain joined to the original trousers. */
-function fitSovietBoots(geometry:THREE.BufferGeometry,profile:SoldierModelProfile){
+function fitSoldierBoots(geometry:THREE.BufferGeometry,profile:SoldierModelProfile){
+ const german=profile.faction==='german',width=german?.84:.78,length=german?.87:.80;
  const positions=geometry.getAttribute('position'),normals=geometry.getAttribute('normal');
  for(let i=0;i<positions.count;i++){
   const x=positions.getX(i),y=positions.getY(i),z=positions.getZ(i);
   if(y>=.40)continue;
   const ankle=profile.bonePositions[x<0?'footL':'footR'];
   const t=Math.max(0,Math.min(1,(y-.18)/.22)),blend=t*t*(3-2*t);
-  const sx=.78+.22*blend,sz=.80+.20*blend,derivative=6*t*(1-t)/.22;
+  const sx=width+(1-width)*blend,sz=length+(1-length)*blend,derivative=6*t*(1-t)/.22;
   positions.setXYZ(i,ankle[0]+(x-ankle[0])*sx,y,ankle[2]+(z-ankle[2])*sz);
   if(normals){
    // Inverse-transpose of the tapered deformation: preserve the authored
    // smooth normals and UV seams instead of rebuilding a faceted boot.
    const nx=normals.getX(i)/sx,nz=normals.getZ(i)/sz;
-   const normal=new THREE.Vector3(nx,normals.getY(i)-(x-ankle[0])*.22*derivative*nx-(z-ankle[2])*.20*derivative*nz,nz).normalize();
+   const normal=new THREE.Vector3(nx,normals.getY(i)-(x-ankle[0])*(1-width)*derivative*nx-(z-ankle[2])*(1-length)*derivative*nz,nz).normalize();
    normals.setXYZ(i,normal.x,normal.y,normal.z);
   }
  }
  positions.needsUpdate=true;if(normals)normals.needsUpdate=true;
+}
+
+/** The source's boot shaft was blended to the foot as high as .25m. That
+ * bends leather halfway up the shin. Confine flex to the ankle/instep crease
+ * and let the upper shaft follow the calf, keeping the original surface. */
+function fitGermanAnkleWeights(geometry:THREE.BufferGeometry){
+ const position=geometry.getAttribute('position'),index=geometry.getAttribute('skinIndex'),weight=geometry.getAttribute('skinWeight');
+ for(let i=0;i<position.count;i++){
+  const y=position.getY(i);if(y>=.25)continue;
+  let left=0,right=0;
+  for(let j=0;j<4;j++){const bone=index.getComponent(i,j),w=weight.getComponent(i,j);if(bone===10||bone===11)left+=w;if(bone===13||bone===14)right+=w;}
+  if(left+right<.999)continue;
+  const t=Math.max(0,Math.min(1,(y-.11)/.07)),calf=t*t*(3-2*t),bone=left>right?10:13;
+  index.setXYZW(i,bone,bone+1,0,0);weight.setXYZW(i,calf,1-calf,0,0);
+ }
+ index.needsUpdate=true;weight.needsUpdate=true;
 }
 
 function fittedMaterial(material:THREE.Material,faction:Faction):THREE.Material{
@@ -94,7 +111,7 @@ export async function loadSoldierModelFromBuffer(buffer:ArrayBuffer,profile:Sold
   // does not alter the head, uniform atlas or the helmet's original shape.
   if(profile.faction==='german'&&materials.every(material=>material.name==='german-foliage'||material.name==='german-helmet-wire'))return;
   const geometry=object.geometry.clone().applyMatrix4(object.matrixWorld);
-  if(profile.faction==='russian'&&object.name==='russian-uniform')fitSovietBoots(geometry,profile);
+  if((profile.faction==='russian'&&object.name==='russian-uniform')||profile.faction==='german')fitSoldierBoots(geometry,profile);
   const index=geometry.getAttribute('skinIndex'),weight=geometry.getAttribute('skinWeight'),position=geometry.getAttribute('position');
   if(!index||!weight||!position)throw new Error(`Missing ${profile.faction} soldier skin attributes`);
   const mapping=object.skeleton.bones.map(bone=>SOLDIER_BONES.indexOf(bone.name as SoldierBone));
@@ -105,6 +122,7 @@ export async function loadSoldierModelFromBuffer(buffer:ArrayBuffer,profile:Sold
    joints[i*4+j]=Math.max(0,mapped??0);
   }
   geometry.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(joints,4));
+  if(profile.faction==='german')fitGermanAnkleWeights(geometry);
   if(profile.faction==='british'&&object.name==='british-legs-31')fitBritishTrouserWeights(geometry);
   geometry.computeBoundingBox();geometry.computeBoundingSphere();
   if(![...position.array].every(Number.isFinite))throw new Error('Non-finite soldier source vertices');

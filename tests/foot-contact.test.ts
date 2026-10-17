@@ -83,3 +83,29 @@ test('all three fitted skeletons hold their support boots still as the actor tra
   }
  }
 });
+
+test('source knees stay on the anatomical branch with no reversal or straight-leg snap',()=>{
+ for(const faction of FACTIONS){
+  const model=makeSoldier(faction),rig=model.userData.soldierRig as SoldierRig;
+  for(const [stance,speed] of [['stand',0],['stand',1.7],['stand',2.8],['stand',4.5],['crouch',1.3]] as const)for(let direction=0;direction<8;direction++){
+   const crouch=Number(stance==='crouch'),forward=Math.cos(direction*Math.PI/4),sideways=Math.sin(direction*Math.PI/4);
+   let previous:THREE.Vector3[]|undefined;
+   for(let i=0;i<=180;i++){
+    const phase=i/180,gait=groundGait(speed,crouch,phase,forward,sideways);
+    applySoldierPose(model,sampleSoldierPose(actor(stance,speed),faction,2,{phase,crouch,forward,sideways}));model.updateMatrixWorld(true);
+    const knees=[];
+    for(const [index,chain] of [rig.leftLeg,rig.rightLeg].entries()){
+     const hip=chain.root.getWorldPosition(new THREE.Vector3()),knee=chain.middle.getWorldPosition(new THREE.Vector3()),ankle=chain.end.getWorldPosition(new THREE.Vector3());
+     const axis=ankle.clone().sub(hip).normalize(),bend=knee.clone().sub(hip);
+     bend.addScaledVector(axis,-bend.dot(axis));
+     const facing=new THREE.Vector3(Math.sin(gait.heading),0,Math.cos(gait.heading));
+     assert.ok(bend.dot(facing)>.001,`${faction}/${stance}/${speed}/${direction}/${phase}: knee must bend ahead of the hip-to-ankle line`);
+     if(stance==='stand')assert.ok(knee.clone().sub(hip).angleTo(ankle.clone().sub(knee))>10*Math.PI/180,'reserve knee flex instead of locking IK at full extension');
+     if(previous)assert.ok(knee.distanceTo(previous[index])<.045,`${faction}/${stance}/${speed}/${direction}/${phase}: continuous knee path, including wraparound`);
+     knees.push(knee);
+    }
+    previous=knees;
+   }
+  }
+ }
+});

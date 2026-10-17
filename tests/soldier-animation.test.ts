@@ -69,7 +69,7 @@ test('rifle running keeps the torso steady while retaining a full articulated st
     }
     const range=(values:number[])=>Math.max(...values)-Math.min(...values);
     for(const values of [neckX,rifleX])assert.ok(range(values)>.025&&range(values)<.06,'head and held rifle retain a small, sub-6cm lateral weight shift');
-    assert.ok(range(footZ)>.6,'running must retain its forward/back stride without forcing short legs into a squat');
+    assert.ok(range(footZ)>.45&&range(footZ)<.90,'jogging retains a visible stride without the old metre-wide airborne split');
     assert.ok(range(footY)>.2,'running must retain its lifted swing leg');
   }
 });

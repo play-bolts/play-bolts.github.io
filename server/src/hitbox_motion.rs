@@ -39,6 +39,9 @@ pub(crate) fn procedural_boot_clearance(rotation:[f64;3])->f64 {
 
 // Exact mirror of soldierGait.ts: a supported foot moves backwards in model
 // space at the actor's travel speed; both swing endpoints match that velocity.
+fn curve(t:f64,a:f64,b:f64,va:f64,vb:f64)->f64 {
+    (2.0*t*t*t-3.0*t*t+1.0)*a+(t*t*t-2.0*t*t+t)*va+(-2.0*t*t*t+3.0*t*t)*b+(t*t*t-t*t)*vb
+}
 fn contact_body(actor:&Actor,time:f64,s:Motion)->BodyMotion {
     let run=ease((s.speed-1.8)/1.3)*(1.0-s.crouch);let moving=ease(s.speed/0.65);
     let rate=crate::sim::gait_rate(s.speed,s.crouch,0.0);let distance=if rate>0.0{s.speed/rate}else{0.0};
@@ -48,21 +51,33 @@ fn contact_body(actor:&Actor,time:f64,s:Motion)->BodyMotion {
     let width=mix_number(0.13,0.18,s.crouch);let sway=-((s.phase-duty/2.0)*std::f64::consts::TAU).cos()*0.018*moving;
     let foot=|side:f64| {
         let p=(s.phase+if side>0.0{0.5}else{0.0}).rem_euclid(1.0);let swing=(p-duty)/(1.0-duty);
-        let travel=if p<duty{span/2.0-distance*p}else{-span/2.0-distance*(1.0-duty)*swing+distance*ease(swing)};
-        let arch=if p<duty{0.0}else{(std::f64::consts::PI*swing).sin().powi(2)};
-        let lift=arch*mix_number(0.07,0.27,run)*(1.0-s.crouch*0.35)*moving;
-        let pitch=if p<duty{0.0}else{(std::f64::consts::TAU*swing).sin()*mix_number(0.28,0.48,run)*moving};
+        let turnaround=0.045;let back=span/2.0+distance*0.018;let front=span/2.0+distance*0.012;let velocity=-distance*(1.0-duty);
+        let travel=if p<duty{span/2.0-distance*p}else if swing<turnaround{curve(swing/turnaround,-span/2.0,-back,velocity*turnaround,0.0)}else if swing<1.0-turnaround{curve((swing-turnaround)/(1.0-2.0*turnaround),-back,front,0.0,0.0)}else{curve((swing-1.0+turnaround)/turnaround,front,span/2.0,0.0,velocity*turnaround)};
+        let peak=mix_number(0.45,0.28,run);
+        let arch=if p<duty{0.0}else if swing<peak{(std::f64::consts::PI*0.5*swing/peak).sin().powi(2)}else{(std::f64::consts::PI*0.5*(swing-peak)/(1.0-peak)).cos().powi(2)};
+        let lift=arch*mix_number(0.07,0.25,run)*(1.0-s.crouch*0.35)*moving;
+        let pitch=if p<duty{0.0}else{arch*mix_number(0.25,0.95,run)*moving};
         let rotation=[pitch,heading+side*0.06,0.0];
         (Vec3{x:side*width*cos+travel*sideways,y:lift+procedural_boot_clearance(rotation),z:-side*width*sin+travel*f},rotation)
     };
-    let reach=(0.70_f64.powi(2)-(span/2.0).powi(2)).max(0.10).sqrt();
-    let height=mix_number((0.09+reach).min(0.80),0.43,s.crouch);
-    let bounce=mix_number((1.0-(s.phase*std::f64::consts::PI*4.0).cos())*0.015,(1.0-((s.phase-duty/2.0)*std::f64::consts::PI*4.0).cos())*0.012,run)*moving;
+    let reach=(0.817_f64.powi(2)-(span/2.0).powi(2)).max(0.10).sqrt();
+    let height=mix_number((0.095+reach-0.09).min(0.825),0.43,s.crouch);
+    let bounce=mix_number((1.0-(s.phase*std::f64::consts::PI*4.0).cos())*0.022,(1.0-((s.phase-duty/2.0)*std::f64::consts::PI*4.0).cos())*0.012,run)*moving;
+    let (left_foot,left_foot_rotation)=foot(-1.0);let (right_foot,right_foot_rotation)=foot(1.0);
+    let mut pelvis=Vec3{x:sway*cos,y:height+bounce,z:-0.07*s.crouch-sway*sin};
+    let mut maximum=f64::INFINITY;
+    for (side,foot,rotation) in [(-1.0,left_foot,left_foot_rotation),(1.0,right_foot,right_foot_rotation)] {
+        let dx=foot.x-pelvis.x-side*0.115*cos;let dz=foot.z-pelvis.z+side*0.115*sin;
+        maximum=maximum.min(foot.y-procedural_boot_clearance(rotation)+(0.815_f64.powi(2)-dx*dx-dz*dz).max(0.1).sqrt());
+    }
+    let gap=(0.02-(pelvis.y-maximum).abs()).max(0.0);let bounded=pelvis.y.min(maximum)-gap*gap/0.08;
+    pelvis.y=mix_number(pelvis.y,bounded,moving);
+    pelvis.y=mix_number(pelvis.y,maximum-0.004,0.65*(1.0-run)*(1.0-s.crouch)*moving);
     let land_age=time-actor.landed_at;
     let impact=if actor.grounded&&(0.0..0.38).contains(&land_age){ease(land_age/0.035)*(1.0-ease((land_age-0.24)/0.14))*(actor.landing_speed/7.3).clamp(0.0,1.0)}else{0.0};
-    let knee=|side:f64|Vec3{x:side*width*cos+sin*0.28,y:mix_number(0.44,0.17,s.crouch),z:cos*0.28-side*0.13*sin};
-    let (left_foot,left_foot_rotation)=foot(-1.0);let (right_foot,right_foot_rotation)=foot(1.0);
-    BodyMotion{pelvis:Vec3{x:sway*cos,y:height+bounce-impact*0.13,z:-0.07*s.crouch-sway*sin},pelvis_rotation:[0.0,heading,0.0],spine_rotation:[mix_number(0.04+0.12*run,0.27,s.crouch),-heading,0.0],left_foot,right_foot,left_knee:knee(-1.0),right_knee:knee(1.0),left_foot_rotation,right_foot_rotation}
+    pelvis.y-=impact*0.13;
+    let knee=|side:f64|Vec3{x:pelvis.x+side*width*cos+sin,y:pelvis.y+0.09,z:pelvis.z+cos-side*width*sin};
+    BodyMotion{pelvis,pelvis_rotation:[0.0,heading,0.0],spine_rotation:[mix_number(0.04+0.12*run,0.27,s.crouch),-heading,0.0],left_foot,right_foot,left_knee:knee(-1.0),right_knee:knee(1.0),left_foot_rotation,right_foot_rotation}
 }
 
 pub(crate) fn sample_body_motion(data:&SourceMotion,actor:&Actor,time:f64,s:Motion)->BodyMotion {

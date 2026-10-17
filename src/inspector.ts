@@ -112,9 +112,11 @@ function resetView() {
   camera.fov=mode==='soldiers'?36:sights.checked?ADS_WEAPON_FOV:firstPerson.checked?HIP_WEAPON_FOV:37;
   camera.updateProjectionMatrix();
   if(mode==='soldiers') {
-    soldiers.children.forEach(model=>model.rotation.y=soldierFraming.value==='stride-side'?Math.PI/2:-.13);
+    soldiers.children.forEach(model=>model.rotation.y=['stride-side','german-stride','german-legs'].includes(soldierFraming.value)?Math.PI/2:-.13);
     const head=FACTIONS.indexOf(soldierFraming.value as Faction);
-    if(head>=0){const x=(head-1)*1.35;camera.position.set(x+.05,1.66,.78);orbit.target.set(x,1.66,0);}
+    if(soldierFraming.value==='german-legs'){camera.position.set(1.35,.57,2.05);orbit.target.set(1.35,.53,0);}
+    else if(soldierFraming.value==='german-stride'){camera.position.set(1.35,1.1,3.65);orbit.target.set(1.35,.87,0);}
+    else if(head>=0){const x=(head-1)*1.35;camera.position.set(x+.05,1.66,.78);orbit.target.set(x,1.66,0);}
     else if(soldierFraming.value==='death-front'){camera.position.set(0,1.5,6.5);orbit.target.set(0,.55,0);}
     else if(soldierFraming.value==='death-side'){camera.position.set(4.4,1.6,3.2);orbit.target.set(0,.55,0);}
     else if(soldierAnimation.value==='jump'){camera.position.set(1.5,3,9);orbit.target.set(0,1.8,.05);}

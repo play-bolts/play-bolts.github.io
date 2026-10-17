@@ -32,7 +32,10 @@ Soviet source weights were collapsed and retargeted. Color textures are JPEG92
 The runtime additionally removes the German helmet's separate camouflage
 foliage and wire and applies solid gray paint to its shell. Soviet boot width
 and length are fitted around the original ankle pivots, fading into the source
-trousers; UVs, skin weights and sole height are retained. These adjustments are
+trousers; UVs, skin weights and sole height are retained. German boots are fitted
+16% narrower and 13% shorter at the foot, fading out below the knees; their
+ankle weights are tightened around the instep so the leather shafts follow the
+shins. Source triangles, UVs, textures and sole heights are retained. These adjustments are
 implemented in `src/soldierModelAssets.ts`; the derivative GLBs remain unchanged.
 
 Each `*-provenance.json` records source/output SHA-256, geometry counts and

@@ -60,7 +60,7 @@ export class UI {
   }catch{}
   document.querySelector('#app')!.innerHTML=`
   <div id="world" aria-label="3D arena"></div><div class="film-grain"></div><div class="vignette"></div>
-  <div id="menu" class="screen menu intro-active">    <section id="menu-main" class="intro-menu" aria-label="Main menu">
+  <div id="menu" class="screen menu front-menu intro-active">    <section id="menu-main" class="intro-menu" aria-label="Main menu">
      <h1>BOLTS</h1>
      <div class="main-choices"><button id="start" class="classic-choice">Single player</button><button id="multiplayer" class="classic-choice">Multiplayer</button><button id="leaderboard-open" class="classic-choice">Leaderboard</button><button id="feedback-open" class="classic-choice">Feedback</button><button class="classic-choice settings-button">Options</button><button class="classic-choice controls-button">Controls</button><button id="credits-open" class="classic-choice">Credits</button></div>
      <p id="mobile-notice" class="hidden"><strong>Best experienced on a PC.</strong><span>On mobile, rotate to landscape and use the touch controls.</span></p>
@@ -366,8 +366,8 @@ export class UI {
  // Predicted multiplayer shots have no target; only confirmed local hits flash.
  showHit(shot:Shot){if(this.prefs.hitIndicators&&shot.actor===0&&shot.hit!==null&&shot.hit>0)this.hitUntil=performance.now()+250;}
  showKill(victimName:string){this.killUntil=performance.now()+3000;this.el['kill-message'].innerHTML=`You killed ${playerNameHTML(victimName)}`;this.el['kill-message'].style.opacity='1';this.el['kill-message'].classList.remove('hidden');}
- showMenu(){this.setSelectionBusy(false);this.spectating=this.spectatorSelection=false;this.inGame=false;this.selectionOpen=false;this.setOnline(false);this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.feed=[];this.hitUntil=0;this.killUntil=0;this.setMenuStage('main');}
- begin(){this.inGame=true;this.closeSelection();this.closeModal();this.damageStarted=-Infinity;this.damageUntil=0;this.feed=[];this.hitUntil=0;this.killUntil=0;this.scoreHeld=false;this.el['hit-confirm'].classList.add('hidden');this.el['kill-message'].classList.add('hidden');this.el.menu.classList.add('hidden');this.el.pause.classList.add('hidden');this.el.scoreboard.classList.add('hidden');this.el.hud.classList.remove('hidden');}
+ showMenu(){this.setSelectionBusy(false);this.spectating=this.spectatorSelection=false;this.inGame=false;this.selectionOpen=false;this.setOnline(false);this.el.menu.classList.add('front-menu');this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.feed=[];this.hitUntil=0;this.killUntil=0;this.setMenuStage('main');}
+ begin(){this.inGame=true;this.closeSelection();this.closeModal();this.damageStarted=-Infinity;this.damageUntil=0;this.feed=[];this.hitUntil=0;this.killUntil=0;this.scoreHeld=false;this.el['hit-confirm'].classList.add('hidden');this.el['kill-message'].classList.add('hidden');this.el.menu.classList.remove('front-menu');this.el.menu.classList.add('hidden');this.el.pause.classList.add('hidden');this.el.scoreboard.classList.add('hidden');this.el.hud.classList.remove('hidden');}
  update(game:Game,waitingForRespawn=false){
   if(!game.player)return;const replayActor=game.state==='killcam'?game.replayFrame()?.actors[game.killer]:null;const p=replayActor?{...game.actors[game.killer],...replayActor}:game.viewedActor??game.player,now=performance.now();
   const markup=this.hudMarkup;

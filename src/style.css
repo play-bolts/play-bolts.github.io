@@ -215,7 +215,18 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 }
 
 /* The front end is a tabletop composition; selection retains the black window. */
-.menu.intro-active { background: linear-gradient(90deg, #15170900 34%, #20231822 56%, #20231855); }
+.menu.front-menu {
+ /* The opaque base remains readable if the optional decorative image fails. */
+ background-color: #17100b;
+ background-image: linear-gradient(90deg, #15170900 34%, #20231822 56%, #20231855), url('/assets/menu/kar98k-table-v2.webp');
+ background-position: center;
+ background-size: cover;
+ background-repeat: no-repeat;
+}
+.mobile-device .menu.front-menu, .touch-mode .menu.front-menu {
+ background-image: linear-gradient(#100d0a66, #100d0a88), url('/assets/menu/kar98k-table-v2.webp');
+ background-position: 42% center;
+}
 .intro-menu { position: absolute; top: 24%; right: 13%; width: min(345px, 32vw); min-height: 380px; padding-left: 27px; border-left: 1px solid #e1e1c07d; }
 .intro-menu h1 { width: max-content; font-family: "Alfa Slab One", Georgia, serif; font-size: clamp(56px, 6.8vw, 94px); font-weight: 400; letter-spacing: -.035em; transform: scaleX(.82); transform-origin: left center; color: #dddbc8; text-shadow: 0 1px #fff, 0 -1px #6a6b5b, 3px 4px 3px #0009; margin: -12px 0 38px; }
 .intro-menu .classic-choice { font-size: clamp(20px, 1.8vw, 28px); line-height: 1.25; margin-bottom: 5px; color: #d8dbc5; }

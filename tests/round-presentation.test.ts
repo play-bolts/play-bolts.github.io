@@ -147,15 +147,17 @@ test('free spectator camera draws the arena alone and near-plane clearance remai
 });
 
 
-test('static menu draws once, then invalidates on entry and explicit layout or quality changes',t=>{
+test('image-backed front menu skips GPU and pose work, while game and team selection still render',t=>{
  const game=new Game();game.start('british','recruit');const view=fakeView(game);let draws=0;
- Object.assign(view,{menuTarget:new THREE.Vector3(),intro:{scene:new THREE.Scene(),camera:new THREE.OrthographicCamera(),invalidateShadows(){}}});
+ Object.assign(view,{menuTarget:new THREE.Vector3()});
  t.mock.method(view.renderer,'render',()=>draws++);
- view.render(game,1/60,true,true);assert.equal(draws,1);
- const time=view.soldiers[1].userData.soldierState.time;
+ view.render(game,1/60,true,true);assert.equal(draws,0);
+ assert.equal(view.soldiers[1].userData.soldierState,undefined,'the initial menu does not initialize hidden animation');
  game.time+=1;for(let i=0;i<30;i++)view.render(game,1/60,true,true);
- assert.equal(draws,1,'unchanged menu does not submit another GPU frame');assert.equal(view.soldiers[1].userData.soldierState.time,time,'menu does no hidden pose work either');
- view.invalidateIntro();view.render(game,1/60,true,true);assert.equal(draws,2);
- view.render(game,1/60,false);const playingDraws=draws;assert.equal(playingDraws,4,'world and first-person rendering still run');
- view.render(game,1/60,true,true);assert.equal(draws,playingDraws+1,'returning from play always restores the menu pixels');
+ assert.equal(draws,0,'the menu never submits a GPU frame');
+ view.render(game,1/60,false);assert.equal(draws,2,'world and first-person rendering still run');
+ const time=view.soldiers[1].userData.soldierState.time;
+ game.time+=1;view.render(game,1/60,true,true);assert.equal(draws,2,'returning from play uses the CSS background');
+ assert.equal(view.soldiers[1].userData.soldierState.time,time,'returning to the menu does no hidden pose work');
+ view.render(game,1/60,true,false);assert.equal(draws,3,'in-game selection still draws its arena backdrop');
 });

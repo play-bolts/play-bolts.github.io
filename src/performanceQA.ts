@@ -18,7 +18,7 @@ await view.prepare();
 const compressedMaps=new Set<string>();view.scene.traverse(object=>{if(object instanceof THREE.Mesh)for(const material of Array.isArray(object.material)?object.material:[object.material])for(const value of Object.values(material))if(value instanceof THREE.CompressedTexture)compressedMaps.add(value.name);});
 game.actors=Array.from({length:6},(_,i)=>Object.assign(createActor(i,FACTIONS[i%3],`Benchmark ${i}`),{renderIdentity:`benchmark:${i}`}));
 game.state='playing';view.setupActors(game);
-view.renderer.setPixelRatio(1.75);view.renderer.setSize(1280,720,false);view.camera.aspect=view.weaponCamera.aspect=1280/720;view.camera.updateProjectionMatrix();view.weaponCamera.updateProjectionMatrix();view.intro.resize(1280/720);
+view.renderer.setPixelRatio(1.75);view.renderer.setSize(1280,720,false);view.camera.aspect=view.weaponCamera.aspect=1280/720;view.camera.updateProjectionMatrix();view.weaponCamera.updateProjectionMatrix();
 view.renderer.info.autoReset=false;
 const gl=view.renderer.getContext() as WebGL2RenderingContext,extension=gl.getExtension('EXT_disjoint_timer_query_webgl2');
 const pending:WebGLQuery[]=[];let gpu:number[]=[];

@@ -1,0 +1,41 @@
+{
+  "asset": "kar98k-table-v2.webp",
+  "created": "2026-10-16",
+  "generator": "OpenAI built-in image_gen",
+  "description": "AI-generated WWII tabletop still-life revised against historical object references. Original menu composition retained; M31-pattern breadbag, early metal marching-compass features, and Kar98k hardware revised.",
+  "historicalAccuracy": "Reference-guided illustration, not a photograph or certified exact reproduction. Fine markings and small mechanisms may be approximate.",
+  "references": [
+    {
+      "item": "Kar98k",
+      "source": "Australian War Memorial, REL28841, 1940",
+      "url": "https://www.awm.gov.au/collection/C963504"
+    },
+    {
+      "item": "M31 breadbag",
+      "source": "Original-object photographs",
+      "url": "https://www.haakons.com/brotbeutel"
+    },
+    {
+      "item": "Breadbag issue context",
+      "source": "US War Department Handbook on German Military Forces, Chapter IX, section 6e",
+      "url": "https://www.ibiblio.org/hyperwar/Germany/HB/HB-9.html"
+    },
+    {
+      "item": "Early metal marching compass",
+      "source": "H.Dv.448/6 historical manual plate reproduced in compass study",
+      "url": "https://www.bergflak.com/images/K80.jpg",
+      "context": "https://www.bergflak.com/compass.html"
+    }
+  ],
+  "referenceUsage": "References guided object construction only. Reference photographs are not bundled with the app.",
+  "encoding": {
+    "format": "WebP",
+    "quality": 88,
+    "method": 6,
+    "metadata": "none"
+  },
+  "prompts": [
+    "Use case: precise-object-edit.\nAsset type: final photorealistic 16:9 background for the Bolts WWII multiplayer main menu.\nImage 1 is the EDIT TARGET. Images 2–5 are historical object references only, not photographs to paste into the result.\nPreserve image 1's worn dark wooden table, warm oblique lighting, camera angle, overall still-life composition, dark quiet right third, and the one diagonal Kar98k rifle running from lower-left butt to upper-right muzzle. Preserve the three five-round ammunition clips. No menu or typography in the image.\n\nMake the following historically grounded corrections, reproducing the construction from the references:\n1. Replace the large rectangular double-buckle satchel at upper left with the German M31 Brotbeutel shown in reference 2: smaller grey-olive canvas bread bag with rounded pear-shaped bottom, simple wide cloth flap, two SMALL horizontal leather equipment loops on the flap, upper metal D-rings and belt loops plus central belt hook. Closures button beneath the flap. Absolutely no long vertical leather straps or roller buckles across its front. Lay the bag naturally on the table, with its fabric strap tucked beside it, preserving the visual balance.\n2. Replace the decorative cream-dial pocket compass with an early German military Marschkompass as shown in reference 3: small circular dark metal housing, DARK numbered military dial with pale graduations and N/O/S/W, narrow straight ruler extension at one side, open hinged lid with sighting aperture and line, hinged silver sighting mirror, short leather carrying strap. Keep it near the bag in the same small footprint; clearly a practical sighting compass, no ornate compass rose. Keep it dimensionally plausible compared with the cartridges and rifle.\n3. Refine the rifle's hardware based on reference 4 and closeup reference 5: authentic Kar98k closed bolt/receiver geometry, downturned bolt seated over a distinct oval relief cut into the stock, low tangent rear sight, correctly proportioned low front-sight hood surrounding a tiny front post, milled front barrel band and bayonet mounting stud beneath the muzzle, slender cleaning rod under the barrel. Keep the stock sling slot, takedown disc, buttplate and dark worn walnut. No scope, no modern magazine, no added bayonet, no extra rifles. Use reference geometry but retain the target photo's perspective and lighting.\n4. Keep exactly five full-length pointed 7.92x57 cartridges on each of three thin steel stripper clips. Crisp distinct cartridge boundaries with realistic brass cases and copper-colored jacketed bullets.\n\nFinish as a cohesive realistic photograph, natural wear rather than decorative damage, believable metal reflections and canvas weave. Keep all objects inside frame and maintain unobstructed dark wood on the right for the existing menu. No logos, text overlays, watermarks, flags or additional objects.",
+    "Use case: precise-object-edit. Image 1 is the photo to edit, and images 2 and 3 are historical rifle geometry references. Correct ONLY the rifle, preserving every other pixel as closely as possible: same breadbag, same compass, same three five-round clips, table, lighting, shadows, composition, 16:9 framing and empty right third.\nMatch the rifle hardware faithfully to the 1940 Kar98k in reference 2 and its bolt detail in reference 3. Most important: sculpt a clearly visible oval concave thumb/bolt-handle relief into the right face of the wooden stock directly behind and beneath the turned-down bolt ball; it must be a real carved shallow bowl in the wood as reference 3, not merely a dark painted circle. Replace the exaggerated tall narrow front sight hoop with the small UNHOODED front sight blade on a low base as reference 2. The rifle may have an unhooded front sight, deliberately matching that museum specimen. Include the small bayonet stud and slender straight cleaning rod underneath the barrel, below the front band. Refine the rear tangent sight to a low narrow flat leaf and slider as reference 2, not ornamental circular knobs. Keep the closed-bolt Mauser action, stock sling slot, takedown disc, buttplate, worn dark walnut, exact rifle placement, perspective, length and silhouette otherwise. No sling addition, no bayonet blade, no scope, no new text or objects. Photorealistic integrated local edit."
+  ]
+}

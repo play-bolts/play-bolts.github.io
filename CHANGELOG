@@ -1,3 +1,4 @@
+v1.0.6 - Adds historically revised Kar98k menu artwork and removes the obsolete 3D menu scene
 v1.0.5 - Applies approved melee, headshot, and rifle kill-feed silhouettes
 v1.0.4 - Documents verified protocol 3 rollout and production multiplayer checks
 v1.0.3 - Reduces multiplayer traffic, paces snapshots after stalls, delivers combat cues immediately, and moves encoding outside the game lock

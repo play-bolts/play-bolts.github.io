@@ -8,7 +8,6 @@ import type {Actor,Game,Shot} from './engine';
 import {batchArenaMeshes,reconcileActorModels,soldierContributesToView,type ActorModelEntry} from './renderOptimization';
 import {makeRifle,getRifleVisuals,HIP_WEAPON_FOV,ADS_WEAPON_FOV} from './rifle';
 import {makeSoldier} from './soldier';
-import {IntroScene} from './introScene';
 import {makeStielhandgranate} from './grenadeModel';
 import {updateSoldier} from './soldierAnimation';
 import {makeSurfaceMaterial,SURFACE_TILE_METERS} from './materials';
@@ -27,7 +26,7 @@ const mat=(color:number,roughness=.85)=>new THREE.MeshStandardMaterial({color,ro
 function disposeModel(group:THREE.Object3D){const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>(),textures=new Set<THREE.Texture>(),skeletons=new Set<THREE.Skeleton>();group.traverse(o=>{if(o instanceof THREE.SkinnedMesh)skeletons.add(o.skeleton);if(o instanceof THREE.InstancedMesh)o.dispose();if(o instanceof THREE.Mesh){geometries.add(o.geometry);for(const material of Array.isArray(o.material)?o.material:[o.material]){materials.add(material);for(const value of Object.values(material))if(value instanceof THREE.Texture)textures.add(value);}}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());skeletons.forEach(s=>s.dispose());}
 function box(parent:THREE.Object3D,w:number,h:number,d:number,x:number,y:number,z:number,material:THREE.Material,tile?:number){const geometry=new THREE.BoxGeometry(w,h,d);if(tile){const uv=geometry.getAttribute('uv'),faces=[[d,h],[d,h],[w,d],[w,d],[w,h],[w,h]];for(let face=0;face<6;face++)for(let i=0;i<4;i++){const index=face*4+i;uv.setXY(index,uv.getX(index)*faces[face][0]/tile,uv.getY(index)*faces[face][1]/tile);}uv.needsUpdate=true;}const mesh=new THREE.Mesh(geometry,material);mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData.arenaStaticBatch=true;parent.add(mesh);return mesh;}
 export class View {
- intro:IntroScene;grenade:THREE.Group|null=null;
+ grenade:THREE.Group|null=null;
  environment:THREE.WebGLRenderTarget;
  weaponSun=new THREE.DirectionalLight(0xfff2dc,2.5);
  worldSun=new THREE.DirectionalLight(0xfff4e3,3.0);
@@ -35,7 +34,6 @@ export class View {
  private viewFrustum=new THREE.Frustum();private viewProjection=new THREE.Matrix4();
  private shadowDirection=new THREE.Vector3(24,-40,-16).normalize();
  arenaBatches={before:0,after:0};
- private introFrameReady=false;
  private preparation?:Promise<void>;
  private readonly firstPersonModels=new Map<Faction,{rifle:THREE.Group;grenade:THREE.Group}>();
  private readonly soldierPool=new ModelPool<Faction,THREE.Group>(makeSoldier,model=>{
@@ -55,8 +53,7 @@ export class View {
   this.scene.environmentIntensity=.65;this.weaponScene.environmentIntensity=.95;
   this.scene.add(new THREE.HemisphereLight(0xdce7ef,0x666759,.92));
   const sun=this.worldSun;sun.shadow.autoUpdate=false;sun.shadow.needsUpdate=true;sun.position.set(-24,40,16);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-27;sun.shadow.camera.right=27;sun.shadow.camera.top=27;sun.shadow.camera.bottom=-27;sun.shadow.camera.near=.5;sun.shadow.camera.far=100;sun.shadow.normalBias=.018;sun.shadow.bias=-.00015;sun.shadow.radius=3;this.scene.add(sun);
-  this.buildArena();this.buildSky();this.intro=new IntroScene();
-  this.intro.scene.environment=this.environment.texture;this.intro.scene.environmentIntensity=.5;
+  this.buildArena();this.buildSky();
   this.weaponScene.add(new THREE.HemisphereLight(0xe4edf3,0x68685e,.95));
   // A separate close-range shadow frustum gives fingers, receiver cuts and
   // sleeve folds contact shading without spending arena shadow resolution.
@@ -67,16 +64,15 @@ export class View {
   this.weaponScene.add(gunSun,gunSun.target,this.weapon);this.weapon.add(this.flash);
   this.muzzle=makeMuzzleFlash(MUZZLE_FLASH_RADII.local);this.weapon.add(this.muzzle);
   this.setFaction('british');this.resize();window.addEventListener('resize',()=>this.resize());
-  this.renderer.domElement.addEventListener('webglcontextrestored',()=>{this.invalidateIntro();this.worldSun.shadow.needsUpdate=this.weaponSun.shadow.needsUpdate=true;});
+  this.renderer.domElement.addEventListener('webglcontextrestored',()=>{this.worldSun.shadow.needsUpdate=this.weaponSun.shadow.needsUpdate=true;});
  }
- setQuality(q:string,touch=false){this.quality=q;this.renderer.setPixelRatio(q==='high'?Math.min(devicePixelRatio,touch?1:1.75):1);this.renderer.shadowMap.enabled=q!=='low';const size=q==='high'?2048:1024;if(this.weaponSun.shadow.mapSize.x!==size){this.weaponSun.shadow.mapSize.set(size,size);this.weaponSun.shadow.map?.dispose();this.weaponSun.shadow.map=null;}this.worldSun.shadow.needsUpdate=true;this.intro.invalidateShadows();this.resize();}
+ setQuality(q:string,touch=false){this.quality=q;this.renderer.setPixelRatio(q==='high'?Math.min(devicePixelRatio,touch?1:1.75):1);this.renderer.shadowMap.enabled=q!=='low';const size=q==='high'?2048:1024;if(this.weaponSun.shadow.mapSize.x!==size){this.weaponSun.shadow.mapSize.set(size,size);this.weaponSun.shadow.map?.dispose();this.weaponSun.shadow.map=null;}this.worldSun.shadow.needsUpdate=true;this.resize();}
  private updateCameraProjection(){
   const tangent=Math.tan(this.camera.fov*Math.PI/360);
   this.camera.near=Math.min(.05,.95*LEAN_CAMERA_RADIUS/Math.sqrt(1+tangent*tangent*(1+this.camera.aspect*this.camera.aspect)));
   this.camera.updateProjectionMatrix();
  }
- invalidateIntro(){this.introFrameReady=false;this.intro?.invalidateShadows();}
- resize(){this.invalidateIntro();this.camera.aspect=innerWidth/innerHeight;this.updateCameraProjection();this.weaponCamera.aspect=this.camera.aspect;this.weaponCamera.updateProjectionMatrix();this.renderer.setSize(innerWidth,innerHeight);this.intro?.resize(this.camera.aspect);}
+ resize(){this.camera.aspect=innerWidth/innerHeight;this.updateCameraProjection();this.weaponCamera.aspect=this.camera.aspect;this.weaponCamera.updateProjectionMatrix();this.renderer.setSize(innerWidth,innerHeight);}
  buildArena(){
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(100,100),weatherSurface(makeSurfaceMaterial('dirt',{repeat:[100/SURFACE_TILE_METERS.dirt,100/SURFACE_TILE_METERS.dirt],normalStrength:.72,saturation:.82}),'ground'));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;this.scene.add(ground);
   const woodMat=weatherSurface(makeSurfaceMaterial('walnut',{color:new THREE.Color(.24,.37,.35),saturation:.5,rotation:Math.PI/2,roughnessRange:[.75,.96]}),'wood');
@@ -144,12 +140,12 @@ export class View {
    const dust=this.burstPool().acquireImpact(shot),blood=this.burstPool().acquireImpact({...shot,hit:1});
    updateImpactEffect(dust,.025);updateImpactEffect(blood,.025);warmEffects.push(muzzle,dust,blood);this.scene.add(...warmEffects);
    onProgress?.(.25);
-   await prepareScenes(this.renderer,[{scene:this.scene,camera:this.camera},{scene:this.weaponScene,camera:this.weaponCamera},{scene:this.intro.scene,camera:this.intro.camera}],value=>onProgress?.(.25+.75*value));
+   await prepareScenes(this.renderer,[{scene:this.scene,camera:this.camera},{scene:this.weaponScene,camera:this.weaponCamera}],value=>onProgress?.(.25+.75*value));
   }finally{
    for(const effect of warmEffects)this.burstPool().release(effect);
    for(const object of attached)object.removeFromParent();
    for(const model of reserves){model.removeFromParent();this.soldierPool.release(model);}
-   this.worldSun.shadow.needsUpdate=this.weaponSun.shadow.needsUpdate=true;this.invalidateIntro();
+   this.worldSun.shadow.needsUpdate=this.weaponSun.shadow.needsUpdate=true;
   }
  }
  setupActors(game:Game){this.roundEnded=false;this.weaponActor=-1;this.weaponMeleeStart=this.weaponShotStart=-Infinity;updateMuzzleFlash(this.muzzle,Infinity,this.flash);for(const s of this.soldiers){this.scene.remove(s);this.soldierPool.release(s);}this.soldierRoster=[];this.soldiers=[];this.clearEffects();this.effectReplay=false;this.effectTime=-Infinity;this.syncActors(game);this.ads=0;this.lastReplayShot=-1;}
@@ -184,10 +180,11 @@ export class View {
   if(!impactOnly&&!local&&!melee&&elapsed>=0&&elapsed<MUZZLE_EFFECT_SECONDS){const spark=this.burstPool().acquireMuzzle(),anchor=this.soldiers[shot.actor]?.getObjectByName('muzzle-anchor');if(anchor)placeMuzzleFlash(spark,anchor);else{spark.position.set(shot.origin.x,shot.origin.y,shot.origin.z);if(len>0)spark.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,-1),delta.normalize());}updateMuzzleFlash(spark,elapsed,undefined,seed);this.scene.add(spark);this.effects.push({mesh:spark,life:MUZZLE_EFFECT_SECONDS-elapsed,total:MUZZLE_EFFECT_SECONDS,started:startedAt,kind:'muzzle',seed,anchor});}
   while(this.effects.length>MAX_WORLD_EFFECTS){const oldest=this.effects.shift()!;this.burstPool().release(oldest.mesh);}
  }
- render(game:Game,dt:number,inMenu:boolean,intro=true,remoteTime=game.time,localPosition:{x:number;y:number;z:number}|null=null){
+ render(game:Game,dt:number,inMenu:boolean,frontMenu=true,remoteTime=game.time,localPosition:{x:number;y:number;z:number}|null=null){
   this.clock+=dt;this.menu=inMenu;
-  if(inMenu&&intro&&this.introFrameReady)return;
-  if(!inMenu||!intro)this.introFrameReady=false;
+  // The front menu is an opaque CSS still-life. Keep all world/pose/GPU work
+  // dormant there; in-game team selection retains its live arena backdrop.
+  if(inMenu&&frontMenu)return;
   const ended=game.state==='ended';if(ended&&!this.roundEnded)this.clearRoundActions(game);this.roundEnded=ended;
   const replay=game.state==='killcam',spectating=!!game.player?.spectator;
   if(spectating)game.spectator.sync(game.actors);
@@ -258,7 +255,7 @@ export class View {
   const visualTime=replay?game.replayTime:game.time;
   updateMuzzleFlash(this.muzzle,inMenu||ended||viewedId===null||!actors[viewedId]?.alive||!this.rifle?.visible?Infinity:(spectating?remoteTime:visualTime)-this.weaponShotStart,this.flash,Math.round(this.weaponShotStart*10000));
   for(let i=this.effects.length-1;i>=0;i--){const e=this.effects[i],elapsed=visualTime-e.started;e.life=e.total-elapsed;if(elapsed<0||e.life<=0){this.burstPool().release(e.mesh);this.effects.splice(i,1);continue;}if(e.kind==='muzzle'){if(e.anchor&&elapsed<MUZZLE_FLASH_SECONDS)placeMuzzleFlash(e.mesh,e.anchor);updateMuzzleFlash(e.mesh,elapsed,undefined,e.seed);}else updateImpactEffect(e.mesh,elapsed);}
-  this.renderer.autoClear=true;if(inMenu&&intro){this.renderer.render(this.intro.scene,this.intro.camera);this.introFrameReady=true;}else this.renderer.render(this.scene,this.camera);
+  this.renderer.autoClear=true;this.renderer.render(this.scene,this.camera);
   // A corpse keeps its world pose, but a waiting/dead view has no first-person
   // weapon. A living killer's recorded weapon remains visible during replay.
   if(!inMenu&&viewedId!==null&&actors[viewedId]?.alive){this.renderer.autoClear=false;this.renderer.clearDepth();this.renderer.render(this.weaponScene,this.weaponCamera);this.renderer.autoClear=true;}

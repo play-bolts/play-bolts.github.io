@@ -8,7 +8,7 @@ Multiplayer adds six-player lobbies, an authoritative Rust server, chat and dura
 
 Multiplayer protocol 3 uses lossless binary inputs and snapshots, adaptive input scheduling, monotonic opponent interpolation, and immediate generation-tagged combat effects. Snapshot publication is paced after server stalls; shared payloads are encoded outside the game lock. Durable kill/chat notifications retain their ordering and persistence guarantees; camera corrections stay clear of walls. The client and server must be released together. See [the research and measurements](research/netcode.md), [protocol and timing diagnostics](server/PROTOCOL.md), and [multiplayer validation](server/README.md).
 
-The main menu displays the three playable rifle models on a dark walnut tabletop. Its online count tracks connected human lobby members, including spectators, across the server. Quiet multiplayer lobbies add two server-controlled opponents while one or two humans are connected; the bots leave at three humans or when the last human disconnects. Humans retain priority over bot seats, and disconnected human reservations still count toward the six-player capacity.
+The main menu displays a Kar98k, ammunition clips, breadbag and marching compass on a worn wooden tabletop. The locally bundled still-life uses no WebGL rendering or hidden model animation while the front menu is open. Its online count tracks connected human lobby members, including spectators, across the server. Quiet multiplayer lobbies add two server-controlled opponents while one or two humans are connected; the bots leave at three humans or when the last human disconnects. Humans retain priority over bot seats, and disconnected human reservations still count toward the six-player capacity.
 
 **Leaderboard** shows all-time and rolling 24-hour kills and deaths, ranked by kills. Scores are indexed by the name used when each event happened, with color codes removed, whitespace normalized and capitalization ignored. Renaming does not transfer earlier scores. Identical names share a row; names are not authenticated accounts. The default **Unknown Soldier** and bot identities are excluded. **Feedback** accepts a required message and optional email, stored privately in the backend SQLite database; no feedback or contact information is exposed through a public read API. See the backend documentation for schema, migration and operator queries.
 
@@ -125,7 +125,7 @@ This is a playable recreation, **not a verified identical port**. The short refe
 - `src/names.ts`: safe player-name normalization and classic color codes.
 - `src/audio.ts`: generated rifle, bolt, reload, hit and footstep audio.
 - `src/ui.ts`, `src/style.css`: match menu, options, controls, HUD and scoreboard.
-- `src/introScene.ts`: the lit three-rifle tabletop menu scene.
+- `public/assets/menu/`: the static tabletop menu artwork and its provenance.
 - `src/community.ts`: online count, leaderboard and feedback API client.
 - `src/visitors.ts`: optional anonymous page-open and visible-page heartbeat tracking.
 - `server/src/bots.rs`: authoritative multiplayer bot perception, navigation and input.

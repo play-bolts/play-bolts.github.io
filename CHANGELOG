@@ -1,3 +1,4 @@
+v1.0.13 - Stabilize the torso-hit test and verify regional capacity, database recovery and preserved identities during rollout.
 v1.0.12 - Add warm London, Singapore and São Paulo lobbies, preserve Oregon games, and guard regional deployment and event recovery.
 v1.0.11 - Add loading tips for aiming down iron sights and multiplayer chat controls.
 v1.0.10 - Add shuffled loading tips with arrow navigation and a quick fade every 10 seconds; pause while reading and stop on load completion or failure.

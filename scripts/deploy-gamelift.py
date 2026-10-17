@@ -329,7 +329,9 @@ def wait_fleet(aws, fleet, timeout=1800):
         if ready:
             for location in LOCATIONS.values():
                 counts = aws.call('gamelift', 'describe-fleet-location-capacity', '--fleet-id', fleet, '--location', location)['FleetCapacity']['InstanceCounts']
-                ready = ready and counts.get('ACTIVE', 0) >= 1 and counts.get('MINIMUM', 0) == 1
+                ready = ready and 1 <= counts.get('ACTIVE', 0) <= 2 and counts.get('MINIMUM') == 1 and counts.get('MAXIMUM') == 2 and 1 <= counts.get('DESIRED', 0) <= 2
+            home = aws.call('gamelift', 'describe-fleet-location-capacity', '--fleet-id', fleet, '--location', REGION)['FleetCapacity']['InstanceCounts']
+            ready = ready and all(home.get(field) == 0 for field in ('MINIMUM', 'DESIRED', 'MAXIMUM', 'ACTIVE'))
         if ready:
             print('All three cities have active warm capacity.', flush=True)
             return

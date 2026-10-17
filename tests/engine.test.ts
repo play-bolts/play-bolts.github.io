@@ -3,14 +3,25 @@ import assert from 'node:assert/strict';
 import {Game} from '../src/engine.ts';
 import {WEAPONS,BOXES,MAP_SCALE,ARENA,RULES,SPAWNS,blocked,damageFor,rayBox,visible,worldHit} from '../src/config.ts';
 import {findPath} from '../src/navigation.ts';
+import {sampleHitVolumes,rayHitVolumes} from '../src/hitboxes.ts';
 const scaled=(x:number,z:number,y=1.65)=>({x:x*MAP_SCALE,y,z:z*MAP_SCALE});
 const idle={forward:0,right:0,jump:false,walk:false,lean:0};
-function duel(){const g=new Game();g.start('german','regular');for(const a of g.actors){a.alive=false;a.deadAt=99999;}const p=g.player,t=g.actors[1];Object.assign(p,{alive:true,...scaled(19,7,0),yaw:0,pitch:-.07,recoil:0,ads:true,spawnSafe:0,cooldown:0});Object.assign(t,{alive:true,...scaled(19,12,0),spawnSafe:0,cooldown:100});return{g,p,t};}
+function duel(){const g=new Game();g.start('german','regular');g.seed=42;for(const a of g.actors){a.alive=false;a.deadAt=99999;}const p=g.player,t=g.actors[1];Object.assign(p,{alive:true,...scaled(19,7,0),yaw:0,pitch:-.07,recoil:0,ads:true,spawnSafe:0,cooldown:0,pose:undefined});Object.assign(t,{alive:true,...scaled(19,12,0),yaw:0,pitch:0,spawnSafe:0,cooldown:100,pose:undefined});return{g,p,t};}
 test('rays parallel to a slab and inside boxes behave correctly',()=>{const b={min:{x:0,y:0,z:0},max:{x:1,y:1,z:1}};assert.equal(rayBox({x:2,y:.5,z:-1},{x:0,y:0,z:1},b),Infinity);assert.equal(rayBox({x:.5,y:.5,z:-1},{x:0,y:0,z:1},b),1);assert.equal(rayBox({x:.5,y:.5,z:.5},{x:0,y:0,z:1},b),0);});
 test('solid cover blocks sight but open lanes remain visible',()=>{assert.equal(visible(scaled(-7,-15),scaled(-7,-3)),false);assert.equal(visible(scaled(19,7),scaled(19,12)),true);});
 test('A* navigates around tall and low crates without corner cutting',()=>{const path=findPath(scaled(-19,-21),scaled(19,21));assert.ok(path.length>30);for(const p of path)assert.equal(blocked(p.x,p.z,0,.4),false);for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i];for(let j=0;j<=10;j++)assert.equal(blocked(a.x+(b.x-a.x)*j/10,a.z+(b.z-a.z)*j/10,0,.3),false);}});
 test('all rifles keep their faction, capacity and reload conserves ammunition',()=>{for(const faction of ['british','russian','german'] as const){const g=new Game();g.start(faction,'recruit');for(const a of g.actors.slice(1)){a.alive=false;a.deadAt=1000;}const p=g.player,w=WEAPONS[faction];assert.equal(p.ammo,w.capacity);p.ammo=1;p.reserve=7;g.reload();for(let i=0;i<500;i++)g.update(.01,idle);assert.equal(p.ammo,Math.min(w.capacity,8));assert.equal(p.ammo+p.reserve,8);assert.equal(p.reload,0);}});
-test('a close torso hit is lethal and produces scoreboard and recorded kill event',()=>{const {g,p,t}=duel();g.fire();assert.equal(t.alive,false);assert.equal(p.kills,1);assert.equal(t.deaths,1);assert.equal(p.ammo,4);assert.equal(p.hits,1);assert.equal(g.events.filter(e=>e.type==='kill').length,1);});
+test('a close torso hit is lethal and produces scoreboard and recorded kill event',context=>{
+ let startSeed=0;context.mock.method(Date,'now',()=>startSeed);
+ // Spawn selection must not change this fixture's target orientation. Seed 153
+ // previously left an arm across the intended torso ray and correctly dealt 72.
+ for(startSeed of [0,153,0x7fffffff]){
+  const {g,p,t}=duel(),volumes=sampleHitVolumes(t,g.time);g.fire();const shot=g.shots.at(-1)!;
+  const direction={x:shot.end.x-shot.origin.x,y:shot.end.y-shot.origin.y,z:shot.end.z-shot.origin.z};
+  assert.equal(rayHitVolumes(shot.origin,direction,volumes)?.part,'torso');assert.equal(shot.hit,t.id);assert.equal(shot.headshot,false);
+  assert.equal(t.alive,false);assert.equal(p.kills,1);assert.equal(t.deaths,1);assert.equal(p.ammo,4);assert.equal(p.hits,1);assert.equal(g.events.filter(e=>e.type==='kill').length,1);
+ }
+});
 test('cooldown prevents repeated fire; empty clip and no reserve cannot shoot',()=>{const {g,p}=duel();g.fire();g.fire();assert.equal(p.shots,1);p.cooldown=0;p.ammo=0;p.reserve=0;g.fire();assert.equal(p.shots,1);assert.equal(p.reload,0);});
 test('cover intercepts a bullet before the target',()=>{const {g,p,t}=duel();Object.assign(p,{...scaled(-7,-15,0),pitch:0});Object.assign(t,{...scaled(-7,-3,0)});g.fire();assert.equal(t.hp,100);assert.equal(p.hits,0);});
 test('spawn protection prevents hits and firing removes it',()=>{const {g,p,t}=duel();t.spawnSafe=1;p.spawnSafe=1;g.fire();assert.equal(t.hp,100);assert.equal(p.spawnSafe,0);});

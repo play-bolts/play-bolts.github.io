@@ -82,6 +82,27 @@ class GameLiftDeployTests(unittest.TestCase):
                         with self.assertRaisesRegex(deploy.DeploymentError, 'must all be zero'):
                             deploy.validate_capacity(changed)
 
+    def test_actual_fleet_readiness_requires_warm_bounded_regions_and_zero_home(self):
+        for failure in (None, 'regional_maximum', 'home_desired', 'home_active'):
+            with self.subTest(failure=failure):
+                aws = MagicMock()
+                def call(service, operation, *args, **kwargs):
+                    if operation == 'describe-fleet-location-attributes':
+                        return {'LocationAttributes': [{'LocationState': {'Location': location, 'Status': 'ACTIVE'}} for location in deploy.LOCATIONS.values()]}
+                    location = args[args.index('--location') + 1]
+                    counts = {'MINIMUM': 0, 'DESIRED': 0, 'MAXIMUM': 0, 'ACTIVE': 0} if location == deploy.REGION else {'MINIMUM': 1, 'DESIRED': 1, 'MAXIMUM': 2, 'ACTIVE': 1}
+                    if failure == 'regional_maximum' and location != deploy.REGION: counts['MAXIMUM'] = 10
+                    if failure == 'home_desired' and location == deploy.REGION: counts['DESIRED'] = 1
+                    if failure == 'home_active' and location == deploy.REGION: counts['ACTIVE'] = 1
+                    return {'FleetCapacity': {'InstanceCounts': counts}}
+                aws.call.side_effect = call
+                with patch.object(deploy.time, 'sleep'), patch.object(deploy.time, 'monotonic', side_effect=[0, 0, 2]):
+                    if failure:
+                        with self.assertRaisesRegex(deploy.DeploymentError, 'still becoming ready'):
+                            deploy.wait_fleet(aws, 'fleet-reviewed', timeout=1)
+                    else:
+                        deploy.wait_fleet(aws, 'fleet-reviewed', timeout=1)
+
     def test_default_is_local_only_and_zip_is_reproducible(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

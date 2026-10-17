@@ -21,13 +21,16 @@ import (
 )
 
 type fakeProcessService struct {
-	mu         sync.Mutex
-	parameters sdk.ProcessParameters
-	calls      []string
-	fail       string
-	registered bool
-	activating chan struct{}
-	finish     chan struct{}
+	mu              sync.Mutex
+	parameters      sdk.ProcessParameters
+	calls           []string
+	fail            string
+	registered      bool
+	activating      chan struct{}
+	finish          chan struct{}
+	readyHook       func(sdk.ProcessParameters)
+	credentialsHook func()
+	ended           chan struct{}
 }
 
 func (f *fakeProcessService) step(name string) error {
@@ -46,10 +49,18 @@ func (f *fakeProcessService) step(name string) error {
 }
 func (f *fakeProcessService) ready(p sdk.ProcessParameters) error {
 	f.parameters = p
-	return f.step("ready")
+	err := f.step("ready")
+	if err == nil && f.readyHook != nil {
+		f.readyHook(p)
+	}
+	return err
 }
 func (f *fakeProcessService) credentials(string) (aws.Credentials, error) {
-	return aws.Credentials{AccessKeyID: "test", SecretAccessKey: "test", SessionToken: "test"}, f.step("credentials")
+	err := f.step("credentials")
+	if err == nil && f.credentialsHook != nil {
+		f.credentialsHook()
+	}
+	return aws.Credentials{AccessKeyID: "test", SecretAccessKey: "test", SessionToken: "test"}, err
 }
 func (f *fakeProcessService) certificate() (tls.Certificate, error) {
 	return tls.Certificate{}, f.step("certificate")
@@ -64,7 +75,13 @@ func (f *fakeProcessService) activate() error {
 	}
 	return nil
 }
-func (f *fakeProcessService) ending() error { return f.step("ending") }
+func (f *fakeProcessService) ending() error {
+	err := f.step("ending")
+	if f.ended != nil {
+		close(f.ended)
+	}
+	return err
+}
 func (f *fakeProcessService) trace() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -96,7 +113,15 @@ func TestManagedStartupOrdersSDKAndGatesEarlyAssignments(t *testing.T) {
 	defer backend.Close()
 	r.local = backend.URL
 	ctx, stop := context.WithCancel(context.Background())
-	fake := &fakeProcessService{}
+	var initialHeartbeat bool
+	fake := &fakeProcessService{readyHook: func(parameters sdk.ProcessParameters) {
+		// SDK5.6 launches its first heartbeat before ProcessReady returns.
+		// Model the service terminating a process that immediately reports false.
+		initialHeartbeat = parameters.OnHealthCheck()
+		if !initialHeartbeat {
+			parameters.OnProcessTerminate()
+		}
+	}}
 	p := newGameProcess(ctx, stop, r, fake)
 	defer p.close()
 	if _, err := p.start(8081, "/game/logs/session/bolts.sqlite"); err != nil {
@@ -108,8 +133,8 @@ func TestManagedStartupOrdersSDKAndGatesEarlyAssignments(t *testing.T) {
 	if fake.parameters.Port != 8081 || !reflect.DeepEqual(fake.parameters.LogParameters.LogPaths, []string{"/game/logs/session"}) {
 		t.Fatal("registration lost port or private log directory")
 	}
-	if fake.parameters.OnHealthCheck() || requests.Load() != 0 {
-		t.Fatal("health accessed an uninitialized backend")
+	if !initialHeartbeat || ctx.Err() != nil || !fake.parameters.OnHealthCheck() || requests.Load() != 0 {
+		t.Fatal("bounded startup liveness must survive the immediate heartbeat without accessing Rust")
 	}
 	done := make(chan struct{})
 	go func() {
@@ -167,6 +192,152 @@ func TestManagedStartupFailureEndsRegisteredProcess(t *testing.T) {
 				t.Fatalf("failed startup made unexpected calls: %v, want %v", fake.trace(), want)
 			}
 		})
+	}
+}
+
+func TestManagedDelayedDependenciesStayLiveAndGateAssignments(t *testing.T) {
+	ctx, stop := context.WithCancel(context.Background())
+	r := testRuntime()
+	var requests atomic.Int32
+	r.http = &http.Client{Transport: startupTransport(func(*http.Request) (*http.Response, error) {
+		requests.Add(1)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+	entered, proceed := make(chan struct{}), make(chan struct{})
+	fake := &fakeProcessService{credentialsHook: func() { close(entered); <-proceed }}
+	p := newGameProcess(ctx, stop, r, fake)
+	defer p.close()
+	started := make(chan error, 1)
+	go func() { _, err := p.start(8080, "/game/session/bolts.sqlite"); started <- err }()
+	<-entered
+	if !fake.parameters.OnHealthCheck() || requests.Load() != 0 || ctx.Err() != nil {
+		t.Fatal("delayed startup dependency was treated as unhealthy or queried Rust")
+	}
+	assigned := make(chan struct{})
+	go func() {
+		fake.parameters.OnStartGameSession(model.GameSession{GameSessionID: "queued"})
+		close(assigned)
+	}()
+	select {
+	case <-assigned:
+		t.Fatal("assignment bypassed delayed application startup")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(proceed)
+	if err := <-started; err != nil {
+		t.Fatal(err)
+	}
+	if !fake.parameters.OnHealthCheck() || requests.Load() != 0 {
+		t.Fatal("startup health accessed Rust before the listener was ready")
+	}
+	p.listenerReady()
+	select {
+	case <-assigned:
+	case <-time.After(time.Second):
+		t.Fatal("ready listener did not release the assignment")
+	}
+	if requests.Load() != 1 || p.g.sessionID() != "queued" {
+		t.Fatal("queued assignment did not activate exactly once")
+	}
+}
+
+func TestManagedStartupDeadlineCancelsBlockedDependencyAndCleansUp(t *testing.T) {
+	ctx, stop := context.WithCancel(context.Background())
+	entered, proceed := make(chan struct{}), make(chan struct{})
+	fake := &fakeProcessService{credentialsHook: func() { close(entered); <-proceed }, ended: make(chan struct{})}
+	p := newGameProcess(ctx, stop, testRuntime(), fake)
+	if p.startupTimeout != 120*time.Second {
+		t.Fatal("production startup deadline changed")
+	}
+	p.startupTimeout = 100 * time.Millisecond // Per-instance budget; no global clock mutation.
+	started := make(chan error, 1)
+	go func() { _, err := p.start(8080, "/game/session/bolts.sqlite"); started <- err }()
+	<-entered
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("startup watchdog did not cancel the blocked startup")
+	}
+	select {
+	case <-fake.ended:
+	case <-time.After(time.Second):
+		t.Fatal("startup watchdog did not clean up the registered process")
+	}
+	if p.healthy() {
+		t.Fatal("expired startup remained healthy")
+	}
+	close(proceed)
+	if err := <-started; !errors.Is(err, context.Canceled) {
+		t.Fatalf("late dependency success continued cancelled startup: %v", err)
+	}
+	p.listenerReady()
+	select {
+	case <-p.listening:
+		t.Fatal("late listener readiness reopened an expired startup")
+	default:
+	}
+	p.close()
+	if !reflect.DeepEqual(fake.trace(), []string{"ready", "credentials", "ending"}) {
+		t.Fatalf("timeout continued initialization or ended more than once: %v", fake.trace())
+	}
+}
+
+func TestManagedStartupDeadlineBeforeReadyResponseEndsLateRegistrationOnce(t *testing.T) {
+	ctx, stop := context.WithCancel(context.Background())
+	entered, proceed := make(chan struct{}), make(chan struct{})
+	fake := &fakeProcessService{readyHook: func(sdk.ProcessParameters) { close(entered); <-proceed }, ended: make(chan struct{})}
+	p := newGameProcess(ctx, stop, testRuntime(), fake)
+	p.startupTimeout = 100 * time.Millisecond
+	started := make(chan error, 1)
+	go func() { _, err := p.start(8080, "/game/session/bolts.sqlite"); started <- err }()
+	<-entered
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("watchdog did not cancel a blocked ProcessReady")
+	}
+	// Complete pre-registration cleanup before delivering the late ready result.
+	if err := p.close(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(fake.trace(), []string{"ready"}) {
+		t.Fatalf("unregistered process was ended: %v", fake.trace())
+	}
+	close(proceed)
+	if err := <-started; !errors.Is(err, context.Canceled) {
+		t.Fatalf("late ProcessReady success continued startup: %v", err)
+	}
+	p.close()
+	if !reflect.DeepEqual(fake.trace(), []string{"ready", "ending"}) {
+		t.Fatalf("late registration was not ended exactly once: %v", fake.trace())
+	}
+}
+
+func TestManagedStartupTimerStopsAtReadinessAndClose(t *testing.T) {
+	for _, ready := range []bool{true, false} {
+		ctx, stop := context.WithCancel(context.Background())
+		fake := &fakeProcessService{}
+		p := newGameProcess(ctx, stop, testRuntime(), fake)
+		if _, err := p.start(8080, "/game/session/bolts.sqlite"); err != nil {
+			t.Fatal(err)
+		}
+		if ready {
+			p.listenerReady()
+		} else {
+			p.close()
+		}
+		p.startupMu.Lock()
+		timerStopped := p.startupTimer == nil
+		p.startupMu.Unlock()
+		if !timerStopped {
+			t.Fatal("completed startup retained its watchdog")
+		}
+		// A timer callback already queued when Stop won must also be harmless.
+		p.startupTimedOut()
+		if ready && ctx.Err() != nil {
+			t.Fatal("stale watchdog callback cancelled a ready process")
+		}
+		p.close()
 	}
 }
 

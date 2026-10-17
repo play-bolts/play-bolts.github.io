@@ -1,3 +1,4 @@
+v1.0.19 - Keep managed startup healthy within a bounded deadline while gating game admission, and validate replacement fleets before placement tests.
 v1.0.18 - Fix fleet-wide regional scaling, add resumable placement checks, and document pending managed startup diagnosis.
 v1.0.17 - Route GameLift SDK diagnostics to private logs without requiring a writable working directory.
 v1.0.16 - Register GameLift processes before credentials and TLS, gate early assignments, and retain private startup logs.

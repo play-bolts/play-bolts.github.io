@@ -4,7 +4,9 @@
 Default prints the local plan. --check performs read-only preflight. --apply
 creates at most one six-seat game in each of the three exact city queues, then
 verifies SDK activation and actual location. It never reserves player sessions,
-changes capacity, or deletes games. Keep the state file to resume safely.
+changes capacity, or deletes games. --fleet is an explicit expected fleet ID;
+remote preflight also resolves that ID from the stable bolts-gamelift stack.
+Keep the state file to resume safely.
 """
 import argparse
 import fcntl
@@ -21,8 +23,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 REGION = 'us-east-1'
 ACCOUNT = '780705957578'
-FLEET = 'fleet-db085c8c-9cbb-48e7-93d0-3eb53a936d3d'
-FLEET_ARN = f'arn:aws:gamelift:{REGION}:{ACCOUNT}:fleet/{FLEET}'
+STACK = 'bolts-gamelift'
+FLEET_ID = re.compile(r'fleet-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}')
 CITIES = {
     'lon': {'location': 'eu-west-2', 'queue': 'bolts-gamelift-lon', 'name': 'Rommel Alpha'},
     'sg': {'location': 'ap-southeast-1', 'queue': 'bolts-gamelift-sg', 'name': 'Guderian Alpha'},
@@ -45,7 +47,7 @@ class AWS:
         self.apply = apply
 
     def call(self, service, operation, **payload):
-        if operation == 'start-game-session-placement':
+        if (service, operation) == ('gamelift', 'start-game-session-placement'):
             if not self.apply:
                 raise QAError('Creating empty sessions requires --apply')
         elif service == 'gamelift' and operation not in {
@@ -54,8 +56,12 @@ class AWS:
             'describe-game-sessions', 'describe-game-session-placement',
         }:
             raise QAError('AWS operation is outside this smoke test')
-        elif service != 'gamelift' and (service, operation) != ('sts', 'get-caller-identity'):
+        elif service != 'gamelift' and (service, operation) not in {
+            ('sts', 'get-caller-identity'), ('cloudformation', 'describe-stacks'),
+        }:
             raise QAError('AWS service is outside this smoke test')
+        if service == 'cloudformation' and payload != {'StackName': STACK}:
+            raise QAError('Only the reviewed regional stack may be inspected')
         command = [sys.executable, str(ROOT / 'scripts/aws-command.py'), service, operation,
                    '--region', REGION, '--cli-connect-timeout', '5', '--cli-read-timeout', '20',
                    '--output', 'json', '--no-paginate', '--cli-input-json', json.dumps(payload)]
@@ -87,10 +93,17 @@ def save(path, state):
             os.unlink(temporary)
 
 
-def load_state(path):
+def fleet_arn(fleet):
+    return f'arn:aws:gamelift:{REGION}:{ACCOUNT}:fleet/{fleet}'
+
+
+def load_state(path, fleet):
+    if not FLEET_ID.fullmatch(fleet):
+        raise QAError('An explicit valid --fleet ID is required')
     if path.exists():
         state = json.loads(path.read_text())
-        if state.get('fleet') != FLEET or state.get('account') != ACCOUNT or state.get('region') != REGION or state.get('version') != 1:
+        if (state.get('fleet') != fleet or state.get('stack') != STACK or state.get('account') != ACCOUNT or
+                state.get('region') != REGION or state.get('version') != 2):
             raise QAError('State belongs to a different rollout')
         if set(state.get('cities', {})) != set(CITIES):
             raise QAError('State must contain exactly the three reviewed cities')
@@ -102,7 +115,7 @@ def load_state(path):
                 raise QAError(f'{key}: invalid saved placement ID')
         return state
     run = uuid.uuid4().hex
-    state = {'version': 1, 'fleet': FLEET, 'account': ACCOUNT, 'region': REGION,
+    state = {'version': 2, 'fleet': fleet, 'stack': STACK, 'account': ACCOUNT, 'region': REGION,
              'createdAt': int(time.time()), 'cities': {
                  key: {**city, 'placementId': f'bolts-regional-qa-{run}-{key}', 'status': 'PREPARED'}
                  for key, city in CITIES.items()}}
@@ -153,15 +166,28 @@ def record_placement(row, placement):
 def preflight(aws, state):
     if aws.call('sts', 'get-caller-identity').get('Account') != ACCOUNT:
         raise QAError('Unexpected AWS account')
-    attributes = aws.call('gamelift', 'describe-fleet-attributes', FleetIds=[FLEET]).get('FleetAttributes', [])
-    if len(attributes) != 1 or attributes[0].get('FleetId') != FLEET or attributes[0].get('Status') != 'ACTIVE':
+    stacks = aws.call('cloudformation', 'describe-stacks', StackName=STACK).get('Stacks', [])
+    if len(stacks) != 1:
+        raise QAError('Expected exactly the reviewed regional stack')
+    stack = stacks[0]
+    outputs = {row.get('OutputKey'): row.get('OutputValue') for row in stack.get('Outputs', [])}
+    if (stack.get('StackName') != STACK or
+            not stack.get('StackId', '').startswith(f'arn:aws:cloudformation:{REGION}:{ACCOUNT}:stack/{STACK}/') or
+            stack.get('StackStatus') not in {'CREATE_COMPLETE', 'UPDATE_COMPLETE'} or
+            outputs.get('FleetId') != state['fleet'] or
+            outputs.get('FleetRoleArn') != f'arn:aws:iam::{ACCOUNT}:role/{STACK}-game-role'):
+        raise QAError('Stable regional stack outputs do not match the explicitly expected fleet and role')
+    fleet = outputs['FleetId']
+    attributes = aws.call('gamelift', 'describe-fleet-attributes', FleetIds=[fleet]).get('FleetAttributes', [])
+    if (len(attributes) != 1 or attributes[0].get('FleetId') != fleet or
+            attributes[0].get('FleetArn') != fleet_arn(fleet) or attributes[0].get('Status') != 'ACTIVE'):
         raise QAError('Reviewed fleet is not ACTIVE')
-    locations = aws.call('gamelift', 'describe-fleet-location-attributes', FleetId=FLEET).get('LocationAttributes', [])
+    locations = aws.call('gamelift', 'describe-fleet-location-attributes', FleetId=fleet).get('LocationAttributes', [])
     statuses = {row['LocationState']['Location']: row['LocationState']['Status'] for row in locations}
     if any(statuses.get(city['location']) != 'ACTIVE' for city in CITIES.values()):
         raise QAError('All three city locations must be ACTIVE')
     for location in [REGION, *(city['location'] for city in CITIES.values())]:
-        counts = aws.call('gamelift', 'describe-fleet-location-capacity', FleetId=FLEET, Location=location).get('FleetCapacity', {}).get('InstanceCounts', {})
+        counts = aws.call('gamelift', 'describe-fleet-location-capacity', FleetId=fleet, Location=location).get('FleetCapacity', {}).get('InstanceCounts', {})
         if location == REGION:
             if any(counts.get(field) != 0 for field in ['MINIMUM', 'DESIRED', 'MAXIMUM', 'ACTIVE', 'PENDING']):
                 raise QAError('Home location must have zero configured, active and pending capacity')
@@ -174,11 +200,14 @@ def preflight(aws, state):
         raise QAError('Expected exactly the three reviewed queues')
     for city in CITIES.values():
         queue = by_name[city['queue']]
-        if (queue.get('Destinations') != [{'DestinationArn': FLEET_ARN}] or
+        if (queue.get('Destinations') != [{'DestinationArn': fleet_arn(fleet)}] or
                 queue.get('FilterConfiguration', {}).get('AllowedLocations') != [city['location']]):
             raise QAError(f"{city['queue']}: destination or allowed location differs")
-    # All collision checks finish before any mutation. Include every fleet location.
-    current = sessions(aws, FleetId=FLEET)
+    # Enumerate locations explicitly so the audit proves all four were checked.
+    # All collision checks finish before any mutation.
+    current = []
+    for location in [REGION, *(city['location'] for city in CITIES.values())]:
+        current.extend(sessions(aws, FleetId=fleet, Location=location))
     for key, row in state['cities'].items():
         placement = describe_placement(aws, row)
         if placement:
@@ -191,14 +220,14 @@ def preflight(aws, state):
             raise QAError(f'{key}: an earlier create attempt is not visible; preserve state and inspect before retrying')
 
 
-def verify_session(aws, row):
+def verify_session(aws, row, fleet):
     if not row.get('gameSessionId'):
         raise QAError('FULFILLED placement omitted its session identifier')
     found = sessions(aws, GameSessionId=row['gameSessionId'])
     if len(found) != 1:
         raise QAError('Expected exactly one placed game session')
     game = found[0]
-    if (game.get('FleetId') != FLEET or game.get('GameSessionId') != row['gameSessionId'] or
+    if (game.get('FleetId') != fleet or game.get('GameSessionId') != row['gameSessionId'] or
             game.get('Location') != row['location'] or game.get('Name') != row['name'] or
             game.get('MaximumPlayerSessionCount') != 6 or game.get('CurrentPlayerSessionCount') != 0 or
             game.get('Status') != 'ACTIVE' or game.get('PlayerSessionCreationPolicy') != 'ACCEPT_ALL'):
@@ -238,7 +267,7 @@ def run(aws, state, path, timeout=720, poll=10):
                 print(f"{key}: {row['status']}", flush=True)
                 last[key] = row['status']
             if row['status'] == 'FULFILLED':
-                verify_session(aws, row)
+                verify_session(aws, row, state['fleet'])
                 save(path, state)
                 remaining.remove(key)
                 print(f"{key}: ACTIVE in {row['actualLocation']}; zero player seats reserved", flush=True)
@@ -251,15 +280,18 @@ def run(aws, state, path, timeout=720, poll=10):
         time.sleep(min(poll, max(0, deadline - time.monotonic())))
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--check', action='store_true', help='Read-only AWS preflight; no placements')
     mode.add_argument('--apply', action='store_true', help='Create/resume exactly three empty games')
+    parser.add_argument('--fleet', required=True, help='Expected FleetId output of the stable bolts-gamelift stack')
     parser.add_argument('--state', type=Path, default=ROOT / 'temp/regional-validation/placement-smoke.json')
     parser.add_argument('--timeout', type=int, default=720)
     parser.add_argument('--poll', type=int, default=10)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if not FLEET_ID.fullmatch(args.fleet):
+        raise QAError('An explicit valid --fleet ID is required')
     if not 1 <= args.poll <= 60 or not 1 <= args.timeout <= 1800:
         raise QAError('Poll must be 1–60 seconds; timeout must be 1–1800 seconds')
     args.state.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -269,7 +301,7 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise QAError('Another smoke test owns this state file') from None
-        state = load_state(args.state)
+        state = load_state(args.state, args.fleet)
         if args.apply:
             run(AWS(apply=True), state, args.state, args.timeout, args.poll)
             print(f'All three placements verified. Session identifiers saved privately to {args.state}')
@@ -278,7 +310,7 @@ def main():
             save(args.state, state)
             print('Read-only preflight passed. No game or player sessions created.')
         else:
-            print(json.dumps({'fleet': FLEET, 'cities': CITIES, 'seatsPerGame': 6,
+            print(json.dumps({'fleet': args.fleet, 'stack': STACK, 'cities': CITIES, 'seatsPerGame': 6,
                               'playerReservations': 0, 'state': str(args.state), 'requires': '--apply'}, indent=2))
 
 

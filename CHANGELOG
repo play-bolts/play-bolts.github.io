@@ -1,3 +1,4 @@
+v1.0.25 - Show all locations in one lobby listing, remove region controls, and keep idle cities joinable from table rows.
 v1.0.24 - Clarify regional seat counts and the scope of location and privacy checks in deployment documentation.
 v1.0.23 - Verify and document the live London, Singapore and São Paulo rollout, browser joins, warm capacity, pricing and durable multiplayer QA events.
 v1.0.22 - Return one validated CORS policy from the regional directory so browser sessions and community APIs load correctly.

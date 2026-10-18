@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {gameEndpoint,locationLabel,LOBBY_LOCATIONS,probeLobby,type ProbeSocket} from '../src/lobbies.ts';
+import {gameEndpoint,locationLabel,LOBBY_LOCATIONS,probeLobby,lobbyBrowserRows,selectedBrowserLobby,type LobbyBrowserRow,type ProbeSocket} from '../src/lobbies.ts';
 import {NetworkClient,type SocketLike} from '../src/network.ts';
 import {Game} from '../src/engine.ts';
 
@@ -56,16 +56,43 @@ test('managed join cancellation cannot open a late WebSocket or lose the browser
  resolveJoin(new Response(JSON.stringify({lobbyId:'game',ticket:'short-lived',websocketUrl:'wss://abc.amazongamelift.com:8080/api/ws'})));
  await pending;assert.equal(opened,0);assert.equal(client.online,false);assert.equal(storage.size,1);
 });
-test('location Play obtains a managed admission even when no lobby is running',async()=>{
+test('an idle listing row obtains managed admission even when no lobby is running',async()=>{
  const sent:any[]=[];const requests:string[]=[];
  const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async(url,options)=>{
   if(String(url).endsWith('/lobbies'))return new Response(JSON.stringify({version:2,lobbies:[],locations:['lon','sg','sp']}));
   if(String(url).endsWith('/session'))return new Response(JSON.stringify({token:'a'.repeat(64)}));
   requests.push(JSON.parse(String(options?.body)).lobbyId);return new Response(JSON.stringify({lobbyId:'game-sp',ticket:'temporary-ticket-'.repeat(8),websocketUrl:'wss://sp.amazongamelift.com:8080/api/ws'}));
  },socket:()=>{const socket:SocketLike={readyState:1,onopen:null,onmessage:null,onerror:null,onclose:null,send(raw){sent.push(JSON.parse(String(raw)));},close(){}};queueMicrotask(()=>socket.onopen?.({}));return socket;}});
- assert.deepEqual(await client.lobbies(),[]);const joining=client.join('new:sp','Alice','british');await new Promise(r=>setImmediate(r));
+ const rows=lobbyBrowserRows(await client.lobbies(),client.locations);const idle=rows.find(row=>row.location==='sp')!;const joining=client.join(idle.id,'Alice','british');await new Promise(r=>setImmediate(r));
  assert.deepEqual(requests,['new:sp']);assert.equal(client.lobbyId,'game-sp');assert.equal(sent[0].token,'temporary-ticket-'.repeat(8));
  client.disconnect();await joining;
+});
+test('one listing keeps all four idle locations joinable without inventing live rooms or ping',()=>{
+ const oregon:LobbyBrowserRow={id:'oregon-game',name:'Rommel Alpha',location:'or',players:0,capacity:6,ping:35,phase:'playing'};
+ const rows=lobbyBrowserRows([oregon],['lon','sg','sp','lon']);
+ assert.deepEqual(rows.map(row=>row.location),['or','lon','sg','sp']);assert.deepEqual(rows[0],oregon);
+ assert.deepEqual(rows.slice(1).map(row=>row.id),['new:lon','new:sg','new:sp']);
+ assert.ok(rows.slice(1).every(row=>row.name==='New lobby'&&row.players===0&&row.capacity===6&&row.ping===undefined&&row.phase===undefined));
+ assert.deepEqual(lobbyBrowserRows([oregon],[]),[oregon]);assert.deepEqual(lobbyBrowserRows([],['or']),[]);
+});
+test('listing preserves every real lobby and adds capacity only where advertised games have no seats',()=>{
+ const games:LobbyBrowserRow[]=[
+  {id:'lon-full',name:'Alpha',location:'lon',players:6,capacity:6,phase:'playing'},
+  {id:'lon-open',name:'Beta',location:'lon',players:2,capacity:6,phase:'playing'},
+  {id:'sg-full',name:'Gamma',location:'sg',players:6,capacity:6,phase:'playing'},
+  {id:'sp-starting',name:'Delta',location:'sp',players:0,capacity:6,phase:'starting'},
+ ];
+ assert.deepEqual(lobbyBrowserRows(games,['lon','sg','sp']).map(row=>row.id),['lon-full','lon-open','sg-full','new:sg','sp-starting']);
+ assert.deepEqual(lobbyBrowserRows(games,['lon','sp']).map(row=>row.id),games.map(row=>row.id));
+ assert.equal(games.length,4);
+});
+test('refresh keeps the selected city when idle and live entries replace one another',()=>{
+ const idle=lobbyBrowserRows([],['lon','sg','sp']);const selected=idle.find(row=>row.location==='sg')!;
+ const game:LobbyBrowserRow={id:'sg-live',name:'Moltke Delta',location:'sg',players:1,capacity:6,phase:'playing'};
+ const live=lobbyBrowserRows([game],['lon','sg','sp']);
+ assert.equal(selectedBrowserLobby(live,selected),'sg-live');assert.equal(selectedBrowserLobby(idle,game),'new:sg');
+ assert.equal(selectedBrowserLobby(live,game),'sg-live');assert.equal(selectedBrowserLobby([],game),'');
+ assert.equal(selectedBrowserLobby(lobbyBrowserRows([],['lon']),game),'new:lon');
 });
 test('ended servers disappear without placeholder rows; locations stay available',async()=>{
  let running=true;

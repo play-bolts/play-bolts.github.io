@@ -4,7 +4,7 @@ A TypeScript / Three.js browser FPS inspired by the rifle-only WaWa arena in Cal
 
 Play the complete game at **[play-bolts.github.io](https://play-bolts.github.io/)**. Source and deployment are in **[play-bolts/play-bolts.github.io](https://github.com/play-bolts/play-bolts.github.io)**.
 
-Multiplayer lobbies are available in **Oregon, London, Singapore and São Paulo**, with full city labels in the lobby browser. Each new city keeps one AWS server ready; Oregon stays on its existing host. Empty regional games close after five minutes while their servers remain warm. New York is excluded. See [verified deployment](infra/DEPLOYED.md), [regional operation](server/README.md#gamelift-regional-hosting) and [zero-player cost estimates](research/regional-hosting-costs.md).
+Multiplayer lobbies in **Oregon, London, Singapore and São Paulo** appear together in one table, with city names and country flags in the **Location** column. Select a row and choose **Join**; there are no separate region tabs or buttons. An available managed city with no open room gets a **New lobby** row, so it remains joinable after its empty games close. Each new city keeps one AWS server ready; Oregon stays on its existing host. Empty regional games close after five minutes while their servers remain warm. New York is excluded. See [verified deployment](infra/DEPLOYED.md), [regional operation](server/README.md#gamelift-regional-hosting) and [zero-player cost estimates](research/regional-hosting-costs.md).
 
 Multiplayer adds six-player lobbies, an authoritative Rust server, chat and durable event history. See [multiplayer deployment, data model and operations](server/README.md). **Single player** retains the local AI game without a backend connection.
 

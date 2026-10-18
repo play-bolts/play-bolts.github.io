@@ -6,6 +6,9 @@ export type DamagePart = 'head' | 'torso' | 'lowerTorso' | 'limb' | 'lowerLimb' 
 export const WEAPON_SWITCH_SECONDS=.6;
 // A 20% faster action takes the former duration divided by 1.2.
 export const MELEE_SECONDS=.85/1.2;
+/** Contact matches the peak of each bash animation, after the wind-up. */
+export const MELEE_CONTACT_FRACTION={rifle:.40,grenade:.34} as const;
+export const MELEE_RANGE=2.5,MELEE_RADIUS=.5;
 /** Every spawn has this many rifle rounds, including the loaded magazine. */
 export const SPAWN_AMMO=150;
 // An unthrowable carried item: faster movement and a short melee bash, without ammunition.

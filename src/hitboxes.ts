@@ -37,3 +37,20 @@ export function rayHitVolumes(origin:Vec,direction:Vec,volumes:readonly HitVolum
  for(const volume of volumes){const q=inverse(volume.rotation),o=rotate(sub(origin,volume.center),q),d=rotate(direction,q),r=volume.halfSize;let a=0,b=0,c=-1;for(const key of ['x','y','z'] as const){const x=o[key]/r[key],v=d[key]/r[key];a+=v*v;b+=2*x*v;c+=x*x;}if(a<1e-15)continue;const disc=b*b-4*a*c;if(disc<0)continue;const first=(-b-Math.sqrt(disc))/(2*a),last=(-b+Math.sqrt(disc))/(2*a);if(last<0)continue;const distance=Math.max(0,first);if(!best||distance<best.distance)best={distance,part:volume.part,name:volume.name};}
  return best;
 }
+
+/** Broad bash sweep against body volumes. A candidate must also have an actual
+ * body surface within reach and an unobstructed ray to that surface: widening
+ * the sweep must never widen its path through walls or cover. */
+export function meleeHitVolumes(origin:Vec,direction:Vec,volumes:readonly HitVolume[],range:number,radius:number,worldDistance:(direction:Vec)=>number):{distance:number;point:Vec}|null {
+ let best:{distance:number;point:Vec}|null=null;
+ for(const volume of volumes){
+  const delta=sub(volume.center,origin),distance=Math.hypot(delta.x,delta.y,delta.z);
+  if(distance<1e-9||delta.x*direction.x+delta.y*direction.y+delta.z*direction.z<=0)continue;
+  const padded={...volume,halfSize:{x:volume.halfSize.x+radius,y:volume.halfSize.y+radius,z:volume.halfSize.z+radius}};
+  const sweep=rayHitVolumes(origin,direction,[padded]);if(!sweep||sweep.distance>range)continue;
+  const toward={x:delta.x/distance,y:delta.y/distance,z:delta.z/distance},hit=rayHitVolumes(origin,toward,[volume]);
+  if(!hit||hit.distance>range||best&&hit.distance>=best.distance||worldDistance(toward)<=hit.distance)continue;
+  best={distance:hit.distance,point:{x:origin.x+toward.x*hit.distance,y:origin.y+toward.y*hit.distance,z:origin.z+toward.z*hit.distance}};
+ }
+ return best;
+}

@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import {Game,createActor,type Actor,type Event,type Input,type Shot,type Snapshot} from './engine';
-import {MELEE_SECONDS,RULES,WEAPONS,WEAPON_SWITCH_SECONDS,clamp,lerp,worldHit,type Faction,type Stance,type WeaponSlot,type Vec} from './config';
+import {MELEE_RANGE,MELEE_SECONDS,RULES,WEAPONS,WEAPON_SWITCH_SECONDS,clamp,lerp,worldHit,type Faction,type Stance,type WeaponSlot,type Vec} from './config';
 import {advanceHipSpread} from './accuracy';
 import {advanceLean} from './lean';
 import {DEFAULT_PLAYER_NAME,sanitizePlayerName} from './names';
@@ -41,7 +41,7 @@ function validEvents(value:unknown):value is WireEvent[]{
   if(event.value!==undefined&&!Number.isFinite(event.value)||event.headshot!==undefined&&typeof event.headshot!=='boolean'||event.lethal!==undefined&&typeof event.lethal!=='boolean'||event.weapon!==undefined&&!['rifle','grenade','melee'].includes(event.weapon))return false;
   if(['actorName','victimName'].some(key=>event[key]!==undefined&&typeof event[key]!=='string'))return false;
   if(event.actorFaction!==undefined&&!['british','russian','german'].includes(event.actorFaction))return false;
-  if(event.shot){const shot=event.shot;if(!Number.isSafeInteger(shot.actor)||shot.actor!==event.actor||!Number.isFinite(shot.time)||!['shot','melee'].includes(shot.kind)||typeof shot.headshot!=='boolean'||shot.hit!==null&&(!Number.isSafeInteger(shot.hit)||shot.hit<0)||shot.seq!==undefined&&(!Number.isSafeInteger(shot.seq)||shot.seq<0))return false;for(const point of [shot.origin,shot.end])if(!point||['x','y','z'].some(key=>!Number.isFinite(point[key])))return false;}
+  if(event.shot){const shot=event.shot;if(!Number.isSafeInteger(shot.actor)||shot.actor!==event.actor||!Number.isFinite(shot.time)||!['shot','melee'].includes(shot.kind)||typeof shot.headshot!=='boolean'||shot.impactOnly!==undefined&&typeof shot.impactOnly!=='boolean'||shot.hit!==null&&(!Number.isSafeInteger(shot.hit)||shot.hit<0)||shot.seq!==undefined&&(!Number.isSafeInteger(shot.seq)||shot.seq<0))return false;for(const point of [shot.origin,shot.end])if(!point||['x','y','z'].some(key=>!Number.isFinite(point[key])))return false;}
   return true;
  });
 }
@@ -303,7 +303,7 @@ export class NetworkClient {
   p.lean=advanceLean(p,input.lean,dt);
   const melee=input.melee||p.selectedWeapon==='grenade';
   if((input.fire||input.melee)&&!game.isSwitching(p)&&!p.cooldown&&(melee||!p.reload)&&!(p.stance==='prone'&&p.moving>.1)&&(melee||p.ammo>0)){
-   const origin=game.eye(p),direction={x:Math.sin(p.yaw)*Math.cos(p.pitch+p.recoil),y:Math.sin(p.pitch+p.recoil),z:Math.cos(p.yaw)*Math.cos(p.pitch+p.recoil)},range=Math.min(melee?1.85:120,worldHit(origin,direction));
+   const origin=game.eye(p),direction={x:Math.sin(p.yaw)*Math.cos(p.pitch+p.recoil),y:Math.sin(p.pitch+p.recoil),z:Math.cos(p.yaw)*Math.cos(p.pitch+p.recoil)},range=Math.min(melee?MELEE_RANGE:120,worldHit(origin,direction));
    if(melee){p.reload=0;p.reloadTotal=0;p.lastMeleeTime=game.time;}else{p.lastShotTime=game.time;p.ammo--;p.recoil+=WEAPONS[p.faction].recoil;}p.cooldown=melee?MELEE_SECONDS:WEAPONS[p.faction].cycle;p.spawnSafe=0;
    emit({type:'shot',actor:0,shot:{time:game.time,actor:0,origin,end:{x:origin.x+direction.x*range,y:origin.y+direction.y*range,z:origin.z+direction.z*range},kind:melee?'melee':'shot',hit:null,headshot:false}});
   }
@@ -472,11 +472,12 @@ export class NetworkClient {
    const event:Event={...source,actor,victim,shot};
    if(immediate&&cueKey){this.presentedCueKeys.add(cueKey);if(this.presentedCueKeys.size>512)this.presentedCueKeys.delete(this.presentedCueKeys.values().next().value!);}
    if(shot){game.shots.push(shot);if(game.shots.length>200)game.shots.shift();}
-   const effectKey=`${event.type}:${source.seq??source.shot?.seq??-1}`,predicted=actor===0&&this.predictedEffects.delete(effectKey);
+   const contactOnly=event.type==='shot'&&shot?.impactOnly===true;
+   const effectKey=`${event.type}:${source.seq??source.shot?.seq??-1}`,predicted=actor===0&&!contactOnly&&this.predictedEffects.delete(effectKey);
    // The attack already played locally; its confirmed hit still needs blood
    // and contact audio, without a second muzzle flash, report or recoil.
-   if(predicted&&event.type==='shot'&&shot?.actor===0&&shot.hit!==null&&shot.hit>=0)this.onImpact(shot);
-   if(!predicted&&!(actor===0&&event.type==='step'))game.events.push(event);
+   if((predicted||contactOnly)&&event.type==='shot'&&shot?.actor===0&&shot.hit!==null&&shot.hit>=0)this.onImpact(shot);
+   if(!predicted&&!(contactOnly&&actor===0)&&!(actor===0&&event.type==='step'))game.events.push(event);
    if(event.type==='kill'&&!staleRound&&!staleActor&&!staleVictim&&actor>=0&&victim===0&&!self.alive&&!self.spectator&&!s.ended){game.killer=actor;game.replay=game.history.map(f=>({time:f.time,actors:f.actors.map(a=>({...a,pose:a.pose?{...a.pose}:undefined}))}));game.replayEnd=source.time??eventTime;game.replayTime=Math.max(game.replay[0]?.time??0,game.replayEnd-3.3);game.replayShots=game.shots.filter(shot=>shot.time>=game.replayTime&&shot.time<=game.replayEnd);this.replaying=true;this.desiredADS=false;}
    if(event.type==='spawn'&&actor===0){this.desiredStance=self.stance;this.desiredWeapon=self.selectedWeapon;this.desiredADS=false;this.replaying=false;}
   }

@@ -184,6 +184,7 @@ export class View {
   for(let i=0;i<this.soldiers.length;i++)if(game.actors[i]?.alive)delete this.soldiers[i].userData.soldierState;
  }
  effect(shot:Shot,local:boolean,elapsed=0,impactOnly=false,startedAt=shot.time){
+  impactOnly=impactOnly||!!shot.impactOnly;
   const melee=shot.kind==='melee';
   if(local&&!impactOnly){if(melee)this.weaponMeleeStart=startedAt;else this.weaponShotStart=startedAt;}
   const delta=new THREE.Vector3(shot.end.x-shot.origin.x,shot.end.y-shot.origin.y,shot.end.z-shot.origin.z),len=delta.length();
@@ -218,7 +219,7 @@ export class View {
     const motion=sampleFirstPersonMotion({...live,ads:this.ads},visualTime);
     if(replay){
      this.weaponMeleeStart=this.weaponShotStart=-Infinity;
-     for(const shot of game.replayShots)if(shot.actor===a.id&&shot.time<=visualTime){if(shot.kind==='melee')this.weaponMeleeStart=shot.time;else if(shot.kind==='shot')this.weaponShotStart=shot.time;}
+     for(const shot of game.replayShots)if(!shot.impactOnly&&shot.actor===a.id&&shot.time<=visualTime){if(shot.kind==='melee')this.weaponMeleeStart=shot.time;else if(shot.kind==='shot')this.weaponShotStart=shot.time;}
     }
     const meleeElapsed=visualTime-this.weaponMeleeStart,shotElapsed=visualTime-this.weaponShotStart;
     let action:WeaponAction='idle',progress=0;

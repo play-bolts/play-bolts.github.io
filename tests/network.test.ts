@@ -4,7 +4,7 @@ import {encode} from '@msgpack/msgpack';
 import assert from 'node:assert/strict';
 import {Game,createActor} from '../src/engine.ts';
 import {NetworkClient,type SocketLike,type WireActor,type WireSnapshot} from '../src/network.ts';
-import {MELEE_SECONDS,WEAPONS,HEIGHTS} from '../src/config.ts';
+import {MELEE_RANGE,MELEE_SECONDS,WEAPONS,HEIGHTS} from '../src/config.ts';
 import actorFields from '../shared/actor-fields.json';
 import wireSchema from '../shared/wire-schema.json';
 
@@ -80,7 +80,7 @@ test('grenade fire predicts only a short melee pose and authoritative damage arr
   client.fire();setNow(1017);client.update(1/60,idle);
   const seq=socket.messages.findLast(m=>m.type==='input').seq,shot=game.events.find(e=>e.type==='shot')!.shot!;
   assert.equal(shot.kind,'melee');assert.equal(shot.hit,null);assert.equal(shot.headshot,false);
-  assert.ok(Math.hypot(shot.end.x-shot.origin.x,shot.end.y-shot.origin.y,shot.end.z-shot.origin.z)<=1.85+1e-9);
+  assert.ok(Math.hypot(shot.end.x-shot.origin.x,shot.end.y-shot.origin.y,shot.end.z-shot.origin.z)<=MELEE_RANGE+1e-9);
   assert.equal(game.player.cooldown,MELEE_SECONDS);assert.equal(game.player.lastMeleeTime,game.time);assert.equal(game.player.lastShotTime,-1000);
   assert.equal(game.player.ammo,0);assert.equal(game.player.reserve,0);assert.equal(game.player.recoil,0);assert.equal(game.actors[1].hp,100);
   client.fire(true);setNow(1034);client.update(1/60,idle);assert.equal(game.events.filter(e=>e.type==='shot').length,1,'primary and melee inputs share recovery');

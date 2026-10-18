@@ -14,6 +14,6 @@ export function playImpactSound(sound:CombatSound,shot:Shot,actors:readonly Comb
 export function playCombatSound(sound:CombatSound,shot:Shot,actors:readonly CombatActor[],viewedId:number|undefined){
  const actor=actors[shot.actor];if(!actor)return;
  const emitter={actor:shot.actor,position:shot.origin,local:shot.actor===viewedId,faction:actor.faction};
- if(shot.kind==='shot')sound.shot(emitter);else sound.melee(emitter);
+ if(!shot.impactOnly){if(shot.kind==='shot')sound.shot(emitter);else sound.melee(emitter);}
  playImpactSound(sound,shot,actors,viewedId);
 }

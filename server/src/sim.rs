@@ -20,6 +20,11 @@ const GRAVITY: f64 = 22.0;
 const JUMP_SPEED: f64 = 7.3;
 const SWITCH_SECONDS: f64 = 0.6;
 const MELEE_SECONDS: f64 = 0.85 / 1.2;
+const MELEE_RANGE: f64 = 2.5;
+const MELEE_RADIUS: f64 = 0.5;
+fn melee_contact_seconds(weapon: WeaponSlot) -> f64 {
+    MELEE_SECONDS * if weapon == WeaponSlot::Grenade { 0.34 } else { 0.40 }
+}
 const LEAN_DISTANCE: f64 = 0.32 * 1.3;
 const LEAN_CAMERA_RADIUS: f64 = 0.16;
 const LEAN_SKIN: f64 = 0.001;
@@ -329,6 +334,8 @@ pub struct Shot {
     pub headshot: bool,
     pub kind: String,
     pub seq: u64,
+    #[serde(default, rename = "impactOnly", skip_serializing_if = "std::ops::Not::not")]
+    pub impact_only: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -494,6 +501,15 @@ struct PendingAttack {
     shot_time: Option<f64>,
 }
 
+struct MeleeContact {
+    actor: u32,
+    generation: u64,
+    started: f64,
+    at: f64,
+    weapon: WeaponSlot,
+    attack: PendingAttack,
+}
+
 /// Connection-local scheduling observations. These are derived from the
 /// authority's tick clock, never client-supplied ping or timing claims.
 #[derive(Clone, Copy, Debug, Default, Serialize)]
@@ -547,6 +563,7 @@ pub struct Simulation {
     events: Vec<GameEvent>,
     history: VecDeque<HistoryFrame>,
     boxes: Vec<WorldBox>,
+    melee_contacts: Vec<MeleeContact>,
 }
 
 impl Simulation {
@@ -566,6 +583,7 @@ impl Simulation {
             events: Vec::new(),
             history: VecDeque::new(),
             boxes: map_boxes(),
+            melee_contacts: Vec::new(),
         }
     }
 
@@ -637,6 +655,7 @@ impl Simulation {
     }
 
     pub fn leave(&mut self, id: u32) -> bool {
+        self.melee_contacts.retain(|contact| contact.actor != id);
         let before = self.actors.len();
         self.actors.retain(|a| a.id != id);
         self.controls.remove(&id);
@@ -860,6 +879,7 @@ impl Simulation {
     }
 
     fn spawn(&mut self, id: u32) {
+        self.melee_contacts.retain(|contact| contact.actor != id);
         if self.actor(id).is_none_or(|a| a.spectator) {
             return;
         }
@@ -912,6 +932,7 @@ impl Simulation {
     }
 
     pub fn restart_round(&mut self) {
+        self.melee_contacts.clear();
         self.round_number += 1;
         self.round_started = self.time;
         self.remaining = ROUND_SECONDS;
@@ -937,6 +958,7 @@ impl Simulation {
         if self.ended {
             return;
         }
+        self.melee_contacts.clear();
         self.ended = true;
         self.ended_at = Some(self.time);
         self.winner = self
@@ -1141,6 +1163,7 @@ impl Simulation {
                 self.reload(index, None);
             }
         }
+        self.resolve_melee_contacts();
         // Replace this tick's pre-attack frame with the state sent in snapshots.
         // Recoil and manipulation timestamps also move damageable arm bones.
         self.record();
@@ -1416,12 +1439,17 @@ impl Simulation {
             a.hip_spread
         };
         let recoil = a.recoil;
-        let melee_damage = if a.selected_weapon == WeaponSlot::Grenade {
-            75
-        } else {
-            150
-        };
         let shooter_id = a.id;
+        if melee {
+            self.melee_contacts.push(MeleeContact {
+                actor: shooter_id,
+                generation: a.spawn_generation,
+                started: self.time,
+                at: self.time + melee_contact_seconds(a.selected_weapon),
+                weapon: a.selected_weapon,
+                attack: attack.clone(),
+            });
+        }
         if let Some(control) = self.controls.get_mut(&shooter_id) {
             let age = (self.time - attack.shot_time.unwrap_or(self.time)).max(0.0);
             control.timing.shots = control.timing.shots.saturating_add(1);
@@ -1438,11 +1466,11 @@ impl Simulation {
             z: yaw.cos() * pitch.cos(),
         };
         let mut length =
-            world_hit(&self.boxes, origin, direction).min(if melee { 1.85 } else { 120.0 });
+            world_hit(&self.boxes, origin, direction).min(if melee { MELEE_RANGE } else { 120.0 });
         let mut victim = None;
         let mut damage = 108;
         let mut headshot = false;
-        for target in self.rewind_targets(attack.shot_time) {
+        for target in if melee { Vec::new() } else { self.rewind_targets(attack.shot_time) } {
             if target.id == shooter_id
                 || !target.alive
                 || target.spectator
@@ -1460,11 +1488,7 @@ impl Simulation {
             {
                 length = hit.distance;
                 victim = Some(target.id);
-                damage = if melee {
-                    melee_damage
-                } else {
-                    hit.part.damage()
-                };
+                damage = hit.part.damage();
                 headshot = !melee && hit.part == HitPart::Head;
             }
         }
@@ -1481,6 +1505,7 @@ impl Simulation {
             headshot,
             kind: if melee { "melee" } else { "shot" }.into(),
             seq: attack.seq,
+            impact_only: false,
         };
         let mut event = GameEvent::new("shot", shooter_id, Some(attack.seq));
         event.shot = Some(shot);
@@ -1493,6 +1518,61 @@ impl Simulation {
                 self.actors[index].hits += 1;
             }
             self.damage(victim, shooter_id, damage, headshot, melee, attack.seq);
+        }
+    }
+
+    fn resolve_melee_contacts(&mut self) {
+        let contacts = std::mem::take(&mut self.melee_contacts);
+        for contact in contacts {
+            let Some(index) = self.actors.iter().position(|a| a.id == contact.actor) else { continue; };
+            let a = &self.actors[index];
+            if !a.alive || a.spectator || a.spawn_generation != contact.generation
+                || a.last_melee_time != contact.started || a.selected_weapon != contact.weapon || a.switching(self.time)
+            {
+                continue;
+            }
+            if self.time + 1e-9 < contact.at {
+                self.melee_contacts.push(contact);
+                continue;
+            }
+            let origin = a.eye();
+            let pitch = a.pitch + a.recoil;
+            let direction = Vec3 { x: a.yaw.sin() * pitch.cos(), y: pitch.sin(), z: a.yaw.cos() * pitch.cos() };
+            // Keep only the original bounded visual lag. Rewinding to button
+            // press again would test the old target position after the attacker
+            // has already walked through the entire animation wind-up.
+            let rewind = (contact.started - contact.attack.shot_time.unwrap_or(contact.started)).clamp(0.0, MAX_REWIND);
+            let query_time = (self.time - rewind).max(0.0);
+            let mut nearest = MELEE_RANGE;
+            let mut victim = None;
+            let mut point = origin;
+            for target in self.rewind_targets(Some(query_time)) {
+                if target.id == contact.actor || !target.alive || target.spectator || target.spawn_safe > 0.0 { continue; }
+                for volume in sample_hit_volumes(&target, query_time) {
+                    let delta = Vec3 { x: volume.center.x-origin.x, y: volume.center.y-origin.y, z: volume.center.z-origin.z };
+                    let distance = (delta.x*delta.x+delta.y*delta.y+delta.z*delta.z).sqrt();
+                    if distance < 1e-9 || delta.x*direction.x+delta.y*direction.y+delta.z*direction.z <= 0.0 { continue; }
+                    let mut padded = volume.clone();
+                    padded.half_size.x += MELEE_RADIUS;
+                    padded.half_size.y += MELEE_RADIUS;
+                    padded.half_size.z += MELEE_RADIUS;
+                    if ray_hit_volumes(origin, direction, &[padded]).is_none_or(|hit| hit.distance > MELEE_RANGE) { continue; }
+                    let toward = Vec3 { x:delta.x/distance, y:delta.y/distance, z:delta.z/distance };
+                    // Confirm an actual body surface and its unobstructed path;
+                    // an expanded hit volume alone can protrude through a wall.
+                    let Some(hit) = ray_hit_volumes(origin, toward, &[volume]) else { continue; };
+                    if hit.distance > nearest || world_hit(&self.boxes, origin, toward) <= hit.distance { continue; }
+                    nearest = hit.distance;
+                    victim = Some(target.id);
+                    point = Vec3 { x:origin.x+toward.x*nearest, y:origin.y+toward.y*nearest, z:origin.z+toward.z*nearest };
+                }
+            }
+            if let Some(victim) = victim {
+                let mut event = GameEvent::new("shot", contact.actor, Some(contact.attack.seq));
+                event.shot = Some(Shot { time:self.time, actor:contact.actor, origin, end:point, hit:Some(victim), headshot:false, kind:"melee".into(), seq:contact.attack.seq, impact_only:true });
+                self.events.push(event);
+                self.damage(victim, contact.actor, if contact.weapon == WeaponSlot::Grenade { 75 } else { 150 }, false, true, contact.attack.seq);
+            }
         }
     }
 
@@ -2904,15 +2984,97 @@ mod tests {
         sim.history.clear();
         sim.record();
         shoot(&mut sim, 1, 0.0, true);
-        assert!(!sim.actor(2).unwrap().alive);
+        assert!(sim.actor(2).unwrap().alive, "damage waits for visible contact");
         assert_eq!(sim.actor(1).unwrap().ammo, 10);
         assert_eq!(sim.actor(1).unwrap().shots, 0);
         assert_eq!(sim.actor(1).unwrap().cooldown, MELEE_SECONDS);
         shoot(&mut sim, 1, 0.0, true);
         assert_eq!(sim.events.iter().filter(|e| e.kind == "shot").count(), 1);
+        advance(&mut sim, melee_contact_seconds(WeaponSlot::Rifle));
+        assert!(!sim.actor(2).unwrap().alive);
         let mut sim = arena(2);
         shoot(&mut sim, 1, 0.0, true);
+        advance(&mut sim, MELEE_SECONDS);
         assert_eq!(sim.actor(2).unwrap().hp, 100);
+    }
+
+    #[test]
+    fn melee_contact_tracks_the_attackers_movement_and_animation_peak() {
+        for slot in [WeaponSlot::Rifle, WeaponSlot::Grenade] {
+            let mut sim = arena(2);
+            sim.actor_mut(1).unwrap().selected_weapon = slot;
+            sim.actor_mut(2).unwrap().z = -2.9;
+            sim.actor_mut(2).unwrap().hp = 300;
+            input(&mut sim, 1, InputFrame { forward:1.0, melee:true, ..Default::default() });
+            sim.tick(TICK_SECONDS);
+            let contact_at = sim.time + melee_contact_seconds(slot);
+            while sim.time + TICK_SECONDS < contact_at - 1e-9 {
+                input(&mut sim, 1, InputFrame { forward:1.0, ..Default::default() });
+                sim.tick(TICK_SECONDS);
+                assert_eq!(sim.actor(2).unwrap().hp, 300, "the wind-up cannot damage");
+            }
+            input(&mut sim, 1, InputFrame { forward:1.0, ..Default::default() });
+            sim.tick(contact_at - sim.time);
+            let expected = if slot == WeaponSlot::Grenade { 225 } else { 150 };
+            assert_eq!(sim.actor(2).unwrap().hp, expected);
+            let contact = sim.events.iter().filter_map(|event| event.shot.as_ref()).find(|shot| shot.impact_only).unwrap();
+            assert!((contact.time - contact_at).abs() < 1e-9);
+            assert!(contact.origin.z > -5.0, "contact must follow the approaching attacker");
+            advance(&mut sim, MELEE_SECONDS);
+            assert_eq!(sim.actor(2).unwrap().hp, expected, "one contact per swing");
+        }
+    }
+
+    #[test]
+    fn melee_sweep_is_wider_longer_and_still_occluded_at_its_edges() {
+        for (x, z, covered, hit) in [(-0.55,2.3,false,true),(-1.4,2.3,false,false),(0.0,3.1,false,false),(-0.45,1.2,true,false)] {
+            let mut sim = arena(2);
+            let target = sim.actor_mut(2).unwrap();
+            target.x += x; target.z = -6.0+z; target.hp = 300;
+            if covered { sim.boxes.push(WorldBox { x:13.4, z:-5.4, w:2.0, d:0.2, h:3.0 }); }
+            shoot(&mut sim, 1, 0.0, true);
+            advance(&mut sim, melee_contact_seconds(WeaponSlot::Rifle));
+            assert_eq!(sim.actor(2).unwrap().hp, if hit { 150 } else { 300 }, "offset ({x}, {z}), covered {covered}");
+        }
+    }
+
+    #[test]
+    fn melee_advances_target_rewind_through_the_windup() {
+        let mut sim = arena(2);
+        advance(&mut sim, 1.0);
+        sim.actor_mut(2).unwrap().z = -2.7;
+        sim.actor_mut(2).unwrap().hp = 300;
+        sim.record();
+        let viewed_at = sim.time - 0.05;
+        input(&mut sim, 1, InputFrame { melee:true, shot_time:Some(viewed_at), ..Default::default() });
+        sim.tick(TICK_SECONDS);
+        let contact_at = sim.time + melee_contact_seconds(WeaponSlot::Rifle);
+        while sim.time < contact_at - 1e-9 {
+            input(&mut sim, 2, InputFrame { forward:-1.0, ..Default::default() });
+            sim.tick((contact_at - sim.time).min(TICK_SECONDS));
+        }
+        assert_eq!(sim.actor(2).unwrap().hp, 150, "target entered the swing while it animated; button-press history would miss");
+        assert!(sim.actor(2).unwrap().z < -4.0, "a hit query cannot rewind the live actor");
+    }
+
+    #[test]
+    fn melee_contact_is_cancelled_by_death_respawn_spectating_and_switching() {
+        for cancel in ["death", "respawn", "spectate", "switch", "round"] {
+            let mut sim = arena(2);
+            sim.actor_mut(2).unwrap().z = -4.8;
+            sim.actor_mut(2).unwrap().hp = 300;
+            shoot(&mut sim, 1, 0.0, true);
+            match cancel {
+                "death" => sim.actor_mut(1).unwrap().alive = false,
+                "respawn" => { sim.spawn(1); let a=sim.actor_mut(1).unwrap(); a.x=13.6; a.z=-6.0; },
+                "spectate" => { sim.spectate(1); },
+                "switch" => sim.select_weapon(0, WeaponSlot::Grenade, None),
+                _ => sim.finish(),
+            }
+            advance(&mut sim, MELEE_SECONDS);
+            assert_eq!(sim.actor(2).unwrap().hp, 300, "{cancel}");
+            assert!(sim.events.iter().filter_map(|event| event.shot.as_ref()).all(|shot| !shot.impact_only));
+        }
     }
 
     #[test]
@@ -2943,6 +3105,7 @@ mod tests {
                 assert_eq!((a.ammo, a.reserve, a.shots), (ammo, 17, 0));
                 assert_eq!(a.last_melee_time, sim.time);
                 assert_eq!(a.cooldown, MELEE_SECONDS);
+                advance(&mut sim, melee_contact_seconds(WeaponSlot::Rifle));
                 assert!(
                     !sim.actor(2).unwrap().alive,
                     "interruption must perform the hit"
@@ -3138,14 +3301,17 @@ mod tests {
             assert_eq!(sim.actor(2).unwrap().hp, 100, "switching blocks attacks");
             advance(&mut sim, 0.61);
             shoot(&mut sim, 1, 0.0, false);
-            assert_eq!(sim.actor(2).unwrap().hp, 25);
+            assert_eq!(sim.actor(2).unwrap().hp, 100);
             assert!(sim.actor(2).unwrap().alive);
             assert_eq!(sim.actor(1).unwrap().cooldown, MELEE_SECONDS);
             assert_eq!(sim.actor(1).unwrap().last_melee_time, sim.time);
+            advance(&mut sim, melee_contact_seconds(WeaponSlot::Grenade));
+            assert_eq!(sim.actor(2).unwrap().hp, 25);
             shoot(&mut sim, 1, 0.0, true);
             assert_eq!(sim.actor(2).unwrap().hp, 25, "both inputs share recovery");
             advance(&mut sim, MELEE_SECONDS);
             shoot(&mut sim, 1, 0.0, true);
+            advance(&mut sim, melee_contact_seconds(WeaponSlot::Grenade));
             let attacker = sim.actor(1).unwrap();
             assert_eq!(
                 (
@@ -3167,7 +3333,8 @@ mod tests {
                 .iter()
                 .filter_map(|event| event.shot.as_ref())
                 .collect();
-            assert_eq!(shots.len(), 2);
+            assert_eq!(shots.iter().filter(|shot| !shot.impact_only).count(), 2);
+            assert_eq!(shots.iter().filter(|shot| shot.impact_only).count(), 2);
             assert!(
                 shots
                     .iter()
@@ -3198,6 +3365,7 @@ mod tests {
         let mut sim = arena(2);
         sim.actor_mut(1).unwrap().selected_weapon = WeaponSlot::Grenade;
         shoot(&mut sim, 1, 0.0, false);
+        advance(&mut sim, melee_contact_seconds(WeaponSlot::Grenade));
         assert_eq!(
             sim.actor(2).unwrap().hp,
             100,
@@ -3209,6 +3377,7 @@ mod tests {
         sim.history.clear();
         sim.record();
         shoot(&mut sim, 1, 0.0, true);
+        advance(&mut sim, melee_contact_seconds(WeaponSlot::Grenade));
         assert_eq!(
             sim.actor(2).unwrap().hp,
             100,
@@ -3226,6 +3395,7 @@ mod tests {
         sim.history.clear();
         sim.record();
         shoot(&mut sim, 1, 0.0, false);
+        advance(&mut sim, melee_contact_seconds(WeaponSlot::Grenade));
         assert_eq!(
             sim.actor(2).unwrap().hp,
             100,

@@ -29,3 +29,8 @@ test('confirmed predicted hits add contact without repeating gunfire and ignore 
  for(const hit of [null,-1,2])playImpactSound(sound,{...shot,hit},actors,0);
  assert.equal(events.length,1);
 });
+test('delayed melee contact plays impact without replaying the wind-up sound',()=>{
+ const {sound,events}=fixture();playCombatSound(sound,{...shot,kind:'melee',hit:null},actors,0);
+ playCombatSound(sound,{...shot,kind:'melee',impactOnly:true},actors,0);
+ assert.deepEqual(events.map(e=>e.type),['swing','melee-impact']);
+});

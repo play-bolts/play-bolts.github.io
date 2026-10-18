@@ -1,4 +1,4 @@
-import {BOXES,DIFFICULTIES,FACTIONS,GRENADE,HEIGHTS,MELEE_SECONDS,RULES,SPAWN_AMMO,SPAWNS,WEAPONS,WEAPON_SWITCH_SECONDS,clamp,damageFor,dist,lerp,playerShotSpread,rayBox,visible,worldHit,type DamagePart,type Difficulty,type Faction,type Stance,type Vec,type WeaponSlot} from './config';
+import {BOXES,DIFFICULTIES,FACTIONS,GRENADE,HEIGHTS,MELEE_CONTACT_FRACTION,MELEE_RANGE,MELEE_RADIUS,MELEE_SECONDS,RULES,SPAWN_AMMO,SPAWNS,WEAPONS,WEAPON_SWITCH_SECONDS,clamp,damageFor,dist,lerp,playerShotSpread,rayBox,visible,worldHit,type DamagePart,type Difficulty,type Faction,type Stance,type Vec,type WeaponSlot} from './config';
 import {coverPoints,findPath,selectCover} from './navigation';
 import {createSurvivalState,rememberThreat,updateSurvival,type SurvivalState} from './aiSurvival';
 import {DEFAULT_PLAYER_NAME,sanitizePlayerName} from './names';
@@ -7,7 +7,7 @@ import {advanceHipSpread} from './accuracy';
 import {resolveActorMovement,type CollisionActor} from './actorCollision';
 import {SpectatorCamera} from './spectator';
 import {advanceLean,leanEye} from './lean';
-import {sampleHitVolumes,rayHitVolumes} from './hitboxes';
+import {sampleHitVolumes,rayHitVolumes,meleeHitVolumes} from './hitboxes';
 import {initialMotion,advanceSoldierMotion,type SoldierMotionState} from './soldierMotionState';
 import {crossedFootContact} from './soldierGait';
 export interface AIBrain {
@@ -32,11 +32,12 @@ export interface Actor extends Vec {
 export function createActor(id:number,faction:Faction,name:string):Actor {
  return{id,name:sanitizePlayerName(name),faction,x:0,y:0,z:0,yaw:0,pitch:0,stance:'stand',eyeHeight:HEIGHTS.stand,hp:100,ammo:WEAPONS[faction].capacity,reserve:SPAWN_AMMO-WEAPONS[faction].capacity,kills:0,deaths:0,shots:0,hits:0,spectator:false,alive:true,cooldown:0,reload:0,reloadTotal:0,vy:0,grounded:true,leftGroundAt:-Infinity,jumpStarted:-Infinity,landedAt:-Infinity,landingSpeed:0,moving:0,ads:false,lean:0,recoil:0,spawnSafe:0,deadAt:-Infinity,lastShotTime:-Infinity,lastHurtTime:-Infinity,lastMeleeTime:-Infinity,selectedWeapon:'rifle',switchFrom:'rifle',switchStarted:-Infinity,switchDuration:WEAPON_SWITCH_SECONDS,deathYaw:0,deathHeadshot:false,ai:createBrain(id)};
 }
-export interface Shot {time:number;actor:number;origin:Vec;end:Vec;hit:number|null;headshot:boolean;kind:'shot'|'melee'}
+export interface Shot {time:number;actor:number;origin:Vec;end:Vec;hit:number|null;headshot:boolean;kind:'shot'|'melee';impactOnly?:boolean}
 export interface Event {type:'shot'|'kill'|'reload'|'bolt'|'hurt'|'spawn'|'end'|'step'|'switch';actor:number;victim?:number;shot?:Shot;headshot?:boolean;lethal?:boolean;value?:number;weapon?:'rifle'|'grenade'|'melee';actorName?:string;victimName?:string;actorFaction?:Faction}
 export interface Snapshot {time:number;actors:Pick<Actor,'id'|'pose'|'x'|'y'|'z'|'yaw'|'pitch'|'stance'|'eyeHeight'|'spectator'|'alive'|'ads'|'moving'|'lean'|'recoil'|'ammo'|'reserve'|'hp'|'cooldown'|'reload'|'reloadTotal'|'deadAt'|'lastShotTime'|'lastHurtTime'|'lastMeleeTime'|'selectedWeapon'|'switchFrom'|'switchStarted'|'switchDuration'|'deathYaw'|'deathHeadshot'|'grounded'|'vy'|'leftGroundAt'|'jumpStarted'|'landedAt'|'landingSpeed'>[]}
 export interface Input {forward:number;right:number;jump:boolean;walk:boolean;lean:number}
 export class Game {
+ private meleeContacts=new Map<Actor,{started:number;at:number;weapon:WeaponSlot}>();
  spectator=new SpectatorCamera();
  get viewedActor(){return this.player?.spectator?this.spectator.target(this.actors):this.player??null;}
  playerHipSpread=playerShotSpread(false,'stand',0);
@@ -45,6 +46,7 @@ export class Game {
  get player(){return this.actors[0];}
  random(){this.seed=(Math.imul(this.seed,1664525)+1013904223)>>>0;return this.seed/4294967296;}
  start(faction:Faction,difficulty:Difficulty,playerName=DEFAULT_PLAYER_NAME){
+  this.meleeContacts.clear();
   this.spectator.reset();this.difficulty=difficulty;this.actors=[];this.events=[];this.shots=[];this.history=[];this.replay=[];this.time=0;this.remaining=RULES.roundSeconds;this.winner=null;this.seed=Date.now()>>>0;
   const names=[sanitizePlayerName(playerName),'Cpl. Evans','Pvt. Sokolov','Sgt. Adler','Lt. Fletcher','Pvt. Volkov'];
   for(let i=0;i<=RULES.botCount;i++){
@@ -70,6 +72,7 @@ export class Game {
   if(this.state==='killcam')this.state='playing';return true;
  }
  spawn(a:Actor){
+  this.meleeContacts.delete(a);
   if(a.spectator)return;
   let best=SPAWNS[0],score=-Infinity;
   for(const p of SPAWNS){let nearest=100;let sight=0;for(const b of this.actors)if(b!==a&&b.alive&&!b.spectator){nearest=Math.min(nearest,dist(p,b));if(visible({...p,y:1.65},this.eye(b)))sight++;}
@@ -105,10 +108,13 @@ export class Game {
    this.events=this.events.filter(event=>event.type!=='reload'||event.actor!==a.id);
   }
   if(!melee&&a.ammo<=0){this.reload(a);return;}
-  if(!melee){a.ammo--;a.shots++;a.lastShotTime=this.time;}else a.lastMeleeTime=this.time;a.spawnSafe=0;a.cooldown=melee?MELEE_SECONDS:WEAPONS[a.faction].cycle;
+  if(!melee){a.ammo--;a.shots++;a.lastShotTime=this.time;}else{
+   a.lastMeleeTime=this.time;
+   this.meleeContacts.set(a,{started:this.time,at:this.time+MELEE_SECONDS*MELEE_CONTACT_FRACTION[a.selectedWeapon],weapon:a.selectedWeapon});
+  }a.spawnSafe=0;a.cooldown=melee?MELEE_SECONDS:WEAPONS[a.faction].cycle;
   const spread=a.id===0?(a.ads?playerShotSpread(true,a.stance,a.moving):this.playerHipSpread):DIFFICULTIES[this.difficulty].spread*(a.ads?.7:1);
-  const origin=this.eye(a),direction=this.direction(a,melee?0:spread);let length=Math.min(melee?1.85:120,worldHit(origin,direction)),victim:Actor|null=null,part:DamagePart='torso';
-  for(const target of this.actors)if(target!==a&&target.alive&&!target.spectator&&target.spawnSafe<=0){
+  const origin=this.eye(a),direction=this.direction(a,melee?0:spread);let length=Math.min(melee?MELEE_RANGE:120,worldHit(origin,direction)),victim:Actor|null=null,part:DamagePart='torso';
+  for(const target of this.actors)if(!melee&&target!==a&&target.alive&&!target.spectator&&target.spawnSafe<=0){
    const hit=rayHitVolumes(origin,direction,sampleHitVolumes(target,this.time));if(hit&&hit.distance<length){length=hit.distance;victim=target;part=hit.part;}
   }
   const shot:Shot={time:this.time,actor:a.id,origin,end:{x:origin.x+direction.x*length,y:origin.y+direction.y*length,z:origin.z+direction.z*length},hit:victim?.id??null,headshot:!melee&&part==='head',kind:melee?'melee':'shot'};
@@ -131,6 +137,26 @@ export class Game {
   }
   if(victim){if(!melee)a.hits++;this.damage(victim,a,melee?(a.selectedWeapon==='grenade'?75:150):damageFor(part,length),!melee&&part==='head',melee?'melee':'rifle');}
  }
+ private resolveMeleeContacts(){
+  for(const [a,contact]of this.meleeContacts){
+   if(!a.alive||a.spectator||a.lastMeleeTime!==contact.started||a.selectedWeapon!==contact.weapon||this.isSwitching(a)){this.meleeContacts.delete(a);continue;}
+   if(this.time+1e-9<contact.at)continue;
+   this.meleeContacts.delete(a);
+   // Both players may move during the wind-up. Resolve from the current hand/
+   // eye position and aim, after this frame's movement for every actor.
+   const origin=this.eye(a),direction=this.direction(a),occlusion=(ray:Vec)=>worldHit(origin,ray);
+   let victim:Actor|null=null,nearest=Infinity,end:Vec|null=null;
+   for(const target of this.actors)if(target!==a&&target.alive&&!target.spectator&&target.spawnSafe<=0){
+    const hit=meleeHitVolumes(origin,direction,sampleHitVolumes(target,this.time),MELEE_RANGE,MELEE_RADIUS,occlusion);
+    if(hit&&hit.distance<nearest){victim=target;nearest=hit.distance;end=hit.point;}
+   }
+   if(victim&&end){
+    const shot:Shot={time:this.time,actor:a.id,origin,end,hit:victim.id,headshot:false,kind:'melee',impactOnly:true};
+    this.shots.push(shot);this.events.push({type:'shot',actor:a.id,shot});
+    this.damage(victim,a,contact.weapon==='grenade'?75:150,false,'melee');
+   }
+  }
+ }
  damage(victim:Actor,killer:Actor,amount:number,headshot=false,weapon:'rifle'|'melee'='rifle',source:Vec=killer){
   if(!victim.alive||victim.spectator||killer.spectator||amount<=0)return;
   if(headshot)amount=Math.max(amount,victim.hp);
@@ -150,6 +176,7 @@ export class Game {
  }
  finish(){
   if(this.state==='ended'||!this.actors.length)return;
+  this.meleeContacts.clear();
   for(const a of this.actors)if(a.pose){a.pose.speed=0;a.pose.aim=0;}
   this.winner=this.actors.filter(a=>!a.spectator).sort((a,b)=>b.kills-a.kills||a.deaths-b.deaths)[0]??null;this.state='ended';
   // Simulation time stops here. Clear live action timestamps too, otherwise
@@ -209,6 +236,7 @@ export class Game {
    this.footstep(p,previousPhase);
   }
   for(const a of this.actors)if(a.id&&a.alive&&!a.spectator&&this.state==='playing')this.updateAI(a,dt);
+  this.resolveMeleeContacts();
   if(this.state!=='playing')return;
   this.recordClock+=dt;if(this.recordClock>=.05||this.motionRecordPending){this.recordClock=0;this.record();}
   this.shots=this.shots.filter(s=>this.time-s.time<6);

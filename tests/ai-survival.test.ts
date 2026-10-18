@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Game,createActor} from '../src/engine.ts';
-import {DIFFICULTIES,HEIGHTS,dist,type Difficulty} from '../src/config.ts';
+import {DIFFICULTIES,HEIGHTS,MELEE_CONTACT_FRACTION,MELEE_SECONDS,dist,type Difficulty} from '../src/config.ts';
 import {selectTacticalCover,coverExposure,type TacticalThreat} from '../src/aiCover.ts';
 import {rememberThreat,updateSurvival} from '../src/aiSurvival.ts';
 import {initialMotion} from '../src/soldierMotionState.ts';
@@ -162,15 +162,18 @@ test('recruit does not opt into tactical cover or flank scanning',()=>{
 
 test('skilled bots retain their last-resort melee attack when both ammo stores are empty',()=>{
  for(const difficulty of skilled){
-  const {game,bot,target,tick}=fixture(difficulty);
+  const {game,bot,target}=fixture(difficulty);
   Object.assign(bot,{x:13.2,z:0,yaw:0,stance:'stand',eyeHeight:HEIGHTS.stand,ammo:0,reserve:0});
   Object.assign(target,{x:13.2,z:1.2,hp:100});
   Object.assign(bot.ai,{target:target.id,sight:true,seen:game.time,decision:Infinity,reaction:0,driftClock:Infinity});
   Object.assign(bot.ai.survival,{cover:null,phase:'none',threats:[],scanAt:Infinity});
-  game.move=()=>{};
-  for(let frame=0;frame<180&&target.alive;frame++)tick();
+  // The complete update advances movement and resolves queued animation
+  // contacts after every actor moves; an AI-only tick cannot deal the hit.
+  for(let frame=0;frame<180&&target.alive;frame++)game.update(dt,{forward:0,right:0,jump:false,walk:false,lean:0});
   assert.ok(Number.isFinite(bot.lastMeleeTime),`${difficulty} never swung its empty rifle`);
   assert.equal(target.alive,false,'the physical butt strike can still hit a nearby target');
+  const contact=game.shots.find(shot=>shot.actor===bot.id&&shot.impactOnly);
+  assert.ok(contact&&contact.time>=bot.lastMeleeTime+MELEE_SECONDS*MELEE_CONTACT_FRACTION.rifle-1e-9,'bot damage follows the same animated contact as a player');
   assert.equal(bot.ammo,0);assert.equal(bot.reserve,0);
  }
 });

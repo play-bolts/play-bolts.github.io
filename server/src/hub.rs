@@ -1319,6 +1319,14 @@ mod bot_round_tests {
             }
         ));
         room.sim.tick(sim::TICK_SECONDS);
+        assert!(room.sim.actor(human).unwrap().alive, "a bash wind-up cannot record an immediate kill");
+        // Melee now commits damage at animated contact. Advance normal fixed
+        // steps through the wind-up before exercising the persistence path.
+        for _ in 0..30 {
+            if !room.sim.actor(human).unwrap().alive { break; }
+            room.sim.tick(sim::TICK_SECONDS);
+        }
+        assert!(!room.sim.actor(human).unwrap().alive, "the normal bash must reach its contact");
         record_sim_events(&mut hub.db, room).unwrap();
         let roles: (i64, i64) = hub.db.test_conn().query_row(
             "SELECT k.is_bot,v.is_bot FROM combat_events c JOIN players k ON k.id=c.killer_id JOIN players v ON v.id=c.victim_id",

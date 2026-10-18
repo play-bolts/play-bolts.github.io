@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Game} from '../src/engine.ts';
-import {ARENA,GRENADE,HEIGHTS,MELEE_SECONDS,WEAPON_SWITCH_SECONDS,WEAPONS,damageFor,type DamagePart} from '../src/config.ts';
+import {ARENA,BOXES,GRENADE,HEIGHTS,MELEE_CONTACT_FRACTION,MELEE_RANGE,MELEE_SECONDS,WEAPON_SWITCH_SECONDS,WEAPONS,damageFor,type DamagePart} from '../src/config.ts';
 
 const idle={forward:0,right:0,jump:false,walk:false,lean:0};
 function solo(){
@@ -58,13 +58,14 @@ test('grenade primary fire and melee bash for half rifle damage without throwing
   const g=solo(),p=g.player,target=g.actors[1];p.faction=faction;p.ammo=3;p.reserve=17;
   Object.assign(target,{alive:true,x:p.x,y:0,z:p.z+1.2,spawnSafe:0});g.updateAI=()=>{};
   g.selectWeapon('grenade');advance(g,.61);g.events=[];
-  g.fire();assert.equal(target.hp,25);assert.equal(target.alive,true);assert.equal(p.cooldown,MELEE_SECONDS);
+  g.fire();assert.equal(target.hp,100,'wind-up does not deal damage');assert.equal(target.alive,true);assert.equal(p.cooldown,MELEE_SECONDS);
   assert.equal(p.lastMeleeTime,g.time);assert.equal(p.lastShotTime,-Infinity);assert.equal(p.recoil,0);
   assert.equal(g.shots.length,1);assert.equal(g.shots[0].kind,'melee');assert.equal(g.shots[0].headshot,false,'a head-height bash still deals only 75 damage');
+  advance(g,MELEE_SECONDS*MELEE_CONTACT_FRACTION.grenade);assert.equal(target.hp,25);
   for(let attempt=0;attempt<20;attempt++){g.fire();g.fire(p,true);g.reload();}
-  assert.equal(g.shots.length,1,'both controls share recovery');assert.equal(target.hp,25);assert.equal(g.canADS(),false);
-  advance(g,MELEE_SECONDS-.001);g.fire(p,true);assert.equal(g.shots.length,1);
-  advance(g,.002);g.fire(p,true);assert.equal(target.hp,0);assert.equal(target.alive,false);assert.equal(p.kills,1);
+  assert.equal(g.shots.filter(shot=>!shot.impactOnly).length,1,'both controls share recovery');assert.equal(target.hp,25);assert.equal(g.canADS(),false);
+  advance(g,p.cooldown-.001);g.fire(p,true);assert.equal(g.shots.filter(shot=>!shot.impactOnly).length,1);
+  advance(g,.002);g.fire(p,true);advance(g,MELEE_SECONDS*MELEE_CONTACT_FRACTION.grenade);assert.equal(target.hp,0);assert.equal(target.alive,false);assert.equal(p.kills,1);
   assert.deepEqual(g.events.filter(event=>event.type==='hurt').map(event=>event.value),[75,75]);
   assert.equal(g.events.find(event=>event.type==='kill')?.weapon,'melee');assert.equal(target.deathHeadshot,false);
   advance(g,8);assert.equal(p.selectedWeapon,'grenade','carrying the grenade never automatically returns to rifle');
@@ -80,11 +81,11 @@ test('grenade primary fire and melee bash for half rifle damage without throwing
 test('grenade bash keeps rifle melee reach and cannot bypass switching or empty-ammo rules',()=>{
  const g=solo(),p=g.player,target=g.actors[1];g.updateAI=()=>{};p.ammo=p.reserve=0;
  Object.assign(target,{alive:true,x:p.x,y:0,z:p.z+1.2,spawnSafe:0,hp:300});
- g.fire(p,true);assert.equal(target.hp,150,'rifle melee remains 150 damage even with no ammo');
+ g.fire(p,true);advance(g,MELEE_SECONDS*MELEE_CONTACT_FRACTION.rifle);assert.equal(target.hp,150,'rifle melee remains 150 damage even with no ammo');
  p.cooldown=0;g.selectWeapon('grenade');g.fire();g.fire(p,true);assert.equal(target.hp,150,'switch animation blocks either attack control');
- advance(g,.61);target.z=p.z+2.1;g.fire();assert.equal(target.hp,150,'the grenade cannot reach past the 1.85 m melee ray');
+ advance(g,.61);target.z=p.z+MELEE_RANGE+.5;g.fire();advance(g,MELEE_SECONDS*MELEE_CONTACT_FRACTION.grenade);assert.equal(target.hp,150,'the grenade cannot reach beyond the sweep');
  assert.equal(g.shots.at(-1)?.kind,'melee');assert.equal(g.shots.at(-1)?.hit,null);
- advance(g,MELEE_SECONDS+.001);target.z=p.z+1.2;g.fire();assert.equal(target.hp,75,'grenade bash does not require rifle ammo');
+ advance(g,MELEE_SECONDS+.001);target.z=p.z+1.2;g.fire();advance(g,MELEE_SECONDS*MELEE_CONTACT_FRACTION.grenade);assert.equal(target.hp,75,'grenade bash does not require rifle ammo');
  assert.equal(p.ammo,0);assert.equal(p.reserve,0);assert.equal(p.reload,0);
 });
 
@@ -168,4 +169,44 @@ test('melee does not undo ammunition already transferred at reload completion',(
  const g=solo(),p=g.player;p.ammo=1;p.reserve=7;g.reload();p.reload=.005;
  g.update(1/60,idle);assert.equal(p.ammo,8);assert.equal(p.reserve,0);
  g.fire(p,true);assert.equal(p.reload,0);assert.equal(p.reloadTotal,0);assert.equal(p.ammo,8);assert.equal(p.reserve,0);assert.equal(g.shots.at(-1)?.kind,'melee');
+});
+
+test('bash damage waits for animation contact and uses movement during the wind-up',()=>{
+ for(const weapon of ['rifle','grenade'] as const){
+  const g=solo(),p=g.player,t=g.actors[1];g.updateAI=()=>{};p.selectedWeapon=weapon;
+  Object.assign(t,{alive:true,x:p.x,y:0,z:p.z+3.1,spawnSafe:0,hp:300});
+  g.fire(p,true);const contact=MELEE_SECONDS*MELEE_CONTACT_FRACTION[weapon];
+  for(let elapsed=0;elapsed<contact-.001;){const dt=Math.min(1/120,contact-.001-elapsed);g.update(dt,{...idle,forward:1});elapsed+=dt;}
+  assert.equal(t.hp,300,'no damage while the weapon is still winding up');
+  g.update(.002,{...idle,forward:1});assert.equal(t.hp,weapon==='rifle'?150:225,'approaching an initially out-of-range player lands at visible contact');
+  const contactShot=g.shots.at(-1)!;assert.equal(contactShot.impactOnly,true);assert.equal(contactShot.hit,t.id);
+  assert.ok(contactShot.origin.z>-6+.9,'contact starts from the current position');
+  advance(g,MELEE_SECONDS);assert.equal(t.hp,weapon==='rifle'?150:225,'one swing can only deal damage once');
+ }
+});
+
+test('bash reaches wider and farther but cannot pass through cover or hit distant players',()=>{
+ for(const position of [{x:-.55,z:2.3,hit:true},{x:-1.4,z:2.3,hit:false},{x:0,z:3.1,hit:false}]){
+  const g=solo(),p=g.player,t=g.actors[1];g.updateAI=()=>{};
+  Object.assign(t,{alive:true,x:p.x+position.x,y:0,z:p.z+position.z,yaw:0,pitch:0,spawnSafe:0,hp:300});
+  g.fire(p,true);advance(g,MELEE_SECONDS*MELEE_CONTACT_FRACTION.rifle);
+  assert.equal(t.hp,position.hit?150:300,JSON.stringify(position));
+ }
+ const g=solo(),p=g.player,t=g.actors[1];g.updateAI=()=>{};
+ Object.assign(t,{alive:true,x:p.x-.45,y:0,z:p.z+1.2,spawnSafe:0,hp:300});
+ const wall={x:p.x-.2,z:p.z+.6,w:2,d:.2,h:3};BOXES.push(wall);
+ try{g.fire(p,true);advance(g,MELEE_SECONDS);assert.equal(t.hp,300,'the wide sweep still requires an unobstructed body surface');}
+ finally{BOXES.splice(BOXES.indexOf(wall),1);}
+});
+
+test('death, respawn, switching and spectating cancel a pending bash',()=>{
+ for(const cancel of ['death','respawn','switch','spectate']as const){
+  const g=solo(),p=g.player,t=g.actors[1];g.updateAI=()=>{};
+  Object.assign(t,{alive:true,x:p.x,y:0,z:p.z+1.2,spawnSafe:0,hp:300});g.fire(p,true);
+  if(cancel==='death')p.alive=false;
+  if(cancel==='respawn')g.spawn(p);
+  if(cancel==='switch')g.selectWeapon('grenade');
+  if(cancel==='spectate')g.spectate();
+  advance(g,MELEE_SECONDS);assert.equal(t.hp,300,cancel);
+ }
 });

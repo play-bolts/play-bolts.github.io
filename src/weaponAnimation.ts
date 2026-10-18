@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {MELEE_SECONDS,type Faction} from './config';
+import {MELEE_CONTACT_FRACTION,MELEE_SECONDS,type Faction} from './config';
 import {poseAnatomicalHand,handContactLocal} from './hands';
 import {sampleSourceMotion} from './humanoidMotion';
 import {getImportedWeaponProfile,type ImportedWeaponProfile} from './importedWeapons';
@@ -134,9 +134,9 @@ export function sampleGrenadeReadyPose():GrenadePose {
  * recovery inside the existing melee interval so attack cadence is unchanged.
  * The item and gripping hand share the same transform throughout the bash. */
 export function sampleGrenadeMelee(progress:number):GrenadePose {
-  const t=Math.max(0,Math.min(1,progress)),pose=sampleGrenadeReadyPose();
-  pose.position=keys(t,[[0,[0,0,0]],[.18,[-.025,.32,.055]],[.34,[-.045,-.13,-.24]],[.44,[-.04,-.16,-.20]],[1,[0,0,0]]]);
-  pose.rotation=keys(t,[[0,[0,0,0]],[.18,[.58,0,.04]],[.34,[-1.25,0,-.025]],[.44,[-1.13,0,-.02]],[1,[0,0,0]]]);
+  const t=Math.max(0,Math.min(1,progress)),pose=sampleGrenadeReadyPose(),contact=MELEE_CONTACT_FRACTION.grenade;
+  pose.position=keys(t,[[0,[0,0,0]],[.18,[-.025,.32,.055]],[contact,[-.045,-.13,-.24]],[.44,[-.04,-.16,-.20]],[1,[0,0,0]]]);
+  pose.rotation=keys(t,[[0,[0,0,0]],[.18,[.58,0,.04]],[contact,[-1.25,0,-.025]],[.44,[-1.13,0,-.02]],[1,[0,0,0]]]);
   pose.stage=t<.18?'Raise grenade':t<.44?'Downward bash':'Recover grip';
   return pose;
 }
@@ -190,14 +190,15 @@ export function sampleWeaponAnimation(faction:Faction,action:WeaponAction,progre
     // Move the actual stock around the planted palms, not just the muzzle
     // forward. The draw brings the buttplate up on screen-right; the second
     // arc turns it beyond square and drives it toward the center/target.
-    const phase=t<.22?ramp(t,0,.22):t<.40?1+ramp(t,.22,.40):t<.46?2:t<.68?2-ramp(t,.46,.68):1-ramp(t,.68,1);
+    const contact=MELEE_CONTACT_FRACTION.rifle;
+    const phase=t<.22?ramp(t,0,.22):t<contact?1+ramp(t,.22,contact):t<.46?2:t<.68?2-ramp(t,.46,.68):1-ramp(t,.68,1);
     const position=(phase<=1?MELEE_DRAW_PATH.getPoint(phase):MELEE_STRIKE_PATH.getPoint(phase-1));
     pose.position=position.toArray().map((v,i)=>v-VIEWMODEL_HIP_POSITION[i]) as Vector;
     const bodyRotation=phase<=1?mix([0,-.035,0],MELEE_DRAW_ROTATION,phase):mix(MELEE_DRAW_ROTATION,MELEE_STRIKE_ROTATION,phase-1);
     pose.rotation=[bodyRotation[0],bodyRotation[1]+.035,bodyRotation[2]];
     pose.unshoulder=ramp(t,0,.13)-ramp(t,.84,1);
     pose.supportArmFreedom=ramp(t,0,.07)-ramp(t,.91,1);
-    pose.stage=t<.22?'Raise buttstock on right':t<.40?'Right-side buttstock smash':t<.54?'Follow through':'Recover both hands';
+    pose.stage=t<.22?'Raise buttstock on right':t<contact?'Right-side buttstock smash':t<.54?'Follow through':'Recover both hands';
     // Grips stay exactly fitted to each source stock, including during the
     // roll. The body-fixed arms solve around those contacts without stretching.
     return pose;

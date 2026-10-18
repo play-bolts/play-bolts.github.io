@@ -61,3 +61,17 @@ for(const source of [7,42])test(`${source===42?'unpredicted local':'remote'} hit
   assert.equal(impacts.length,0);const attacks=game.events.filter(event=>event.type==='shot');assert.equal(attacks.length,1);assert.equal(attacks[0].shot?.actor,source===42?0:1);assert.equal(attacks[0].shot?.hit,source===42?1:0);
  }finally{client.disconnect();}
 });
+
+for(const contactFirst of [false,true])test(`delayed melee contact preserves attack deduplication with contact ${contactFirst?'before':'after'} the wind-up confirmation`,async()=>{
+ const {client,game,socket,impacts,setNow}=await fixture();
+ try{
+  client.fire(true);setNow(17);client.update(1/60,idle);const command=socket.messages.findLast(message=>message.type==='input');
+  const start=confirmed('melee',command.seq,null),contact=confirmed('melee',command.seq);contact.shot!.impactOnly=true;
+  game.events=[];let tick=command.tick;
+  for(const event of contactFirst?[contact,start]:[start,contact]){
+   const frame=snapshot(tick++,[event]);frame.actors[1].ack=command.seq;assert.equal(client.receiveSnapshot(frame),true);
+  }
+  assert.equal(impacts.length,1);assert.equal(impacts[0].impactOnly,true);
+  assert.equal(game.events.filter(event=>event.type==='shot').length,0,'neither confirmation restarts the attack');
+ }finally{client.disconnect();}
+});

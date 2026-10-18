@@ -1,3 +1,4 @@
+use axum::serve::{ListenerExt, TapIo};
 use bolts_server::{
     app,
     hub::{Config, Hub},
@@ -6,6 +7,18 @@ use bolts_server::{
 };
 use std::{net::SocketAddr, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
+
+fn realtime_listener(
+    listener: tokio::net::TcpListener,
+) -> TapIo<tokio::net::TcpListener, fn(&mut tokio::net::TcpStream)> {
+    listener.tap_io(|stream| {
+        // Small combat cues and ping replies must leave immediately instead of
+        // waiting for Nagle's algorithm and the peer's delayed acknowledgement.
+        if let Err(error) = stream.set_nodelay(true) {
+            tracing::warn!(%error, "failed to disable TCP batching");
+        }
+    })
+}
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
@@ -40,8 +53,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut clock = TickClock::default();
         let mut snapshots = SnapshotPacer::default();
         let mut report_at = previous;
-        let (mut catch_up, mut dropped, mut maximum_lock_ms, mut maximum_tick_ms) =
-            (0_u64, 0_u64, 0.0_f64, 0.0_f64);
+        let (
+            mut catch_up,
+            mut dropped,
+            mut maximum_lock_ms,
+            mut maximum_tick_ms,
+            mut maximum_wake_delay_ms,
+        ) = (0_u64, 0_u64, 0.0_f64, 0.0_f64, 0.0_f64);
         loop {
             tokio::select! {
                 biased;
@@ -49,7 +67,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 _ = interval.tick() => {},
             }
             let now = Instant::now();
-            let batch = clock.advance(now.saturating_duration_since(previous));
+            let elapsed = now.saturating_duration_since(previous);
+            maximum_wake_delay_ms =
+                maximum_wake_delay_ms.max(elapsed.saturating_sub(STEP).as_secs_f64() * 1000.0);
+            let batch = clock.advance(elapsed);
             previous = now;
             catch_up += u64::from(batch.steps.saturating_sub(1));
             dropped += batch.dropped;
@@ -92,16 +113,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     dropped_ticks = dropped,
                     max_lock_ms = maximum_lock_ms,
                     max_tick_ms = maximum_tick_ms,
+                    max_wake_delay_ms = maximum_wake_delay_ms,
                     pending_ticks = batch.pending,
                     "simulation timing"
                 );
-                if dropped > 0 {
+                // Keep occasional stalls visible with the production info log
+                // level, without requiring verbose per-socket/tick diagnostics.
+                if dropped > 0
+                    || maximum_lock_ms >= 50.0
+                    || maximum_tick_ms >= 50.0
+                    || maximum_wake_delay_ms >= 100.0
+                {
                     tracing::warn!(
+                        catch_up_ticks = catch_up,
                         dropped_ticks = dropped,
-                        "simulation overload exceeded bounded catch-up"
+                        max_lock_ms = maximum_lock_ms,
+                        max_tick_ms = maximum_tick_ms,
+                        max_wake_delay_ms = maximum_wake_delay_ms,
+                        "simulation latency spike"
                     );
                 }
-                (catch_up, dropped, maximum_lock_ms, maximum_tick_ms) = (0, 0, 0.0, 0.0);
+                (
+                    catch_up,
+                    dropped,
+                    maximum_lock_ms,
+                    maximum_tick_ms,
+                    maximum_wake_delay_ms,
+                ) = (0, 0, 0.0, 0.0, 0.0);
                 report_at = now;
             }
         }
@@ -110,7 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let shutdown_hub = hub.clone();
     tracing::info!(%bind,"Bolts multiplayer listening");
     axum::serve(
-        listener,
+        realtime_listener(listener),
         application.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(async move {
@@ -146,5 +184,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Err("Persistent storage failure".into())
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::serve::Listener;
+
+    #[tokio::test]
+    async fn accepted_game_connections_disable_tcp_batching() {
+        let raw = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = raw.local_addr().unwrap();
+        let mut listener = realtime_listener(raw);
+        // Exercise the actual acceptance wrapper used by axum, including each
+        // new connection rather than just setting an option on a test socket.
+        for _ in 0..2 {
+            let (connected, (accepted, _)) =
+                tokio::join!(tokio::net::TcpStream::connect(address), listener.accept(),);
+            let _client = connected.unwrap();
+            assert!(accepted.nodelay().unwrap());
+        }
     }
 }

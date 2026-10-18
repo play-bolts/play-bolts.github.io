@@ -1,3 +1,4 @@
+v1.0.24 - Removes TCP batching from game sockets and adds latency probes and bounded simulation-stall diagnostics.
 v1.0.23 - Aligns melee damage with animation contact and widens bash reach, with moving-player and authoritative server checks.
 v1.0.22 - Fully covers startup until a quick menu fade and shows lobby name and region in multiplayer HUD and scoreboard.
 v1.0.21 - Compresses Kar98k report and reflections by 20% while preserving pitch.

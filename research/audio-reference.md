@@ -1,3 +1,12 @@
+# Kar98k timing revision — 17 October 2026
+
+The Kar98k report is now 20% shorter: 656 ms instead of 820 ms. Its attack,
+body, decay and reflection timings use a 0.8 scale. Resonant frequencies remain
+unchanged, avoiding the pitch increase of faster sample playback. Enfield and
+Mosin reports retain their original timing. Phase-spectrum checks use equivalent
+compressed Kar98k windows and still meet the existing timbre bounds at 48 kHz;
+44.1 kHz synthesis and worker/fallback parity also pass.
+
 # Combat audio richness revision — 16 October 2026
 
 The gunshot recipes now layer a short bipolar muzzle-pressure pulse, independent

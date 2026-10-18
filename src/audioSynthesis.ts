@@ -64,13 +64,13 @@ function finish(samples:Float32Array,rate:number,ceiling:number,drive=0){
 
 /** Short, increasingly dark reflections give the report depth without allocating
  * live delay/convolution nodes per shot or washing out its directional cue. */
-function reflections(samples:Float32Array,rate:number,seed:number){
+function reflections(samples:Float32Array,rate:number,seed:number,timeScale=1){
  const direct=samples.slice(),times=[.019,.033,.057,.089,.131,.187,.271];
  for(let tap=0;tap<times.length;tap++){
-  const delay=times[tap]*(1+(((seed>>>tap)&15)-7)*.003),offset=Math.round(delay*rate);
+  const delay=times[tap]*(1+(((seed>>>tap)&15)-7)*.003),offset=Math.round(delay*timeScale*rate);
   const gain=.15*Math.exp(-delay*8),pole=Math.exp(-2*Math.PI*(3800/(1+delay*9))/rate);let filtered=0;
   for(let i=offset;i<samples.length;i++){
-   const time=(i-offset)/rate;
+   const time=(i-offset)/rate/timeScale;
    filtered=(1-pole)*direct[i-offset]+pole*filtered;
    samples[i]+=filtered*gain*(1-smooth((time-.18)/.20));
   }
@@ -79,33 +79,36 @@ function reflections(samples:Float32Array,rate:number,seed:number){
 
 /** One mono shot carries its complete crack/body/tail through the same spatial route. */
 export function synthesizeRifle(faction:Faction,sampleRate:number,seed=0x51f15e):Float32Array{
- const p=RIFLE_SOUND[faction],length=Math.ceil(sampleRate*.82),out=new Float32Array(length);
+ // Compress the Kar98k's authored timing by 20% while retaining its resonant
+ // frequencies. Playback-rate changes would raise its pitch by 25% as well.
+ const timeScale=faction==='german'?.8:1;
+ const p=RIFLE_SOUND[faction],length=Math.ceil(sampleRate*.82*timeScale),out=new Float32Array(length);
  const salt={british:0x2510b2,russian:0x6e4181,german:0x934fb3}[faction];
  const bands=p.bands.map(([hz,q],i)=>resonantNoise(length,sampleRate,hz,q,(seed^salt^Math.imul(i+1,0x9e3779b9))>>>0));
  const crack=resonantNoise(length,sampleRate,8200,.55,seed^0x2fd76a);
  const thump={british:.62,russian:.84,german:.44}[faction];
  for(let i=0;i<length;i++){
-  const t=i/sampleRate,body=smooth((t-.012)/.028),tail=smooth((t-.11)/.075);
+  const seconds=i/sampleRate,t=seconds/timeScale,body=smooth((t-.012)/.028),tail=smooth((t-.11)/.075);
   let value=0;
   for(let b=0;b<bands.length;b++){
    const initial=p.attack[b]+(p.body[b]-p.attack[b])*body;
    value+=bands[b][i]*(initial+(p.tail[b]-initial)*tail);
   }
-  const rough=1+p.roughness*(.65*Math.sin(2*Math.PI*p.roughHz*t)+.35*Math.sin(2*Math.PI*p.roughHz*1.618*t+.8));
-  const shock=p.shock*Math.sin(2*Math.PI*93*t)*Math.exp(-t/.008);
+  const rough=1+p.roughness*(.65*Math.sin(2*Math.PI*p.roughHz*seconds)+.35*Math.sin(2*Math.PI*p.roughHz*1.618*seconds+.8));
+  const shock=p.shock*Math.sin(2*Math.PI*93*seconds)*Math.exp(-t/.008);
   // Independent micro-transients and a short pressure pulse avoid the old
   // single-envelope filtered-hiss attack. The low body has audible harmonics
   // for small phone speakers, rather than relying only on sub-bass.
   const attack=smooth(t/.0003),pressure=(1-t/.0012)*Math.exp(-t/.0012);
   const fracture=crack[i]*(Math.exp(-t/.0045)+.28*bell(t,.0065,.002));
-  const phase=2*Math.PI*(85*t+1.8*(1-Math.exp(-t/.023)));
+  const phase=2*Math.PI*(85*seconds+1.8*timeScale*(1-Math.exp(-t/.023)));
   const punch=(Math.sin(phase)+.22*Math.sin(phase*2.03))*(1-Math.exp(-t/.001))*Math.exp(-t/.043)*thump;
-  const mechanical=(Math.sin(2*Math.PI*1320*t)+.4*Math.sin(2*Math.PI*3130*t))*Math.exp(-t/.017)*.055;
+  const mechanical=(Math.sin(2*Math.PI*1320*seconds)+.4*Math.sin(2*Math.PI*3130*seconds))*Math.exp(-t/.017)*.055;
   out[i]=(value*rough+shock)*envelope(p.envelope,t)+attack*(pressure*.95+fracture*.42+punch+mechanical);
  }
  const direct=out.slice();
- for(const [delay,gain] of p.reflections){const offset=Math.round(delay*sampleRate);for(let i=offset;i<length;i++)out[i]+=direct[i-offset]*gain;}
- reflections(out,sampleRate,seed);
+ for(const [delay,gain] of p.reflections){const offset=Math.round(delay*timeScale*sampleRate);for(let i=offset;i<length;i++)out[i]+=direct[i-offset]*gain;}
+ reflections(out,sampleRate,seed,timeScale);
  return finish(out,sampleRate,.88,.48);
 }
 

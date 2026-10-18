@@ -19,7 +19,7 @@ function spectrum(samples:Float32Array,rate:number,start:number,end:number){
 }
 const phases=[[0,.025],[.025,.14],[.14,.35]] as const;
 const statistics=Object.fromEntries(FACTIONS.map(faction=>[faction,[0,1,2].map(variant=>{
- const pcm=synthesizeRifle(faction,48000,0x51f15e+variant*7919);return{pcm,phases:phases.map(([start,end])=>spectrum(pcm,48000,start,end))};
+ const pcm=synthesizeRifle(faction,48000,0x51f15e+variant*7919);return{pcm,phases:phases.map(([start,end])=>{const scale=faction==='german'?.8:1;return spectrum(pcm,48000,start*scale,end*scale);})};
 })])) as Record<Faction,{pcm:Float32Array;phases:ReturnType<typeof spectrum>[]}[]>;
 const mean=(values:number[])=>values.reduce((sum,value)=>sum+value,0)/values.length;
 
@@ -83,4 +83,12 @@ test('contact has an immediate transient and low body, while a missed swing has 
  for(const hit of [strike,bullet])assert.ok(opening(hit).rms>body(hit).rms*1.5,'contact starts at the confirmed hit without a delayed attack');
  assert.ok(body(strike).rms>body(bullet).rms*1.4,'melee has a weightier sustained body than a bullet contact');
  assert.ok(opening(bullet).centroid>opening(strike).centroid*1.2,'bullet contact is sharper than the melee thud');
+});
+
+
+test('Kar98k report lasts 20% less at both device sample rates',()=>{
+ for(const rate of [44100,48000]){
+  assert.equal(synthesizeRifle('german',rate).length,Math.ceil(rate*.82*.8));
+  for(const faction of ['british','russian'] as const)assert.equal(synthesizeRifle(faction,rate).length,Math.ceil(rate*.82));
+ }
 });

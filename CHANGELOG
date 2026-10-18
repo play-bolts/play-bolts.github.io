@@ -1,3 +1,4 @@
+v1.0.21 - Compresses Kar98k report and reflections by 20% while preserving pitch.
 v1.0.20 - Adds downloadable texture tiers, distance model detail, quality-aware shadows and adaptive pixel budgets; removes unused startup assets.
 v1.0.19 - Prewarms and shares immutable death-hand envelopes to remove combat-time skin traversal and convex-hull construction.
 v1.0.18 - Replaces linear A* searches with a stable indexed heap and reentrant scratch storage while preserving exact routes.

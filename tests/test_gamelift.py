@@ -10,6 +10,13 @@ spec.loader.exec_module(prepare)
 
 
 class GameLiftConfigurationTests(unittest.TestCase):
+    def test_disabled_regions_have_no_warm_capacity_or_autoscaling(self):
+        self.assertFalse(prepare.extra_lobbies_enabled())
+        fleet = prepare.template()['Resources']['Fleet']['Properties']
+        self.assertEqual(fleet['ScalingPolicies'], [])
+        for loc in fleet['Locations']:
+            self.assertEqual(loc['LocationCapacity'], {'MinSize': 0, 'DesiredEC2Instances': 0, 'MaxSize': 0})
+
     def test_queues_never_fall_back_to_a_different_city(self):
         resources = prepare.template()['Resources']
         config = json.loads((ROOT / 'infra/gamelift/host.example.json').read_text())
@@ -21,7 +28,7 @@ class GameLiftConfigurationTests(unittest.TestCase):
         self.assertTrue(all(q['TimeoutInSeconds'] == 600 for q in queues))
 
     def test_one_warm_server_per_requested_city_remains_available_when_empty(self):
-        template = prepare.template()
+        template = prepare.template(True)
         fleet = template['Resources']['Fleet']['Properties']
         self.assertEqual(template['Parameters']['MaximumInstancesPerLocation']['Default'], 2)
         self.assertEqual(fleet['NewGameSessionProtectionPolicy'], 'FullProtection')

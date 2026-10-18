@@ -6,7 +6,9 @@ The complete game and its assets are hosted at **https://play-bolts.github.io/**
 
 ## GameLift regional hosting
 
-Regional implementation prepared on 2026-10-16; **the GameLift fleet has not been deployed**. [DEPLOYED.md](../infra/DEPLOYED.md) remains the record of live infrastructure. New York was excluded at the user’s request after its GameLift allowance remained zero. London, Singapore, São Paulo and the fleet home region each report a 400-instance allowance. The template keeps one warm instance in each requested city and caps each at two. See the [zero-player pricing estimate](../research/regional-hosting-costs.md): approximately $336/month for the three new locations, plus the unchanged Oregon baseline.
+The release feature flag `extraLobbies` in [shared/features.json](../shared/features.json) is **false**. It controls browser availability, generated gateway configuration and fleet provisioning. Disabled gateways do not query GameLift or admit regional joins; generated fleet capacity has minimum, desired and maximum zero in every location, with no scaling policies. The regional deployment helper refuses uploads and provisioning while disabled. The Oregon backend remains available.
+
+The existing regional fleet was disabled and verified at **zero running, pending and terminating instances on 2026-10-17 at 20:35 PDT**; see [DEPLOYED.md](../infra/DEPLOYED.md). A source flag alone cannot stop charges on existing running instances: use [Disabling extra lobbies](#disabling-extra-lobbies) and verify capacity reaches zero. The following architecture and rollout instructions describe the optional **enabled** configuration, which keeps one warm instance per city and caps each at two. See the [historical warm-capacity estimate](../research/regional-hosting-costs.md). New York is excluded.
 
 | Location shown in the browser | GameLift location |
 | --- | --- |
@@ -34,6 +36,24 @@ Each region has an exact-location queue with a 600-second placement timeout; the
 The version-2 `GET /api/lobbies` response includes `locations: ["lon","sg","sp"]` separately from `lobbies`, which includes existing Oregon rooms as `location: "or", managed: false`. `POST /api/join` with `lobbyId: "new:<location>"` means join-or-start in that location; that routing key is never a listed lobby. Selecting an actual lobby still joins that exact game. New game allocation is driven by a player's join request, so a full lobby does not continuously create unused replacement games.
 
 The fleet uses on-demand `c7i.large` instances with two server processes each. One session can run successive rounds indefinitely while occupied. Empty sessions close after the Rust five-minute idle timeout and disappear on the next directory refresh (the API cache and browser polling each have a five-second interval). The instance stays ready with minimum and desired capacity of one; automatic scale-to-zero is disabled. Idle sessions and idle instances are separate: zero players still incurs the warm-instance cost. A 20% spare-session target scales above one instance, bounded at two instances per location by default (four lobbies / 24 human or spectator seats per location). Active game sessions have termination protection. The `us-east-1` home location has zero desired and maximum capacity and is absent from all placement queues. The central API and its storage continue to incur their existing baseline cost alongside the warm regional instances.
+
+### Disabling extra lobbies
+
+Keep `shared/features.json` set to `{"extraLobbies": false}` and rebuild the frontend/gateway. `prepare-gamelift.py` carries this value into `host.json` as `extraLobbiesEnabled`; omitted gateway flags also default to false. A new frontend hides regional rows and choices even while an older directory is still running. A disabled gateway serves Oregon without any regional discovery requests and rejects regional admissions.
+
+For an existing fleet, use the guarded helper with its exact fleet ID:
+
+```sh
+python3 scripts/disable-extra-lobbies.py --fleet-id FLEET_ID
+python3 scripts/disable-extra-lobbies.py --fleet-id FLEET_ID --apply
+python3 scripts/disable-extra-lobbies.py --fleet-id FLEET_ID --verify
+```
+
+The first command only reads AWS and writes a local plan. Apply validates the exact Bolts fleet, city queues and destinations, and refuses any active **or reserved** human seat. It removes the three queue destinations, denies admission to existing empty sessions, checks again, stops autoscaling in the three locations, and sets minimum/desired/maximum capacity to zero with manual capacity management. A join race before scale-down restores previous admission settings and aborts. No fleet, build, session, database or Oregon resource is deleted. Protected sessions finish through their normal shutdown path; repeat `--verify` until active, pending and terminating instance counts are all zero. Only then has regional compute stopped. The existing Oregon service and storage retain their baseline charges.
+
+Original queue destinations, admission policies, capacity settings and stopped scaling actions are saved in `temp/extra-lobbies-disabled/FLEET_ID/before.json`; retries preserve that original record. An interrupted scale-down can be resumed with the same command. To re-enable, deliberately set the release flag true, restore the saved desired/minimum/maximum values and original scaling-action state, wait for healthy regional processes, then restore queue destinations and deploy the enabled directory/frontend. This reversible shutdown changes live fleet settings outside CloudFormation; review that drift before a future stack update. An old directory may still display its configured location choices until the gateway release is installed, but empty queues and zero maximum capacity prevent new paid instances. Do not claim zero regional compute while verification still reports instances draining.
+
+AWS references: [manual capacity bounds and MANUAL zero strategy](https://docs.aws.amazon.com/cli/latest/reference/gamelift/update-fleet-capacity.html), [suspending regional autoscaling](https://docs.aws.amazon.com/botocore/latest/reference/services/gamelift/client/stop_fleet_actions.html), [admission policy](https://docs.aws.amazon.com/cli/latest/reference/gamelift/update-game-session.html).
 
 ### Build and verify
 

@@ -1,3 +1,10 @@
+import features from '../shared/features.json';
+
+export const EXTRA_LOBBIES_ENABLED=features.extraLobbies===true;
+/** Unlabelled legacy rooms are Oregon; extra regions require an explicit release flag. */
+export function lobbyLocationEnabled(location?:string,extraLobbiesEnabled=EXTRA_LOBBIES_ENABLED):boolean {
+ return !location||location==='or'||extraLobbiesEnabled&&Object.hasOwn(LOBBY_LOCATIONS,location);
+}
 /** Location identifiers come from the global directory, never from the viewer. */
 export const LOBBY_LOCATIONS = {
  or:{name:'Oregon',abbreviation:'OR',flag:'🇺🇸',country:'us',aws:'us-west-2'},

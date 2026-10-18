@@ -139,6 +139,9 @@ func (d *directory) catalog(ctx context.Context, force bool) ([]lobby, error) {
 	// Every viewer receives the same full directory; latency lives in the browser.
 	available := []string{}
 	for _, loc := range d.r.cfg.Locations {
+		if !d.r.cfg.ExtraLobbiesEnabled {
+			break
+		}
 		regionalRows := []lobby{}
 		regionalGames := map[string]types.GameSession{}
 		regionCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
@@ -261,6 +264,10 @@ func (d *directory) authenticate(ctx context.Context, token string) (string, err
 	return value.PlayerID, nil
 }
 func (d *directory) join(w http.ResponseWriter, q *http.Request) {
+	if !d.r.cfg.ExtraLobbiesEnabled {
+		problem(w, 503, "Extra regional lobbies are disabled.")
+		return
+	}
 	if !d.limits.allow(clientIP(q, true), 300, time.Minute) {
 		problem(w, 429, "Too many join requests.")
 		return

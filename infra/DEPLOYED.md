@@ -1,5 +1,13 @@
 # Deployed backend
 
+## Regional shutdown — 2026-10-17
+
+London (`eu-west-2`), Singapore (`ap-southeast-1`) and São Paulo (`sa-east-1`) were disabled on the existing GameLift fleet `fleet-84aaebc2-b484-4822-83c1-3efefb720c06`. The guarded shutdown verified zero active or reserved human seats, removed the three regional queues' destinations, stopped each location's `AUTO_SCALING`, and set minimum, desired and maximum capacity to **0** with `ZeroCapacityStrategy=MANUAL`. At **20:35 PDT**, verification confirmed **0 active, pending and terminating instances in all three locations**, with the home location also at zero. Regional compute is stopped; retained storage/logs and the existing Oregon service retain any applicable baseline charges. No fleet, build, database or session resource was deleted.
+
+Oregon still returned HTTP 200 for protocol-3 health and its local lobby after shutdown. This was an operational capacity change only: no frontend, Rust server or Go gateway code was deployed. The old directory still advertises regional location choices until a release with `extraLobbies=false` is published; its regional placement queues are empty and cannot allocate capacity. The source flag and generated gateway/fleet configuration now default off. Saved recovery settings, final capacity verification and Oregon health evidence are under `temp/extra-lobbies-disabled/fleet-84aaebc2-b484-4822-83c1-3efefb720c06/`. See [regional disable and restoration procedure](../server/README.md#disabling-extra-lobbies). These live settings intentionally differ from the previously deployed CloudFormation warm-capacity template; review that drift before re-enabling regional hosting.
+
+## Previous application release
+
 Verified on 2026-10-16. Endpoint: **https://bolts-api.christopherkrapu.com**
 
 Application release `043bfa1f697eaa8a9f5ef251ba21e2cb77d38ffb6e52417a7faafbb62c6da36f` deploys protocol **3** from source `9ef9a47da77bb239ed3972c6398fd434a6d7ce1d`. GitHub Pages [build and deployment](https://github.com/play-bolts/play-bolts.github.io/actions/runs/38981655354) succeeded for that source; the three served entry assets matched the locally tested build byte-for-byte. This application-only update preserved the existing Oregon instance, database and identity credentials; no CloudFormation or GameLift resources changed. The host lock, expected-current-release checks, empty-human-seat checks and pre/post backups guarded cutover. Both failed startup and failed health checks now restore the previous binary. Already-open protocol-2 clients must reload.

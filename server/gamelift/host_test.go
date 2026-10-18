@@ -27,7 +27,7 @@ import (
 )
 
 func testRuntime() *runtime {
-	return &runtime{cfg: settings{Fleet: "fleet-test", API: "https://bolts-api.example.com", Origins: []string{"http://localhost:5173"}, Locations: []location{{"lon", "London", "eu-west-2", "lon-queue"}, {"sg", "Singapore", "ap-southeast-1", "sg-queue"}, {"sp", "São Paulo", "sa-east-1", "sp-queue"}}}, secret: []byte(strings.Repeat("secret", 8)), internal: randomToken(), http: &http.Client{Timeout: 3 * time.Second}}
+	return &runtime{cfg: settings{ExtraLobbiesEnabled: true, Fleet: "fleet-test", API: "https://bolts-api.example.com", Origins: []string{"http://localhost:5173"}, Locations: []location{{"lon", "London", "eu-west-2", "lon-queue"}, {"sg", "Singapore", "ap-southeast-1", "sg-queue"}, {"sp", "São Paulo", "sa-east-1", "sp-queue"}}}, secret: []byte(strings.Repeat("secret", 8)), internal: randomToken(), http: &http.Client{Timeout: 3 * time.Second}}
 }
 func TestSettingsValidatePhysicalLocationsWithoutFixedCount(t *testing.T) {
 	base := testRuntime().cfg

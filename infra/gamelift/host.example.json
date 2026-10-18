@@ -1,4 +1,5 @@
 {
+  "extraLobbiesEnabled": false,
   "region": "us-east-1",
   "fleet": "",
   "fleetRole": "arn:aws:iam::ACCOUNT_ID:role/bolts-gamelift-game-role",

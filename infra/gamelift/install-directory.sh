@@ -64,7 +64,9 @@ for attempt in $(seq 1 30); do
   if curl --fail --silent --max-time 3 http://127.0.0.1:8080/api/lobbies | python3 -c '
 import json,sys
 with open(sys.argv[1]) as source:
-    expected={location["id"] for location in json.load(source)["locations"]}
+    config=json.load(source)
+    # Legacy release configs predate the flag; new generated configs always set it.
+    expected={location["id"] for location in config["locations"]} if config.get("extraLobbiesEnabled", True) is True else set()
 data=json.load(sys.stdin)
 assert data.get("version")==2
 assert set(data["locations"])==expected

@@ -8,7 +8,7 @@ import {LocalPredictionView,clipPredictionView} from './localPredictionView';
 import {AdaptiveInputLead,RemotePlaybackClock,type InputTimingSample} from './networkTiming';
 import {decodeSnapshot,decodeMessage,encodeInput,PROTOCOL_VERSION} from './networkCodec';
 import {sampleNetworkColliders} from './networkCollision';
-import {gameEndpoint,locationLabel,probeLobby,type Lobby,type LobbyLocation} from './lobbies';
+import {EXTRA_LOBBIES_ENABLED,lobbyLocationEnabled,gameEndpoint,locationLabel,probeLobby,type Lobby,type LobbyLocation} from './lobbies';
 export type {Lobby} from './lobbies';
 
 export type WireActor=Omit<Actor,'ai'>&{ack:number;hipSpread:number;bot?:boolean;spawnGeneration?:number;inputTiming?:InputTimingSample};
@@ -22,7 +22,7 @@ export interface NetworkInput extends Input {type:'input';seq:number;tick:number
 interface PendingInput {input:NetworkInput}
 export interface ChatMessage {id?:string;name:string;message:string}
 export interface SocketLike {readyState:number;binaryType?:string;readonly bufferedAmount?:number;onopen:((event:any)=>void)|null;onmessage:((event:any)=>void)|null;onerror:((event:any)=>void)|null;onclose:((event:any)=>void)|null;send(data:string|ArrayBuffer|ArrayBufferView<ArrayBuffer>):void;close():void}
-interface NetworkOptions {origin?:string;fetch?:typeof fetch;socket?:(url:string)=>SocketLike;storage?:Pick<Storage,'getItem'|'setItem'|'removeItem'>;now?:()=>number}
+interface NetworkOptions {extraLobbiesEnabled?:boolean;origin?:string;fetch?:typeof fetch;socket?:(url:string)=>SocketLike;storage?:Pick<Storage,'getItem'|'setItem'|'removeItem'>;now?:()=>number}
 const EMPTY_INPUT:Input={forward:0,right:0,jump:false,walk:false,lean:0};
 const TOKEN_KEY='bolts-multiplayer-session-v1';
 const STEP=1/60,MAX_PREDICTION_TICKS=120,MAX_BUFFERED_INPUT_TICKS=12,MAX_PENDING_CUES=128,CUE_HOLD_MS=250;
@@ -56,6 +56,7 @@ export class NetworkClient {
  private socket:SocketLike|null=null;private token='';private actorId=-1;private ids:number[]=[];private seq=0;private pending:PendingInput[]=[];private snapshots:WireSnapshot[]=[];private predictedEffects=new Set<string>();
  private directory=new Map<string,Lobby>();private gameUrl='';private admission='';private managed=false;private joinRequest='';private joinAbort:AbortController|null=null;
  private directoryLocations:LobbyLocation[]=[];
+ private extraLobbiesEnabled:boolean;
  get locations():readonly LobbyLocation[]{return this.directoryLocations;}
  private lastSnapshotAt=0;private latestTime=0;private lastMessageAt=0;private lastPingAt=0;private roundNumber=-1;private actions={fire:false,singleFire:false,reload:false,melee:false};private desiredStance:Stance='stand';private desiredWeapon:WeaponSlot='rifle';private desiredADS=false;
  private presentationTime=0;private presentationAt=0;private clockReady=false;
@@ -68,6 +69,7 @@ export class NetworkClient {
  private predictionView=new LocalPredictionView();private renderedPosition:Vec|null=null;
  private profile={name:DEFAULT_PLAYER_NAME,faction:'british' as Faction,spectator:false};private generation=0;private reconnectTimer:ReturnType<typeof setTimeout>|null=null;private reconnectAttempt=0;private reconnecting=false;private replaying=false;private uiPaused=false;private pingSent=new Map<number,number>();private connectionPromise:Promise<void>|null=null;private cancelOpening:(()=>void)|null=null;private profileTimer:ReturnType<typeof setTimeout>|null=null;
  constructor(game:Game,options:NetworkOptions={}) {
+  this.extraLobbiesEnabled=options.extraLobbiesEnabled??EXTRA_LOBBIES_ENABLED;
   this.game=game;this.origin=options.origin??import.meta.env?.VITE_MULTIPLAYER_URL??'';this.fetcher=options.fetch??globalThis.fetch.bind(globalThis);this.socketFactory=options.socket??(url=>new WebSocket(url));this.now=options.now??(()=>performance.now());
   if(options.storage)this.storage=options.storage;else try{if(typeof localStorage!=='undefined')this.storage=localStorage;}catch{}
  }
@@ -81,11 +83,12 @@ export class NetworkClient {
   const started=this.now();
   const response=await this.fetcher(this.endpoint('/api/lobbies'),{cache:'no-store',signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error('Unable to load servers.');const body=await response.json();if(!Array.isArray(body.lobbies))throw new Error('Invalid server list.');
   const rows:Lobby[]=body.lobbies.filter((l:any)=>l&&typeof l.id==='string'&&!l.id.startsWith('new:')&&typeof l.name==='string'&&Number.isInteger(l.players)&&l.players>=0&&l.capacity===6&&['playing','ended','starting'].includes(l.phase)).map((l:any)=>({id:l.id,name:l.name,players:l.players,bots:l.bots,capacity:6,phase:l.phase,location:typeof l.location==='string'?l.location:undefined,pingUrl:typeof l.pingUrl==='string'?l.pingUrl:undefined,managed:l.managed===true}));
-  this.directoryLocations=body.version===2&&Array.isArray(body.locations)?[...new Set<LobbyLocation>(body.locations.filter((id:unknown):id is LobbyLocation=>typeof id==='string'&&!!locationLabel(id)))]:[];
+  this.directoryLocations=body.version===2&&Array.isArray(body.locations)?[...new Set<LobbyLocation>(body.locations.filter((id:unknown):id is LobbyLocation=>typeof id==='string'&&!!locationLabel(id)&&lobbyLocationEnabled(id,this.extraLobbiesEnabled)))]:[];
   // Classic directory responses use their request RTT for the lobby list.
   if(body.version!==2){const ping=Math.max(0,Math.round(this.now()-started));for(const row of rows)if(!row.managed)row.ping=ping;}
-  this.directory=new Map(rows.map(row=>[row.id,row]));return rows;
+  this.directory=new Map(rows.map(row=>[row.id,row]));return rows.filter(row=>this.lobbyEnabled(row));
  }
+ private lobbyEnabled(row:Lobby){return lobbyLocationEnabled(row.location,this.extraLobbiesEnabled)&&(!row.managed||!!row.location||this.extraLobbiesEnabled);}
  async measureLobbies(rows:readonly Lobby[],signal?:AbortSignal):Promise<Lobby[]>{
   const endpoints=new Map<string,Promise<number|undefined>>();
   return Promise.all(rows.map(async row=>{
@@ -109,6 +112,8 @@ export class NetworkClient {
  }
  async join(lobbyId:string|undefined,name:string,faction:Faction,spectator=false){
   const byLocation=!!lobbyId?.startsWith('new:');
+  const listed=this.directory.get(lobbyId??'');
+  if(listed&&!this.lobbyEnabled(listed))throw new Error('This location is unavailable. Refresh the server list.');
   if(byLocation&&!this.directoryLocations.some(id=>`new:${id}`===lobbyId))throw new Error('This location is unavailable. Refresh the server list.');
   this.disconnect();this.online=true;this.profile={name:sanitizePlayerName(name),faction,spectator};this.lobbyId=lobbyId??'';this.reconnectAttempt=0;this.onStatus('Connecting…');const generation=this.generation;
   this.managed=byLocation||!!(lobbyId&&this.directory.get(lobbyId)?.managed);this.joinRequest=globalThis.crypto.randomUUID();

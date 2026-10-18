@@ -41,13 +41,14 @@ type location struct {
 	Queue string `json:"queue"`
 }
 type settings struct {
-	Region          string     `json:"region"`
-	Fleet           string     `json:"fleet"`
-	FleetRole       string     `json:"fleetRole"`
-	SecretParameter string     `json:"secretParameter"`
-	API             string     `json:"api"`
-	Origins         []string   `json:"origins"`
-	Locations       []location `json:"locations"`
+	ExtraLobbiesEnabled bool       `json:"extraLobbiesEnabled"`
+	Region              string     `json:"region"`
+	Fleet               string     `json:"fleet"`
+	FleetRole           string     `json:"fleetRole"`
+	SecretParameter     string     `json:"secretParameter"`
+	API                 string     `json:"api"`
+	Origins             []string   `json:"origins"`
+	Locations           []location `json:"locations"`
 }
 type runtime struct {
 	cfg      settings
@@ -195,7 +196,7 @@ func loadSettings(path string) (settings, error) {
 		}
 		seen[loc.ID] = true
 	}
-	if len(seen) == 0 {
+	if c.ExtraLobbiesEnabled && len(seen) == 0 {
 		return c, errors.New("configure at least one game location")
 	}
 	return c, nil
@@ -223,8 +224,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if *mode == "directory" && c.Fleet == "" {
+	if *mode == "directory" && c.ExtraLobbiesEnabled && c.Fleet == "" {
 		return errors.New("directory needs a fleet ID")
+	}
+	if *mode == "game" && !c.ExtraLobbiesEnabled {
+		return errors.New("extra lobbies are disabled")
 	}
 	if *check {
 		return nil

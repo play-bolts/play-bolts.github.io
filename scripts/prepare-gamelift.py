@@ -20,6 +20,10 @@ HOME_REGION = 'us-east-1'
 LOCATIONS = {'lon': 'eu-west-2', 'sg': 'ap-southeast-1', 'sp': 'sa-east-1'}
 
 
+def extra_lobbies_enabled():
+    return json.loads((ROOT / 'shared/features.json').read_text()).get('extraLobbies') is True
+
+
 def aws(*args):
     result = subprocess.run([sys.executable, str(ROOT / 'scripts/aws-command.py'),
                              '--region', HOME_REGION, *args, '--output', 'json'],
@@ -27,7 +31,9 @@ def aws(*args):
     return json.loads(result.stdout)
 
 
-def template():
+def template(enabled=None):
+    if enabled is None:
+        enabled = extra_lobbies_enabled()
     ref = lambda key: {'Ref': key}
     sub = lambda text: {'Fn::Sub': text}
     secret_arn = sub('arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/bolts/gamelift/cluster-secret')
@@ -49,9 +55,11 @@ def template():
     policies = []
     for key, location in LOCATIONS.items():
         locations.append({'Location': location, 'LocationCapacity': {
-            'MinSize': 1, 'DesiredEC2Instances': 1, 'MaxSize': ref('MaximumInstancesPerLocation')}})
-        policies.append({'Name': 'spare-capacity-' + key, 'Location': location, 'PolicyType': 'TargetBased',
-                         'MetricName': 'PercentAvailableGameSessions', 'TargetConfiguration': {'TargetValue': 20}})
+            'MinSize': 1 if enabled else 0, 'DesiredEC2Instances': 1 if enabled else 0,
+            'MaxSize': ref('MaximumInstancesPerLocation') if enabled else 0}})
+        if enabled:
+            policies.append({'Name': 'spare-capacity-' + key, 'Location': location, 'PolicyType': 'TargetBased',
+                             'MetricName': 'PercentAvailableGameSessions', 'TargetConfiguration': {'TargetValue': 20}})
     fleet = {'Type': 'AWS::GameLift::Fleet', 'DeletionPolicy': 'Retain', 'UpdateReplacePolicy': 'Retain', 'Properties': {
         'Name': sub('${AWS::StackName}-games'), 'BuildId': ref('BuildId'), 'FleetType': 'ON_DEMAND',
         'EC2InstanceType': ref('InstanceType'), 'ComputeType': 'EC2',
@@ -81,7 +89,7 @@ def template():
             {'Effect': 'Allow', 'Action': 'gamelift:StartGameSessionPlacement',
                 'Resource': [{'Fn::GetAtt': ['Queue' + key.title(), 'Arn']} for key in LOCATIONS]},
         ]}}}
-    return {'AWSTemplateFormatVersion': '2010-09-09', 'Description': 'Bolts regional GameLift sessions, London, Singapore and Sao Paulo, one warm instance per city',
+    return {'AWSTemplateFormatVersion': '2010-09-09', 'Description': 'Bolts optional regional GameLift sessions; capacity is zero while extraLobbies is disabled',
             'Parameters': parameters, 'Resources': resources,
             'Outputs': {'FleetId': {'Value': ref('Fleet')}, 'FleetRoleArn': {'Value': {'Fn::GetAtt': ['GameRole', 'Arn']}}}}
 
@@ -107,6 +115,7 @@ def main():
         parser.error('Invalid account ID or stack name')
     OUT.mkdir(parents=True, exist_ok=True)
     config = json.loads((ROOT / 'infra/gamelift/host.example.json').read_text())
+    config['extraLobbiesEnabled'] = extra_lobbies_enabled()
     config['fleetRole'] = f'arn:aws:iam::{args.account_id}:role/{args.stack}-game-role'
     config['fleet'] = args.fleet_id
     for loc in config['locations']:
@@ -116,7 +125,7 @@ def main():
     files = [ROOT / 'server/Cargo.toml', ROOT / 'server/Cargo.lock', ROOT / 'server/schema.sql',
              *sorted((ROOT / 'server/src').glob('*.rs')), *sorted((ROOT / 'server/gamelift').glob('*.go')),
              ROOT / 'server/gamelift/go.mod', ROOT / 'server/gamelift/go.sum',
-             ROOT / 'src/generated/hitboxData.json', ROOT / 'src/generated/handCollisionData.json', ROOT / 'shared/actor-fields.json', ROOT / 'infra/gamelift/Dockerfile',
+             ROOT / 'src/generated/hitboxData.json', ROOT / 'src/generated/handCollisionData.json', ROOT / 'shared/actor-fields.json', ROOT / 'shared/features.json', ROOT / 'infra/gamelift/Dockerfile',
              ROOT / 'infra/gamelift/install.sh', ROOT / 'infra/gamelift/host.example.json', ROOT / 'scripts/prepare-gamelift.py']
     context = OUT / 'context'
     if context.exists():

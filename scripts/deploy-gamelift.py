@@ -33,6 +33,10 @@ SECRET = '/bolts/gamelift/cluster-secret'
 SHA = re.compile(r'^[a-f0-9]{64}$')
 
 
+def extra_lobbies_enabled():
+    return json.loads((ROOT / 'shared/features.json').read_text()).get('extraLobbies') is True
+
+
 class DeploymentError(RuntimeError):
     pass
 
@@ -82,7 +86,7 @@ def save(path, value):
             os.unlink(temporary)
 
 
-def validate_capacity(template):
+def validate_capacity(template, enabled=True):
     def reject_managed_capacity(value):
         if isinstance(value, dict):
             if 'ManagedCapacityConfiguration' in value:
@@ -98,6 +102,10 @@ def validate_capacity(template):
     maximum = template.get('Parameters', {}).get('MaximumInstancesPerLocation', {}).get('Default')
     for location in LOCATIONS.values():
         capacity = capacities[location]
+        if not enabled:
+            if any(type(capacity.get(field)) is not int or capacity[field] != 0 for field in ('MinSize', 'DesiredEC2Instances', 'MaxSize')):
+                raise DeploymentError('Disabled extra lobbies must have zero minimum, desired and maximum capacity')
+            continue
         if any(type(capacity.get(field)) is not int or capacity[field] != 1 for field in ('MinSize', 'DesiredEC2Instances')):
             raise DeploymentError('Each requested city must retain one warm instance')
         limit = capacity.get('MaxSize')
@@ -105,6 +113,8 @@ def validate_capacity(template):
             raise DeploymentError('Each requested city must be capped at two instances')
     if any(type(capacities[REGION].get(field)) is not int or capacities[REGION][field] != 0 for field in ('MinSize', 'DesiredEC2Instances', 'MaxSize')):
         raise DeploymentError('Fleet home region minimum, desired and maximum must all be zero')
+    if not enabled and fleet.get('ScalingPolicies'):
+        raise DeploymentError('Disabled extra lobbies must not have scaling policies')
 
 
 def local_artifacts(build_dir, stack):
@@ -135,6 +145,9 @@ def local_artifacts(build_dir, stack):
         if Path(name).is_absolute() or '..' in Path(name).parts or path.is_symlink() or not path.is_file() or digest(path.read_bytes()) != expected:
             raise DeploymentError('Source changed after build: ' + name)
     config = json.loads(files['host.json'])
+    enabled = extra_lobbies_enabled()
+    if config.get('extraLobbiesEnabled') is not enabled:
+        raise DeploymentError('Build feature flag is stale; rebuild using shared/features.json')
     if {loc['id']: loc['aws'] for loc in config['locations']} != LOCATIONS or len(config['locations']) != 3:
         raise DeploymentError('Deploy exactly London, Singapore and São Paulo; New York is excluded')
     if config.get('region') != REGION or config.get('secretParameter') != SECRET or config.get('api') != 'https://bolts-api.christopherkrapu.com':
@@ -146,7 +159,7 @@ def local_artifacts(build_dir, stack):
     template = json.loads(template_path.read_text())
     if template != runpy.run_path(str(ROOT / 'scripts/prepare-gamelift.py'))['template']():
         raise DeploymentError('Generated fleet template differs from its reviewed source')
-    validate_capacity(template)
+    validate_capacity(template, enabled)
     return files, config, template_path
 
 
@@ -454,6 +467,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9-]{0,90}', args.stack) or args.expected_release and not SHA.fullmatch(args.expected_release):
         raise DeploymentError('Invalid stack name or expected release SHA256')
+    if not extra_lobbies_enabled():
+        raise DeploymentError('Extra lobbies are disabled in shared/features.json; no builds, fleets or warm capacity will be provisioned. Existing fleets must be drained and set to zero separately; see server/README.md.')
     files, config, template = local_artifacts(args.build_dir, args.stack)
     zipped = build_zip(files)
     sha = digest(zipped)

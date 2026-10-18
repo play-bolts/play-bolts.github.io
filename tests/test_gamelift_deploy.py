@@ -20,13 +20,47 @@ HASH = 'a' * 64
 
 
 class GameLiftDeployTests(unittest.TestCase):
+    def test_disabled_flag_blocks_uploads_and_deployments_before_accessing_aws(self):
+        for args in ([], ['--check'], ['--apply'], ['--apply', '--phase', 'build'], ['--apply', '--phase', 'fleet']):
+            with self.subTest(args=args), patch.object(deploy, 'extra_lobbies_enabled', return_value=False), patch.object(deploy, 'local_artifacts') as artifacts, patch.object(deploy, 'AWS') as aws:
+                with self.assertRaisesRegex(deploy.DeploymentError, 'Extra lobbies are disabled'):
+                    deploy.main(args)
+                artifacts.assert_not_called()
+                aws.assert_not_called()
+
+    def test_disabled_capacity_rejects_scaling_and_nonzero_bounds(self):
+        source = importlib.util.spec_from_file_location('gamelift_prepare_capacity', ROOT / 'scripts/prepare-gamelift.py')
+        prepare = importlib.util.module_from_spec(source)
+        source.loader.exec_module(prepare)
+        template = prepare.template(False)
+        deploy.validate_capacity(template, False)
+        for field in ('MinSize', 'DesiredEC2Instances', 'MaxSize'):
+            changed = copy.deepcopy(template)
+            changed['Resources']['Fleet']['Properties']['Locations'][1]['LocationCapacity'][field] = 1
+            with self.assertRaisesRegex(deploy.DeploymentError, 'zero minimum'):
+                deploy.validate_capacity(changed, False)
+        template['Resources']['Fleet']['Properties']['ScalingPolicies'] = [{'Name': 'unexpected'}]
+        with self.assertRaisesRegex(deploy.DeploymentError, 'scaling policies'):
+            deploy.validate_capacity(template, False)
+
+    def test_previously_enabled_bundle_is_rejected_after_disabling_flag(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            folder, _, _, _ = self.fixture(root)
+            (root / 'shared/features.json').write_text('{"extraLobbies":false}')
+            with patch.object(deploy, 'ROOT', root):
+                with self.assertRaisesRegex(deploy.DeploymentError, 'feature flag is stale'):
+                    deploy.local_artifacts(folder, 'bolts-gamelift')
+
     def fixture(self, root):
+        (root / 'shared').mkdir()
+        (root / 'shared/features.json').write_text('{"extraLobbies":true}')
         source = root / 'source.rs'
         source.write_text('reviewed source')
         folder = root / 'build'
         bundle = folder / 'bundle'
         bundle.mkdir(parents=True)
-        config = {'region': deploy.REGION, 'secretParameter': deploy.SECRET,
+        config = {'extraLobbiesEnabled': True, 'region': deploy.REGION, 'secretParameter': deploy.SECRET,
                   'api': 'https://bolts-api.christopherkrapu.com',
                   'locations': [{'id': key, 'aws': value, 'queue': 'bolts-gamelift-' + key} for key, value in deploy.LOCATIONS.items()]}
         binary = b'\x7fELF\x02\x01' + b'\0' * 12 + b'\x3e\x00'

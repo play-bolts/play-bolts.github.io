@@ -86,7 +86,7 @@ export class UI {
    </div>
   </main></div>
   <div id="hud" class="screen hidden">
-   <div id="match-clock">05:00</div><button id="hud-menu" aria-label="Pause and open menu">Esc · Menu</button><div id="killfeed"></div><div id="network-status" class="hidden" role="status"></div>
+   <div id="match-clock">05:00</div><div id="match-lobby" class="hidden"></div><button id="hud-menu" aria-label="Pause and open menu">Esc · Menu</button><div id="killfeed"></div><div id="network-status" class="hidden" role="status"></div>
    <button id="mouse-capture" class="hidden">Click to enable mouse look<span id="mouse-capture-help" class="hidden">You can also hold the left mouse button and drag to look.</span></button>
    <div id="chat" class="chat hidden"><div id="chat-log" role="log" aria-label="Game chat" aria-live="polite" aria-relevant="additions"></div><form id="chat-form" class="hidden" autocomplete="off"><label for="chat-input">Say:</label><input id="chat-input" type="text" maxlength="512" autocomplete="off" spellcheck="false" aria-label="Chat message"></form></div>
    <div id="crosshair" style="--tick-length:${6*CROSSHAIR_DISPLAY_SCALE}px"><i></i><i></i><i></i><i></i></div><div id="damage-flash"></div><svg id="hit-confirm" class="hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3 3 5 5m8 0 5-5M3 21l5-5m8 0 5 5"/></svg><div id="spawn-protection" class="hidden">Spawn protection</div>
@@ -106,7 +106,7 @@ export class UI {
   <div id="mobile-rotate" class="overlay mobile-orientation hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-rotate-title"><div class="dialog mobile-card"><svg class="rotate-phone" viewBox="0 0 100 90" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="37" y="19" width="29" height="53" rx="4" transform="rotate(33 51 46)"/><path d="M46 23h10M36 72c-17-7-23-24-16-39m-9 2 9-3 5 9m42-22c17 7 23 24 16 39m9-2-9 3-5-9"/></svg><h2 id="mobile-rotate-title">Rotate your phone to landscape to play</h2><p>Best experienced on a PC.</p><button id="mobile-rotate-back" type="button" class="secondary-button">Back to menu</button></div></div>
   <div id="mobile-resume" class="overlay mobile-orientation hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-resume-title"><div class="dialog mobile-card"><h2 id="mobile-resume-title">Ready to play?</h2><p>Left joystick to move; tap it to jump. Swipe the right side to look. Press Fire for one shot; drag from Fire to adjust your aim.</p><button id="mobile-resume-button" type="button" class="start-button">Resume</button><button id="mobile-resume-back" type="button" class="secondary-button">Back to menu</button></div></div>
   <div id="pause" class="overlay hidden"><div class="dialog pause-card"><h2 id="pause-title">Paused</h2><button id="resume" class="start-button">Resume</button><button id="open-team" class="secondary-button">Select team</button><button id="pause-score" class="secondary-button">Scoreboard</button><button class="secondary-button settings-button">Options</button><button class="secondary-button controls-button">Controls</button><button id="leave" class="secondary-button">Main menu</button></div></div>
-  <div id="scoreboard" class="overlay hidden"><div class="score-card"><button id="score-close" class="icon-button" aria-label="Close scoreboard">${closeIcon}</button><div class="score-heading"><span id="score-time">05:00</span></div><h2 id="score-title">Scoreboard</h2><p id="score-winner" class="hidden"></p><table><thead><tr><th>#</th><th>Player</th><th>Kills</th><th>Deaths</th><th id="score-ping" class="hidden" aria-label="Ping in milliseconds">Ping</th></tr></thead><tbody id="score-rows"></tbody></table><div id="end-actions" class="hidden"><button id="again" class="start-button">Play again</button><button id="end-leave" class="secondary-button">Main menu</button></div></div></div>
+  <div id="scoreboard" class="overlay hidden"><div class="score-card"><button id="score-close" class="icon-button" aria-label="Close scoreboard">${closeIcon}</button><div class="score-heading"><span id="score-lobby" class="hidden"></span><span id="score-time">05:00</span></div><h2 id="score-title">Scoreboard</h2><p id="score-winner" class="hidden"></p><table><thead><tr><th>#</th><th>Player</th><th>Kills</th><th>Deaths</th><th id="score-ping" class="hidden" aria-label="Ping in milliseconds">Ping</th></tr></thead><tbody id="score-rows"></tbody></table><div id="end-actions" class="hidden"><button id="again" class="start-button">Play again</button><button id="end-leave" class="secondary-button">Main menu</button></div></div></div>
   <div id="modal" class="overlay hidden"><div id="modal-dialog" class="dialog manual" role="dialog" aria-modal="true" aria-label="Options"><button id="modal-close" class="icon-button" aria-label="Close dialog">${closeIcon}</button><div id="options-tabs" class="modal-tabs"><button data-tab="settings" class="active">Options</button><button data-tab="controls">Controls</button></div>
    <section id="tab-feedback" class="hidden" aria-labelledby="feedback-title">
     <h2 id="feedback-title">Feedback</h2><p id="feedback-prompt">Share your opinions, requests, and any other info that can help us improve your experience!</p>
@@ -276,9 +276,11 @@ export class UI {
  }
  setLobbyStatus(text:string,busy=false){this.lobbyBusy=busy;this.el['lobby-status'].textContent=text;this.el['lobby-window'].setAttribute('aria-busy',String(busy));this.refreshLobbyButtons();}
  closeLobbies(){this.lobbyOpen=false;this.el['lobby-window'].classList.add('hidden');this.setMenuStage('main');}
- setOnline(online:boolean,_lobbyName=''){
+ setOnline(online:boolean,lobbyName='',location?:string){
   this.online=online;this.el.hud.classList.toggle('online',online);this.el.chat.classList.toggle('hidden',!online);this.el['pause-title'].textContent=online?'Menu':'Paused';this.el['hud-menu'].setAttribute('aria-label',online?'Open menu':'Pause and open menu');this.el['difficulty-setting'].classList.toggle('hidden',!this.inGame||online);
   this.el['score-ping'].classList.toggle('hidden',!online);
+  const region=locationLabel(location),label=online?[lobbyName,region?`${region.name} (${region.abbreviation})`:''].filter(Boolean).join(' · '):'';
+  for(const id of ['match-lobby','score-lobby']){this.el[id].textContent=label;this.el[id].title=label;this.el[id].classList.toggle('hidden',!label);}
   if(!online){this.closeChat();this.chatIds.clear();this.el['chat-log'].replaceChildren();this.setNetworkStatus('');if(this.lobbyOpen)this.closeLobbies();}
  }
  setNetworkStatus(text:string){this.el['network-status'].textContent=text;this.el['network-status'].classList.toggle('hidden',!text);}
@@ -321,9 +323,9 @@ export class UI {
   if(ready){
    const tipsFocused=this.el.loading.contains(document.activeElement);this.loadingTips.stop();this.el.loading.inert=true;
    if(tipsFocused)this.el.start.focus({preventScroll:true});
-   // Let the final fill finish before fading, without holding game startup.
+   // Reveal the prepared menu as soon as loading completes.
    this.setLoadingProgress(1);this.el.loading.classList.add('loading-complete');
-   this.loadingCompletion=setTimeout(()=>this.el.loading.classList.add('hidden'),500);
+   this.loadingCompletion=setTimeout(()=>this.el.loading.classList.add('hidden'),200);
   }else{
    this.loadingProgress=0;this.el['loading-fill'].style.transform='scaleX(0)';this.el['loading-progress'].setAttribute('aria-valuenow','0');
    this.el.loading.classList.remove('hidden','loading-complete');

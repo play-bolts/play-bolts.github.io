@@ -97,6 +97,7 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 #mouse-capture { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); max-width: 90%; padding: 10px 16px; border: 1px solid #bcc3a480; background: #172012ed; color: #fff0b2; font-size: 18px; text-align: center; z-index: 7; }
 #mouse-capture-help { display: block; margin-top: 5px; color: #d0d3bc; font: 12px/1.4 system-ui,sans-serif; }
 #match-clock { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); font-size: 24px; }
+#match-lobby { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; color: #e4e0cb; text-shadow: 0 1px 3px #000; }
 .compass-wrap { position: absolute; bottom: 30px; left: 33px; display: flex; align-items: end; gap: 12px; }
 #app:has(> :is(#menu, #pause, #modal, #scoreboard, #mobile-rotate, #mobile-resume):not(.hidden)) .compass-wrap { visibility: hidden; }
 .compass { width: 99px; height: 99px; border: 3px solid #969983aa; border-radius: 50%; box-shadow: inset 0 0 0 2px #1c271bac, 0 2px 6px #0008; background: radial-gradient(#6a6b536b, #263522a3); position: relative; }
@@ -130,7 +131,7 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 #killfeed { position: absolute; bottom: 145px; left: 33px; font-size: 15px; line-height: 1.4; color: #f2f1e8; max-width: 470px; }
 #killfeed .feed-rifle { font-size: 13px; margin: 0 7px; color: #e0dfd3; }
 #hud.killcam-active { z-index: 9; }
-#hud.killcam-active .ammo-hud, #hud.killcam-active .compass-wrap, #hud.killcam-active #match-clock, #hud.killcam-active #status-message, #hud.killcam-active #hit-confirm { visibility: hidden; }
+#hud.killcam-active .ammo-hud, #hud.killcam-active .compass-wrap, #hud.killcam-active #match-clock, #hud.killcam-active #match-lobby, #hud.killcam-active #status-message, #hud.killcam-active #hit-confirm { visibility: hidden; }
 #hud.killcam-active #hud-menu { z-index: 7; background: #000; }
 #killcam { --bar-height: max(64px, 14vh); position: absolute; inset: 0; z-index: 6; }
 .killcam-top, .killcam-bottom { position: absolute; left: 0; right: 0; height: var(--bar-height); background: #000; color: #eee; display: flex; align-items: center; justify-content: center; }
@@ -141,6 +142,8 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 .killcam-bottom kbd { margin-left: 10px; }
 .score-card { width: 690px; background: #090b09ed; border-color: #d7d7cb55; padding: 24px 30px; }
 .score-heading { display: flex; justify-content: flex-end; padding-right: 17px; font-size: 18px; color: #d0d0c4; }
+#score-lobby { margin-right: auto; padding-right: 16px; overflow-wrap: anywhere; }
+#score-time { flex-shrink: 0; }
 .score-card h2 { margin: 15px 0 5px; }.score-card p { margin: 0; font-size: 16px; }
 .score-card table { width: 100%; border-collapse: collapse; margin-top: 15px; }
 .score-card th { font-size: 16px; color: #d5d5c8; font-weight: normal; text-align: right; padding: 7px 8px; border-bottom: 1px solid #d1d1c469; }
@@ -247,9 +250,10 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 @media(max-width:700px){.intro-menu { right: 8%; top: 23%; width: 50vw; min-height: 0; padding-left: 20px; }.intro-menu h1 { font-size: clamp(40px, 9.7vw, 68px); margin-bottom: 25px; }.intro-menu .classic-choice { font-size: 23px; }.intro-menu .difficulty { gap: 10px; }.intro-menu .difficulty button { font-size: 14px; } #weapon-slot > span:last-child { display:none; }}
 @media(max-height:600px){.intro-menu { top: 16%; min-height:0; }.intro-menu h1 { font-size: clamp(40px, 9.7vw, 60px); margin-bottom: 15px; }.intro-menu .classic-choice { min-height: 25px; padding-top:3px;padding-bottom:3px; }.intro-menu .difficulty { margin-top:14px; }}
 
-/* Startup stays above the dimmed menu until assets and the first frame are ready. */
-.loading-overlay { z-index: 20; background: #000b; opacity: 1; }
-.loading-overlay.loading-complete { opacity: 0; pointer-events: none; transition: opacity .18s ease .3s; }
+/* Startup fully covers the menu until assets and the first frame are ready. */
+.loading-overlay { z-index: 20; background: #000; opacity: 1; }
+.loading-overlay.loading-complete { opacity: 0; pointer-events: none; transition: opacity .18s ease; }
+.loading-complete #loading-fill { transition: none; }
 .loading-content { width: min(620px, 100%); text-align: center; }
 #loading-label { margin-bottom: 18px; color: var(--cream); font-size: 28px; }
 #loading-progress { width: min(320px, 80vw); margin-inline: auto; height: 10px; overflow: hidden; border: 1px solid #d4d3b86b; background: #10130f; }
@@ -297,7 +301,7 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 .lobby-actions button:first-child { margin-right: auto; }
 .lobby-actions button:last-child { color: #fff0b2; min-width: 48px; text-align: right; }
 .lobby-actions button:disabled { cursor: default; }
-#network-status { position: absolute; top: 57px; left: 50%; transform: translateX(-50%); padding: 5px 10px; background: #060906c7; color: #f0e5b2; font-size: 16px; text-align: center; max-width: 70%; }
+#network-status { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); padding: 5px 10px; background: #060906c7; color: #f0e5b2; font-size: 16px; text-align: center; max-width: 70%; }
 .chat { position: absolute; left: 33px; bottom: 153px; width: min(540px, 48vw); font-family: Arial, sans-serif; font-size: 14px; line-height: 1.4; color: #eeeee8; }
 .chat-line { overflow-wrap: anywhere; margin-top: 2px; text-shadow: 1px 1px 2px #000, -1px -1px 2px #000; }
 .chat-system { color: #b7bca9; font-style: italic; }
@@ -317,7 +321,8 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
  .lobby-actions { gap: 16px; min-height: 56px; }.lobby-actions button { font-size: 17px; }
  .chat { left: 18px; bottom: 127px; width: 65vw; font-size: 12px; }
  #hud.online #killfeed { right: 18px; top: 59px; font-size: 12px; }
- #network-status { top: 47px; font-size: 14px; }
+ #match-lobby { top: 43px; font-size: 13px; }
+ #network-status { top: 64px; font-size: 14px; }
 }
 @media (max-height: 580px) and (min-width: 701px) {
  .lobby-window { height: calc(100vh - 28px); min-height: 290px; }
@@ -428,8 +433,9 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 .touch-mode #kill-message { top: 68%; font-size: 16px; }
 .touch-mode #status-message { bottom: 98px; font-size: 14px; }
 .touch-mode #spawn-protection { bottom: 118px; font-size: 13px; }
-.touch-mode #network-status { top: 42px; max-width: 45vw; font-size: 12px; }
-.touch-mode #spectator-status { top: 48px; bottom: auto; font-size: 16px; }
+.touch-mode #match-lobby { top: calc(max(12px, env(safe-area-inset-top)) + 26px); max-width: 45vw; font-size: 12px; }
+.touch-mode #network-status { top: calc(max(12px, env(safe-area-inset-top)) + 46px); max-width: 45vw; font-size: 12px; }
+.touch-mode #spectator-status { top: calc(max(12px, env(safe-area-inset-top)) + 72px); bottom: auto; font-size: 16px; }
 .touch-mode #spectator-help { bottom: 20px; left: 25%; width: 45%; font-size: 11px; }
 .touch-mode .chat { left: max(12px, env(safe-area-inset-left)); bottom: calc(var(--touch-bottom) + var(--touch-pad-size) + max(44px, calc(44px * var(--touch-scale))) + 20px); width: min(42vw, 400px); font-size: 11px; }
 .touch-mode .chat.typing { position: fixed; z-index: 7; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); width: auto; max-width: none; padding: 10px; background: #0b100bf2; }

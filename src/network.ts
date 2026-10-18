@@ -51,7 +51,7 @@ function validEvents(value:unknown):value is WireEvent[]{
 export class NetworkClient {
  readonly game:Game;
  onRoster=()=>{};onJoined=(_name:string)=>{};onStatus=(_text:string)=>{};onFailure=(_message:string)=>{};onChat=(_message:ChatMessage)=>{};onRound=()=>{};onImpact=(_shot:Shot)=>{};
- online=false;connected=false;ping=0;lobbyId='';lobbyName='';
+ online=false;connected=false;ping=0;lobbyId='';lobbyName='';lobbyLocation:string|undefined;
  private origin:string;private fetcher:typeof fetch;private socketFactory:(url:string)=>SocketLike;private storage?:Pick<Storage,'getItem'|'setItem'|'removeItem'>;private now:()=>number;
  private socket:SocketLike|null=null;private token='';private actorId=-1;private ids:number[]=[];private seq=0;private pending:PendingInput[]=[];private snapshots:WireSnapshot[]=[];private predictedEffects=new Set<string>();
  private directory=new Map<string,Lobby>();private gameUrl='';private admission='';private managed=false;private joinRequest='';private joinAbort:AbortController|null=null;
@@ -112,6 +112,7 @@ export class NetworkClient {
   if(byLocation&&!this.directoryLocations.some(id=>`new:${id}`===lobbyId))throw new Error('This location is unavailable. Refresh the server list.');
   this.disconnect();this.online=true;this.profile={name:sanitizePlayerName(name),faction,spectator};this.lobbyId=lobbyId??'';this.reconnectAttempt=0;this.onStatus('Connecting…');const generation=this.generation;
   this.managed=byLocation||!!(lobbyId&&this.directory.get(lobbyId)?.managed);this.joinRequest=globalThis.crypto.randomUUID();
+  this.lobbyLocation=byLocation?lobbyId!.slice(4):this.directory.get(lobbyId??'')?.location??(this.managed?undefined:'or');
   try{await this.authenticate();if(!this.online||generation!==this.generation)return;if(this.managed)await this.reserveGame(generation);if(!this.online||generation!==this.generation)return;await this.openSocket();}catch(error){if(generation!==this.generation)return;this.disconnect();throw error;}
  }
  private async reserveGame(generation:number){
@@ -141,7 +142,7 @@ export class NetworkClient {
     if(message.type==='welcome'){if(message.version!==PROTOCOL_VERSION){fail('Incompatible server version. Reload Bolts to update.');socket.close();return;}this.roundTrip=Math.max(0,this.now()-this.openedAt);this.send({type:'join',...(this.lobbyId?{lobbyId:this.lobbyId}:{}),name:this.profile.name,faction:this.profile.faction,...(this.profile.spectator?{spectator:true}:{})});return;}
     if(message.type==='joined'){
      if(!Number.isSafeInteger(message.actorId)||typeof message.lobbyId!=='string'||typeof message.lobbyName!=='string'||!Number.isSafeInteger(message.cueSeq)||message.cueSeq<0){fail('Invalid server response.');socket.close();return;}
-     this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.lobbyName=message.lobbyName;this.connected=true;this.reconnecting=false;this.reconnectAttempt=0;this.seq=0;this.pending=[];this.snapshots=[];this.ids=[];this.predictedEffects.clear();this.actions={fire:false,singleFire:false,reload:false,melee:false};this.replaying=false;
+     this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.lobbyName=message.lobbyName;this.lobbyLocation=this.directory.get(message.lobbyId)?.location??this.lobbyLocation;this.connected=true;this.reconnecting=false;this.reconnectAttempt=0;this.seq=0;this.pending=[];this.snapshots=[];this.ids=[];this.predictedEffects.clear();this.actions={fire:false,singleFire:false,reload:false,melee:false};this.replaying=false;
      this.predictionTick=0;this.playerGeneration=undefined;this.clockReady=false;this.eventSeq=Number.isSafeInteger(message.snapshot?.eventSeq)?message.snapshot.eventSeq:0;this.eventBatches=[];this.inputLead.reset(this.now());this.leadDrain=0;
      this.cueSeq=message.cueSeq;this.pendingCues=[];this.reloadCues.clear();this.queuedCueEvents=new WeakMap();this.presentedCueKeys.clear();
      if(!this.receiveSnapshot(message.snapshot)){fail('Invalid game state.');socket.close();return;}

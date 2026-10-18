@@ -9,6 +9,8 @@ class Element {
  value='';innerHTML='';textContent='';className='';dataset:Record<string,string>={};focused=false;
  children:Element[]=[];parent:Element|null=null;classes=new Set<string>();
  classList={add:(name:string)=>this.classes.add(name),remove:(name:string)=>this.classes.delete(name),contains:(name:string)=>this.classes.has(name),toggle:(name:string,force?:boolean)=>{const add=force??!this.classes.has(name);if(add)this.classes.add(name);else this.classes.delete(name);return add;}};
+ setAttribute(_name:string,_value:string){}
+ replaceChildren(){this.children=[];}
  focus(){this.focused=true;}blur(){this.focused=false;}
  append(...children:Element[]){children.forEach(child=>{child.parent=this;this.children.push(child);});}
  get firstElementChild(){return this.children[0]??null;}
@@ -65,4 +67,14 @@ test('multiplayer scoreboard shows individual bounded RTTs while local rows cont
  const local=scoreboardRows([one,two],false);assert.equal((local.match(/<td/g)??[]).length,8);assert.doesNotMatch(local,/score-ping/);
  for(const missing of [undefined,null,-1,1000,NaN,1.5]){one.ping=missing;assert.match(scoreboardRows([one],true),/<td class="score-ping">—<\/td>/);}
  one.ping=0;assert.match(scoreboardRows([one],true),/<td class="score-ping">0<\/td>/);
+});
+
+
+test('multiplayer status and scoreboard retain literal lobby names and region, then clear on leave',()=>{
+ const {ui,el}=fixture();
+ for(const id of ['hud','pause-title','hud-menu','difficulty-setting','score-ping','match-lobby','score-lobby','network-status'])el[id]=new Element();
+ ui.setOnline(true,'Rommel <Alpha>','or');
+ for(const id of ['match-lobby','score-lobby']){assert.equal(el[id].textContent,'Rommel <Alpha> · Oregon (OR)');assert.equal(el[id].innerHTML,'');assert.equal(el[id].classes.has('hidden'),false);}
+ ui.setOnline(true,'New match','sp');assert.equal(el['score-lobby'].textContent,'New match · São Paulo (SP)');
+ ui.setOnline(false);for(const id of ['match-lobby','score-lobby']){assert.equal(el[id].textContent,'');assert.equal(el[id].classes.has('hidden'),true);}
 });

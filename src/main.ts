@@ -174,7 +174,7 @@ ui.joinLobby=id=>{
 };
 network.onRoster=()=>{sound.resetScene();view.syncActors(game);};
 network.onJoined=name=>{
- clearTouchInput();ui.setOnline(true,name);ui.setNetworkStatus('');if(onlineEntered){syncTouchState();return;}
+ clearTouchInput();ui.setOnline(true,name,network.lobbyLocation);ui.setNetworkStatus('');if(onlineEntered){syncTouchState();return;}
  onlineEntered=true;onlineSelection=false;menu=false;joining=false;resumeState='playing';keys.clear();jump=false;endingReleased=false;accumulator=0;equipRifle=false;ui.closeLobbies();ui.begin();network.setPaused(false);syncTouchState();capture();
 };
 network.onStatus=text=>{if(network.online&&!network.connected)clearTouchInput();if(onlineEntered)ui.setNetworkStatus(text);else if(ui.selectionOpen)ui.setSelectionStatus(text);else if(ui.lobbyOpen)ui.setLobbyStatus(text,!!text&&network.online);};

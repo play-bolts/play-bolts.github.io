@@ -519,3 +519,50 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
  .mobile-device .welcome-board p, .touch-mode .welcome-board p { font-size: 15px; line-height: 1.35; margin-bottom: 9px; }
  .mobile-device .welcome-board .welcome-signature, .touch-mode .welcome-board .welcome-signature { margin-bottom: 0; }
 }
+
+/* The review station uses the same restrained, square-framed menu language. */
+.sound-review-dialog { width: min(850px, 100%); max-height: calc(100dvh - 48px); padding: 24px 28px; }
+#tab-sounds h2 { margin: 0 40px 9px 0; color: #eee7c2; }
+#tab-sounds .sound-review-intro { margin: 0 35px 19px 0; font-size: 17px; line-height: 1.4; color: #c3c6b3; }
+.sound-preview-toolbar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 57px; margin: 0 -5px 24px; padding: 10px 12px; border: 1px solid #9a9b826b; background: #151914fa; box-shadow: 0 3px 8px #0005; }
+#sound-preview-status { min-width: 0; font-size: 16px; line-height: 1.35; color: #d5d7c4; overflow-wrap: anywhere; }
+.sound-preview-toolbar button, .sound-preview-buttons button, .sound-movement-card button, .sound-voice-row > button { min-height: 36px; padding: 6px 12px; border: 1px solid #8c907461; background: #a4ac8a0a; color: #dddcc3; font-size: 16px; }
+.sound-preview-toolbar button { flex-shrink: 0; min-width: 64px; color: #ede2b2; }
+.sound-preview-toolbar button:disabled { opacity: .4; cursor: default; }
+#tab-sounds button:hover:not(:disabled), #tab-sounds button:focus-visible { background: #b7bf9920; color: #fff3be; }
+#tab-sounds button[aria-pressed=true] { border-color: #ded4a0; background: #b7bf9930; color: #fff1b1; }
+.sound-review-section { margin-top: 26px; }
+.sound-review-section h3 { margin: 0 0 8px; padding-bottom: 8px; border-bottom: 1px solid #c9cfaa44; color: #e4dfc1; font-size: 23px; font-weight: normal; }
+.sound-review-section > p { margin: 0 0 14px; color: #bcc2af; font-size: 16px; line-height: 1.4; }
+.sound-rifle-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid #e2dec81a; }
+.sound-rifle-row > strong { font-size: 19px; font-weight: normal; color: #e4e3d3; }
+.sound-preview-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.sound-movement-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.sound-movement-card { min-width: 0; padding: 13px; border: 1px solid #8c907445; background: #77815e08; }
+.sound-movement-card h4 { margin: 0 0 12px; font-size: 20px; font-weight: normal; color: #e0dfc8; }
+.sound-movement-card > button { width: 100%; margin-bottom: 12px; }
+.sound-variant-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.sound-variant-grid button { min-width: 0; padding-inline: 2px; font-size: 14px; }
+.sound-voice-chance { margin: 18px 0 8px; font-size: 18px; }
+.sound-voice-chance input { width: 100%; accent-color: #d5cd9c; }
+.sound-voice-chance output { color: #eee4ad; }
+.sound-review-section > .sound-review-hint { margin-bottom: 20px; font-size: 14px; }
+.sound-voice-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 20px; align-items: center; padding: 16px 0; border-top: 1px solid #e2dec826; }
+.sound-voice-language { display: block; color: #aeb6a0; font-size: 13px; letter-spacing: .04em; }
+.sound-voice-row .sound-voice-original { margin: 6px 0 4px; color: #e7e2c9; font-size: 19px; line-height: 1.35; }
+.sound-voice-row .sound-voice-translation { margin: 0; color: #b7beaa; font-size: 15px; line-height: 1.35; }
+@media (max-width: 600px) {
+ .sound-review-dialog { padding: 20px 18px; }
+ .sound-preview-toolbar { gap: 8px; padding: 8px; }
+ #sound-preview-status { font-size: 14px; }
+ .sound-rifle-row { align-items: flex-start; flex-direction: column; gap: 9px; }
+ .sound-rifle-row .sound-preview-buttons { width: 100%; }
+ .sound-rifle-row .sound-preview-buttons button { flex: 1; }
+ .sound-movement-grid { grid-template-columns: 1fr; }
+ .sound-movement-card { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }
+ .sound-movement-card h4, .sound-movement-card > button { margin: 0; }
+ .sound-variant-grid { grid-column: 1 / -1; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+ .sound-voice-row { gap: 12px; }
+}
+.mobile-device #tab-sounds button, .touch-mode #tab-sounds button { min-height: 44px; }
+@media (max-width: 380px) { .sound-variant-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

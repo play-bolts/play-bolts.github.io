@@ -1,3 +1,37 @@
+# Sound review, movement and character voices — 19 October 2026
+
+The main-menu Sound review panel is available in production builds. Its isolated
+preview player stops the previous source before selecting another and invalidates
+pending fetch/decode work on Stop, close or navigation. It uses the saved volume.
+
+The current rifle recipes and the Kar98k's 656 ms duration remain unchanged.
+An optional **Fuller candidate** uses low/mid-band shaping and gentle saturation,
+then matches the original RMS while keeping the original peak ceiling, sample
+count and onset. This is DSP, not AI enhancement, and is review-only. RMS/peak,
+transient timing and native-rate render checks guard the comparison.
+
+Movement now has six original takes per foot and stance: 36 fixed buffers.
+Walking layers heel/toe weight and grit; crouching emphasizes softer sole/cloth
+texture; prone adds a sliding scrape. A deterministic shuffle alternates feet
+without consecutive take repeats. Worker warmup and first-use fallback produce
+identical samples. Review sequences use the same gain and gait contact cadence.
+
+Nine original AI-generated soldier lines (three per language) are static WAVs;
+see [asset provenance](../public/assets/audio/voices/README.md). Their runtime
+bank loads during loadout selection, never on the kill-event path. Confirmed live
+kills have a configurable 10% default chance, one global voice at a time, and a
+500 ms gap after each clip. The local preference may produce different cosmetic
+choices on different clients; it does not change network gameplay. Death,
+life/faction changes, pause, replay, scene exit and roster/round changes cancel
+voices. Historical reliable kill-feed events remain visible but cannot speak
+through a newly spawned body. No speech-service credentials or runtime calls
+ship in the client.
+
+All final clips passed independent transcription checks after rejecting repeated
+or unclear first takes; they are 1.42–2.53 seconds, 24 kHz mono, peak -6 dBFS.
+Automated measurements verify technical behavior, not native-listener approval.
+The review panel is the audition surface for final delivery and timbre preference.
+
 # Kar98k timing revision — 17 October 2026
 
 The Kar98k report is now 20% shorter: 656 ms instead of 820 ms. Its attack,

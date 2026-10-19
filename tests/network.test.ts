@@ -391,6 +391,7 @@ test('reliable events wait for authority, survive replaced snapshots, and dedupl
   // tick6's snapshot was replaced by tick9 in the server outbox.
   setNow(175);const state=snapshot(9,.15);state.eventSeq=1;state.actors[1].kills=1;state.actors[0].alive=false;state.actors[0].hp=0;socket.receive(state);
   assert.equal(game.events.filter(e=>e.type==='kill').length,1);assert.equal(game.events[0].actor,0);assert.equal(game.events[0].victim,1);
+  assert.notEqual(game.events[0].presentationOnly,true,'a current kill remains eligible for live reactions');
   socket.receive(batch);assert.equal(game.events.filter(e=>e.type==='kill').length,1);
   assert.equal(client.receiveEvents({...batch,lobbyId:'another-room',eventSeq:2}),false);
  }finally{client.disconnect();}
@@ -404,7 +405,50 @@ test('a delayed reliable kill starts the matching death replay but cannot affect
   socket.receive(kill);assert.equal(game.state,'killcam');assert.equal(game.killer,1);assert.equal(client.waitingForRespawn,false);
   const live=snapshot(180,3);live.actors[1].spawnGeneration=2;setNow(3025);socket.receive(live);assert.equal(game.state,'playing');game.events=[];
   socket.receive({...kill,eventSeq:2,tick:180,time:3});assert.equal(game.state,'playing');assert.equal(game.events.filter(e=>e.type==='kill').length,1,'late committed kills still appear in the feed');
+  assert.equal(game.events.find(e=>e.type==='kill')?.presentationOnly,true,'a previous-life kill cannot trigger a new live reaction');
   socket.receive({...kill,eventSeq:3,tick:180,time:3,events:[{type:'reload',actor:42,actorGeneration:1}]});assert.equal(game.events.filter(e=>e.type==='reload').length,0,'old life effects do not animate the respawned body');
+ }finally{client.disconnect();}
+});
+
+for(const change of ['killer life','victim life','round'] as const)test(`delayed ${change} kills retain their feed identity without triggering live reactions`,async()=>{
+ const {client,game,socket}=await fixture();
+ try{
+  const state=snapshot(180,3);
+  if(change==='killer life')state.actors[1].spawnGeneration=2;
+  if(change==='victim life')state.actors[0].spawnGeneration=2;
+  if(change==='round')state.roundNumber=2;
+  socket.receive(state);game.events=[];
+  socket.receive({type:'events',lobbyId:'room-one',roundNumber:1,tick:6,time:.1,eventSeq:1,events:[{type:'kill',actor:42,victim:7,actorGeneration:1,victimGeneration:1,actorName:'Original killer',victimName:'Original victim',actorFaction:'british'}]});
+  const kills=game.events.filter(event=>event.type==='kill');assert.equal(kills.length,1);
+  assert.equal(kills[0].presentationOnly,true);assert.equal(kills[0].actorName,'Original killer');assert.equal(kills[0].victimName,'Original victim');assert.equal(game.state,'playing');
+ }finally{client.disconnect();}
+});
+
+for(const change of ['killer life','victim life','round'] as const)test(`a queued kill becomes feed-only if its ${change} changes before rendering`,async()=>{
+ const {client,game,socket}=await fixture();
+ try{
+  socket.receive(snapshot(6,.1));game.events=[];
+  socket.receive({type:'events',lobbyId:'room-one',roundNumber:1,tick:6,time:.1,eventSeq:1,events:[{type:'kill',actor:42,victim:7,actorGeneration:1,victimGeneration:1}]});
+  const kill=game.events.find(event=>event.type==='kill')!;assert.notEqual(kill.presentationOnly,true);
+  const state=snapshot(9,.15);
+  if(change==='killer life')state.actors[1].spawnGeneration=2;
+  if(change==='victim life')state.actors[0].spawnGeneration=2;
+  if(change==='round')state.roundNumber=2;
+  socket.receive(state);
+  assert.equal(game.events.filter(event=>event.type==='kill').length,1);assert.equal(kill.presentationOnly,true);assert.equal(game.events[0],kill,'retain the existing feed notification');
+ }finally{client.disconnect();}
+});
+
+test('queued kill identity survives roster reindexing until a later life invalidates live reactions',async()=>{
+ const {client,game,socket}=await fixture();
+ try{
+  socket.receive(snapshot(6,.1));game.events=[];
+  socket.receive({type:'events',lobbyId:'room-one',roundNumber:1,tick:6,time:.1,eventSeq:1,events:[{type:'kill',actor:7,victim:42,actorGeneration:1,victimGeneration:1}]});
+  socket.receive(snapshot(9,.15,[actor(3,'russian'),actor(7,'german'),actor(42)]));
+  const remapped=game.events.find(event=>event.type==='kill')!;assert.equal(remapped.actor,2);assert.equal(remapped.actorName,'Player 7');assert.notEqual(remapped.presentationOnly,true);
+  const respawn=actor(7,'german');respawn.spawnGeneration=2;
+  socket.receive(snapshot(12,.2,[actor(3,'russian'),respawn,actor(42)]));
+  assert.equal(game.events[0],remapped);assert.equal(remapped.presentationOnly,true);assert.equal(remapped.actorName,'Player 7');
  }finally{client.disconnect();}
 });
 

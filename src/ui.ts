@@ -12,9 +12,11 @@ import {bindTouchAction} from './touchActions';
 import {bindGameplayZoomGuard} from './touchGestures';
 import {touchActionIcon} from './touchIcons';
 import {DEFAULT_TOUCH_SENSITIVITY,MIN_TOUCH_SENSITIVITY,MAX_TOUCH_SENSITIVITY,TOUCH_SENSITIVITY_PREFERENCE_VERSION,restoreTouchSensitivityPreference} from './touchPreferences';
+import {SoundReviewPanel,soundReviewMarkup} from './soundReview';
+import {DEFAULT_KILL_VOICE_CHANCE,normalizeKillVoiceChance} from './killVoices';
 const closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg>';
 const controls=[['W A S D','Move'],['Mouse','Look'],['LMB','Fire / grenade bash'],['RMB','Iron sights'],['1 / 2','Rifle / grenade'],['Wheel','Switch weapon'],['R','Reload'],['Space','Jump / stand'],['C','Crouch'],['Ctrl','Prone'],['Q / E','Lean'],['Shift','Melee'],['Alt','Walk'],['Tab','Scoreboard'],['T / Enter','Chat'],['M','Change team'],['Esc','Menu / leave follow'],['LMB / RMB','Spectator: next / previous'],['Space / Ctrl','Spectator: up / down'],['Shift','Spectator: faster']];
-export interface Preferences {faction:Faction;difficulty:Difficulty;playerName:string;playerNameVersion:number;sensitivity:number;volume:number;aim:'toggle'|'hold';quality:string;invert:boolean;hitIndicators:boolean;controlsMode:'auto'|'touch'|'mouse';touchSensitivity:number;touchSensitivityVersion:number;touchSize:number}
+export interface Preferences {faction:Faction;difficulty:Difficulty;playerName:string;playerNameVersion:number;sensitivity:number;volume:number;killVoiceChance:number;aim:'toggle'|'hold';quality:string;invert:boolean;hitIndicators:boolean;controlsMode:'auto'|'touch'|'mouse';touchSensitivity:number;touchSensitivityVersion:number;touchSize:number}
 export type TouchAction='aim'|'reload'|'crouch'|'prone'|'team'|'score'|'chat'|'menu'|'up'|'down'|'next'|'previous'|'unfollow';
 export interface TouchState {enabled:boolean;mobile:boolean;controls:boolean;rotate:boolean;resume:boolean;spectator:boolean;following:boolean;ads:boolean;stance:Stance;weapon:'rifle'|'grenade'}
 export type LobbyRow=Pick<Lobby,'id'|'name'|'players'|'capacity'|'ping'|'location'> & Partial<Pick<Lobby,'phase'>>;
@@ -33,6 +35,7 @@ export class UI {
  private hudMarkup=new HudMarkup();
  private loadingProgress=0;private loadingCompletion:ReturnType<typeof setTimeout>|undefined;
  private loadingTips:LoadingTips;
+ private soundReview:SoundReviewPanel;
  private touchStateKey='';private touchEnabled=false;
  private mobileGate:'rotate'|'resume'|null=null;private mobileReturnFocus:HTMLElement|null=null;
  multiplayer=()=>{};refreshLobbies=()=>{};joinLobby=(_id:string)=>{};playLocation=(_location:LobbyLocation)=>{};lobbyBack=()=>this.closeLobbies();
@@ -40,7 +43,7 @@ export class UI {
  private modalReturnFocus:HTMLElement|null=null;
  private feedbackBusy=false;private leaderboardBusy=false;private leaderboardStatus='';private leaderboardData:Leaderboard|null=null;private leaderboardPeriod:LeaderboardPeriod='allTime';
  feedbackSend=async(_message:string,_email:string)=>{};leaderboardLoad=()=>{};
- prefs:Preferences={faction:'british',difficulty:'regular',playerName:DEFAULT_PLAYER_NAME,playerNameVersion:PLAYER_NAME_PREFERENCE_VERSION,sensitivity:1,volume:.6,aim:'toggle',quality:'high',invert:false,hitIndicators:false,controlsMode:'auto',touchSensitivity:DEFAULT_TOUCH_SENSITIVITY,touchSensitivityVersion:TOUCH_SENSITIVITY_PREFERENCE_VERSION,touchSize:1};
+ prefs:Preferences={faction:'british',difficulty:'regular',playerName:DEFAULT_PLAYER_NAME,playerNameVersion:PLAYER_NAME_PREFERENCE_VERSION,sensitivity:1,volume:.6,killVoiceChance:DEFAULT_KILL_VOICE_CHANCE,aim:'toggle',quality:'high',invert:false,hitIndicators:false,controlsMode:'auto',touchSensitivity:DEFAULT_TOUCH_SENSITIVITY,touchSensitivityVersion:TOUCH_SENSITIVITY_PREFERENCE_VERSION,touchSize:1};
  touchAction=(_action:TouchAction)=>{};mobileResume=()=>{};mobileBack=()=>{};
  selectLoadout=()=>{};selectSpectator=()=>{};selectTeam=()=>{};cancelSelection=()=>{};
  start=()=>{};resume=()=>{};pause=()=>{};leave=()=>{};settingsChanged=()=>{};skip=()=>{};captureMouse=()=>{};
@@ -53,6 +56,7 @@ export class UI {
    if(['recruit','regular','veteran'].includes(saved.difficulty))this.prefs.difficulty=saved.difficulty;
    this.prefs.playerName=restorePlayerNamePreference(saved.playerName,saved.playerNameVersion);
    for(const k of ['sensitivity','volume'] as const)if(typeof saved[k]==='number')this.prefs[k]=saved[k];
+   this.prefs.killVoiceChance=normalizeKillVoiceChance(saved.killVoiceChance);
    if(['hold','toggle'].includes(saved.aim))this.prefs.aim=saved.aim;
    if(['high','medium','low'].includes(saved.quality))this.prefs.quality=saved.quality;
    else if(navigator.maxTouchPoints>0&&window.matchMedia('(pointer: coarse)').matches)this.prefs.quality='medium';
@@ -67,7 +71,7 @@ export class UI {
   <div id="world" aria-label="3D arena"></div><div class="film-grain"></div><div class="vignette"></div>
   <div id="menu" class="screen menu front-menu intro-active">    <section id="menu-main" class="intro-menu" aria-label="Main menu">
      <h1>BOLTS</h1>
-     <div class="main-choices"><button id="start" class="classic-choice">Single player</button><button id="multiplayer" class="classic-choice">Multiplayer</button><button id="leaderboard-open" class="classic-choice">Leaderboard</button><button id="feedback-open" class="classic-choice">Feedback</button><button class="classic-choice settings-button">Options</button><button class="classic-choice controls-button">Controls</button><button id="credits-open" class="classic-choice">Credits</button></div>
+     <div class="main-choices"><button id="start" class="classic-choice">Single player</button><button id="multiplayer" class="classic-choice">Multiplayer</button><button id="leaderboard-open" class="classic-choice">Leaderboard</button><button id="feedback-open" class="classic-choice">Feedback</button><button id="sound-review-open" class="classic-choice">Sound review</button><button class="classic-choice settings-button">Options</button><button class="classic-choice controls-button">Controls</button><button id="credits-open" class="classic-choice">Credits</button></div>
      <p id="mobile-notice" class="hidden"><strong>Best experienced on a PC.</strong><span>On mobile, rotate to landscape and use the touch controls.</span></p>
      <aside class="welcome-board" aria-labelledby="welcome-title">
       <h2 id="welcome-title">Welcome to Bolts</h2>
@@ -135,11 +139,13 @@ export class UI {
     <p>Full-body soldier models · CC BY 4.0</p>
     <ul><li><a href="https://sketchfab.com/3d-models/wwii-british-soldier-9af571fa416546f08dfc2ba95e604083" target="_blank" rel="noopener">WWII British Soldier</a> — patromes</li><li><a href="https://sketchfab.com/3d-models/ww2-panzergrenadier-fbx-tpose-cc0-99ae9a9deb2c46c5956342b3bf9de7a2" target="_blank" rel="noopener">WW2 Panzergrenadier</a> — britdawgmasterfunk</li><li><a href="https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99" target="_blank" rel="noopener">WW2 Soviet Uniform</a> — tnnv</li></ul>
     <p>Adapted with continuous body skinning, neutral bind poses, material response and optimized textures.</p>
+    <p>Kill voice lines are AI-generated character voices. Rifle and movement sounds are original procedural audio.</p>
     <p>CC0: Mesh2Motion / Quaternius motion; para / MakeHuman hands; MakeHuman head; ambientCG and Poly Haven materials.</p>
     <p>Title font: <a href="https://github.com/google/fonts/tree/main/ofl/alfaslabone" target="_blank" rel="noopener">Alfa Slab One</a> — JM Solé · <a href="./assets/fonts/alfa-slab-one/OFL.txt" target="_blank" rel="noopener">SIL OFL 1.1</a></p>
     <p>Mobile action icons: <a href="https://lucide.dev/" target="_blank" rel="noopener">Lucide</a> — Lucide contributors / Cole Bemis · <a href="./THIRD_PARTY_LICENSES.txt" target="_blank" rel="noopener">ISC / MIT</a></p>
     <p>Visit counts use a random browser ID. <a href="https://github.com/play-bolts/play-bolts.github.io/blob/main/research/user-analytics.md" target="_blank" rel="noopener">Privacy and analytics</a></p>
    </section>
+   ${soundReviewMarkup()}
    <div id="tab-controls" class="hidden"><div class="touch-controls-help"><h2>Touch controls</h2><p>Play in landscape. Use the left joystick to move; release it to stop. Tap the left joystick to jump.</p><p>Swipe the right side of the screen to look. Press Fire for one shot; drag from the Fire button to adjust your aim. Release and press again for another shot.</p><p>Crouch and Prone are above the left joystick. Aim toggles iron sights, beside Reload above Fire.</p><p>Change sensitivity and control size in Options. Returning from an interruption clears held inputs; tap Resume to continue.</p><p>Best experienced on a PC.</p></div><div class="controls-grid keyboard-controls">${controls.map(([key,label])=>`<div><kbd>${key}</kbd><span>${label}</span></div>`).join('')}</div></div>
    <div id="tab-settings">
     <label id="difficulty-setting" class="setting select-setting hidden">Difficulty<select id="difficulty"><option value="recruit">Recruit</option><option value="regular">Regular</option><option value="veteran">Veteran</option></select></label>
@@ -156,6 +162,7 @@ export class UI {
    </div>
   </div></div><div id="toast" role="status" class="hidden"></div><div id="loading" class="overlay loading-overlay" role="region" aria-label="Loading game"><div class="loading-content"><div id="loading-label" role="status">Loading</div><div id="loading-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="loading-label"><div id="loading-fill"></div></div><div id="loading-tips" role="group" aria-label="Loading tips"><button id="loading-tip-previous" type="button" aria-label="Previous tip" aria-controls="loading-tip"><span aria-hidden="true">‹</span></button><p id="loading-tip" aria-live="off" aria-atomic="true"></p><span id="loading-tip-announcement" role="status" aria-live="polite" aria-atomic="true"></span><button id="loading-tip-next" type="button" aria-label="Next tip" aria-controls="loading-tip"><span aria-hidden="true">›</span></button></div></div></div><div id="load-error" class="overlay hidden"></div>`;
   for(const e of document.querySelectorAll<HTMLElement>('[id]'))this.el[e.id]=e;
+  this.soundReview=new SoundReviewPanel(this.el['tab-sounds'],()=>this.prefs.volume,()=>this.prefs.killVoiceChance,value=>{this.prefs.killVoiceChance=value;this.save();});
   this.loadingTips=new LoadingTips((text,fading,announce)=>{
    const tip=this.el['loading-tip'];
    if(!fading){tip.textContent=text;this.el['loading-tip-announcement'].textContent=announce?text:'';}
@@ -180,6 +187,7 @@ export class UI {
   this.el['mobile-resume-button'].onclick=()=>this.mobileResume();this.el['mobile-rotate-back'].onclick=this.el['mobile-resume-back'].onclick=()=>this.mobileBack();
   this.el['feedback-open'].onclick=()=>this.openModal('feedback');this.el['leaderboard-open'].onclick=()=>this.openModal('leaderboard');this.el['credits-open'].onclick=()=>this.openModal('credits');
   this.el['welcome-feedback'].onclick=()=>this.openModal('feedback');
+  this.el['sound-review-open'].onclick=()=>this.openModal('sounds');
   this.el['feedback-form'].onsubmit=event=>{event.preventDefault();void this.submitFeedback();};
   this.el['leaderboard-refresh'].onclick=()=>this.leaderboardLoad();
   document.querySelectorAll<HTMLButtonElement>('[data-period]').forEach(button=>{button.onclick=()=>this.setLeaderboardPeriod(button.dataset.period as LeaderboardPeriod);button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.code))return;event.preventDefault();const period=event.code==='Home'?'allTime':event.code==='End'?'last24Hours':this.leaderboardPeriod==='allTime'?'last24Hours':'allTime';this.setLeaderboardPeriod(period);this.el[period==='allTime'?'leaderboard-alltime':'leaderboard-recent'].focus();};});
@@ -363,11 +371,13 @@ export class UI {
  closeSelection(){this.selectionOpen=false;this.el.menu.classList.add('hidden');this.el.hud.classList.remove('hidden');this.setMenuStage('main',false);}
  refreshSettings(){(this.el.difficulty as HTMLSelectElement).value=this.prefs.difficulty;(this.el['player-name'] as HTMLInputElement).value=this.prefs.playerName;this.el['player-name-preview'].innerHTML=playerNameHTML(this.prefs.playerName);(this.el.sensitivity as HTMLInputElement).value=String(this.prefs.sensitivity);(this.el.volume as HTMLInputElement).value=String(this.prefs.volume);this.el['sensitivity-value'].textContent=this.prefs.sensitivity.toFixed(1);this.el['volume-value'].textContent=Math.round(this.prefs.volume*100)+'%';(this.el['aim-mode'] as HTMLSelectElement).value=this.prefs.aim;(this.el.quality as HTMLSelectElement).value=this.prefs.quality;(this.el.invert as HTMLInputElement).checked=this.prefs.invert;(this.el['hit-indicators'] as HTMLInputElement).checked=this.prefs.hitIndicators;this.refreshTouchSettings();}
  openModal(tab:string){
-  this.el['difficulty-setting'].classList.toggle('hidden',!this.inGame||this.online);const selected=['controls','credits','feedback','leaderboard'].includes(tab)?tab:'settings';
+  this.soundReview.stop();this.soundReview.refresh();
+  this.el['difficulty-setting'].classList.toggle('hidden',!this.inGame||this.online);const selected=['controls','credits','feedback','leaderboard','sounds'].includes(tab)?tab:'settings';
   if(!this.modalOpen)this.modalReturnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
   this.modalOpen=true;this.closeChat();this.refreshBackgroundInert();
   this.el.modal.classList.remove('hidden');const community=selected==='feedback'||selected==='leaderboard';this.el['modal-dialog'].classList.toggle('community-dialog',community);this.el['modal-dialog'].classList.toggle('leaderboard-dialog',selected==='leaderboard');this.el['modal-dialog'].setAttribute('aria-label',selected==='settings'?'Options':selected[0].toUpperCase()+selected.slice(1));this.el['options-tabs'].classList.toggle('hidden',selected!=='settings'&&selected!=='controls');
-  document.querySelectorAll<HTMLElement>('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===selected));for(const t of ['controls','settings','credits','feedback','leaderboard'])this.el['tab-'+t].classList.toggle('hidden',t!==selected);
+  this.el['modal-dialog'].classList.toggle('sound-review-dialog',selected==='sounds');if(selected==='sounds')this.el['modal-dialog'].setAttribute('aria-label','Sound review');
+  document.querySelectorAll<HTMLElement>('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===selected));for(const t of ['controls','settings','credits','feedback','leaderboard','sounds'])this.el['tab-'+t].classList.toggle('hidden',t!==selected);
   if(selected==='feedback')(this.feedbackBusy?this.el['modal-close']:this.el['feedback-message']).focus();else this.el['modal-close'].focus();
   if(selected==='leaderboard')this.leaderboardLoad();
  }
@@ -392,7 +402,7 @@ export class UI {
   this.el['leaderboard-status'].textContent=this.leaderboardStatus||(!rows.length&&!this.leaderboardBusy?'No players yet.':'');
  }
 
- closeModal(){this.modalOpen=false;this.el.modal.classList.add('hidden');this.refreshBackgroundInert();if(!this.mobileGate)this.modalReturnFocus?.focus();this.modalReturnFocus=null;}
+ closeModal(){this.soundReview?.stop();this.modalOpen=false;this.el.modal.classList.add('hidden');this.refreshBackgroundInert();if(!this.mobileGate)this.modalReturnFocus?.focus();this.modalReturnFocus=null;}
  handleModalKey(event:KeyboardEvent){if(event.code!=='Tab')return;
   const buttons=[...this.el.modal.querySelectorAll<HTMLElement>('button,input,textarea,select,a[href],[tabindex]')].filter(e=>!e.closest('.hidden')&&!e.hasAttribute('disabled')&&e.tabIndex>=0),first=buttons[0],last=buttons.at(-1);
   if(!first)return;

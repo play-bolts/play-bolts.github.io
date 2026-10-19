@@ -12,7 +12,7 @@ import {EXTRA_LOBBIES_ENABLED,lobbyLocationEnabled,gameEndpoint,locationLabel,pr
 export type {Lobby} from './lobbies';
 
 export type WireActor=Omit<Actor,'ai'>&{ack:number;hipSpread:number;bot?:boolean;spawnGeneration?:number;inputTiming?:InputTimingSample};
-export interface WireEvent extends Omit<Event,'shot'> {seq?:number;actorGeneration?:number;victimGeneration?:number;hitGeneration?:number;roundNumber?:number;tick?:number;time?:number;shot?:(Shot&{seq?:number})}
+export interface WireEvent extends Omit<Event,'shot'|'presentationOnly'> {seq?:number;actorGeneration?:number;victimGeneration?:number;hitGeneration?:number;roundNumber?:number;tick?:number;time?:number;shot?:(Shot&{seq?:number})}
 export interface WireEventBatch {type:'events';lobbyId:string;roundNumber:number;tick:number;time:number;eventSeq:number;events:WireEvent[]}
 export interface WireCueBatch {type:'cues';lobbyId:string;roundNumber:number;tick:number;time:number;cueSeq:number;events:WireEvent[]}
 interface PendingCue {event:WireEvent;expiresAt:number}
@@ -63,6 +63,7 @@ export class NetworkClient {
  private playback=new RemotePlaybackClock();private inputLead=new AdaptiveInputLead();private leadDrain=0;
  private eventSeq=0;private eventBatches:WireEventBatch[]=[];
  private cueSeq=0;private pendingCues:PendingCue[]=[];private queuedCueEvents=new WeakMap<Event,WireEvent>();private reloadCues=new Map<number,ReloadCue>();
+ private queuedKillEvents=new WeakMap<Event,WireEvent>();
  private presentedCueKeys=new Set<string>();
  private correctionCount=0;private maximumCorrection=0;private inputStarvations=0;private skippedInputTicks=0;private congestedInputs=0;
  private latestTick=0;private predictionTick=0;private playerGeneration:number|undefined;private roundTrip=0;private rttSampleAt=-Infinity;private openedAt=0;
@@ -336,16 +337,21 @@ export class NetworkClient {
   const reset=!last||newRound||wasAlive!==self.alive||wasSpectator!==self.spectator||oldPlayer?.faction!==self.faction||self.spawnGeneration!==this.playerGeneration;
   this.playerGeneration=self.spawnGeneration;
   if(self.ping!=null&&this.now()-this.rttSampleAt>2500)this.roundTrip=self.ping;
+  // A feed notification can outlive the body/round it describes while waiting
+  // for the next render. Preserve it, but never let it speak through a new life.
+  for(const event of game.events){const source=this.queuedKillEvents.get(event);if(source&&!this.currentKill(source,s))event.presentationOnly=true;}
   if(rosterChanged){
    // A reliable kill may be waiting for the next render when a newer roster
    // arrives. Keep its captured identity and remap its indices before removing
    // body effects that refer to the previous actor array.
-   const queuedKills=game.events.filter(event=>event.type==='kill').map(event=>({
-    ...event,actorName:event.actorName??game.actors[event.actor]?.name,
-    victimName:event.victimName??game.actors[event.victim!]?.name,
-    actorFaction:event.actorFaction??game.actors[event.actor]?.faction,
-    actor:newIds.indexOf(oldIds[event.actor]),victim:event.victim===undefined?undefined:newIds.indexOf(oldIds[event.victim]),
-   }));
+   const queuedKills=game.events.filter(event=>event.type==='kill').map(event=>{
+    const remapped={...event,actorName:event.actorName??game.actors[event.actor]?.name,
+     victimName:event.victimName??game.actors[event.victim!]?.name,
+     actorFaction:event.actorFaction??game.actors[event.actor]?.faction,
+     actor:newIds.indexOf(oldIds[event.actor]),victim:event.victim===undefined?undefined:newIds.indexOf(oldIds[event.victim]),
+    };
+    const source=this.queuedKillEvents.get(event);if(source)this.queuedKillEvents.set(remapped,source);return remapped;
+   });
    const existing=new Map(oldIds.map((id,index)=>[id,game.actors[index]]));this.ids=newIds;
    game.actors=newIds.map((id,index)=>{const a=s.actors.find(p=>p.id===id)!;const actor=existing.get(id)??Object.assign(createActor(index,a.faction,a.name),a,{pose:a.pose?{...a.pose}:undefined});return Object.assign(actor,{id:index,collisionId:id,renderIdentity:`${this.lobbyId}:${id}`});});
    game.history=[];game.shots=[];game.events=queuedKills;this.replaying=false;game.replay=[];game.replayShots=[];
@@ -460,6 +466,12 @@ export class NetworkClient {
   }
   this.applyState();
  }
+ private currentKill(source:WireEvent,s:WireSnapshot){
+  const actor=s.actors.find(a=>a.id===source.actor),victim=s.actors.find(a=>a.id===source.victim);
+  return !!actor&&!!victim&&(source.roundNumber===undefined||source.roundNumber===s.roundNumber)
+   &&(source.actorGeneration===undefined||source.actorGeneration===actor.spawnGeneration)
+   &&(source.victimGeneration===undefined||source.victimGeneration===victim.spawnGeneration);
+ }
  private applyEvents(events:WireEvent[],eventTime:number,s:WireSnapshot,immediate=false){
   const game=this.game,self=s.actors.find(a=>a.id===this.actorId);if(!self)return;
   const mapId=(id:number)=>this.ids.indexOf(id);
@@ -475,6 +487,10 @@ export class NetworkClient {
    if(victim!==undefined&&victim<0&&source.type!=='kill')continue;
    const shot=source.shot?{...source.shot,actor:mapId(source.shot.actor),hit:source.shot.hit===null?null:mapId(source.shot.hit)}:undefined;
    const event:Event={...source,actor,victim,shot};
+   if(event.type==='kill'){
+    const identity={...source,roundNumber:source.roundNumber??s.roundNumber,actorGeneration:source.actorGeneration??sourceActor?.spawnGeneration,victimGeneration:source.victimGeneration??sourceVictim?.spawnGeneration};
+    this.queuedKillEvents.set(event,identity);if(!this.currentKill(identity,s))event.presentationOnly=true;
+   }
    if(immediate&&cueKey){this.presentedCueKeys.add(cueKey);if(this.presentedCueKeys.size>512)this.presentedCueKeys.delete(this.presentedCueKeys.values().next().value!);}
    if(shot){game.shots.push(shot);if(game.shots.length>200)game.shots.shift();}
    const contactOnly=event.type==='shot'&&shot?.impactOnly===true;

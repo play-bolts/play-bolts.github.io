@@ -5,6 +5,7 @@ import {UI} from './ui';
 import {Game,createActor,type Input} from './engine';
 import {View} from './renderer';
 import {Sound} from './audio';
+import {KillVoices} from './killVoices';
 import {playCombatSound,playImpactSound} from './combatAudio';
 import {RULES,SPAWNS,clamp} from './config';
 import {playerNameHTML} from './names';
@@ -25,6 +26,9 @@ import {assetTierForQuality,setInitialAssetTier,changeAssetTier} from './assetTi
 import {preloadWorldModelLods} from './worldModelLod';
 startVisitorTracking();
 const ui=new UI(),game=new Game(),sound=new Sound(),network=new NetworkClient(game),community=new CommunityClient();
+const killVoices=new KillVoices(sound);
+function initializeAudio(){sound.init();void killVoices.preload();}
+function resetAudioScene(){killVoices.reset();sound.resetScene();}
 const touchMedia=matchMedia('(pointer: coarse)');
 const mobileDevice=()=>navigator.maxTouchPoints>0&&touchMedia.matches;
 const wantsTouch=()=>ui.prefs.controlsMode==='touch'||ui.prefs.controlsMode==='auto'&&mobileDevice();
@@ -46,7 +50,7 @@ const mouseCapture=new PointerCapture(view.renderer.domElement,document);let las
 let touchEnabled=wantsTouch(),mobilePortrait=innerHeight>=innerWidth,mobileResumeRequired=false,touchLife='',touchTap=false,touchWasActive=false;
 const touch=new TouchControls({move:ui.el['touch-move'],fire:ui.el['touch-fire'],look:ui.el['touch-look']},{
  look:(dx,dy)=>{if(canTouchPlay())look(dx,dy,1);},
- fire:()=>{if(canTouchPlay()&&!game.player.spectator){sound.init();touchTap=true;}},
+ fire:()=>{if(canTouchPlay()&&!game.player.spectator){initializeAudio();touchTap=true;}},
  jump:()=>{if(canTouchPlay()&&!game.player.spectator)jump=true;},
  fireReleased:cancelled=>{network.clearFire(cancelled);if(cancelled)touchTap=false;},
  reset:()=>{touchTap=false;jump=false;network.clearInput();if(game.player)game.player.ads=false;},
@@ -83,10 +87,10 @@ function syncSettings(){
 ui.settingsChanged=syncSettings;syncSettings();
 function capture(){if(!touchEnabled&&!document.hidden&&document.hasFocus())mouseCapture.request();}
 function releaseMouse(){dragging=false;mouseCapture.release();}
-function start(){clearTouchInput();mobileResumeRequired=false;sound.resetScene();network.disconnect();onlineEntered=false;onlineSelection=false;ui.setOnline(false);equipRifle=false;sound.init();sound.click();game.start(ui.prefs.faction,ui.prefs.difficulty,ui.prefs.playerName);view.setupActors(game);menu=false;joining=true;resumeState='playing';game.state='paused';ui.begin();keys.clear();jump=false;endingReleased=false;accumulator=0;ui.openSelection();syncTouchState();}
-function pause(){clearTouchInput();if(game.state==='playing'||game.state==='killcam'){resumeState=game.state;if(network.online)network.setPaused(true);else game.state='paused';keys.clear();jump=false;if(game.player)game.player.ads=false;}releaseMouse();}
-function resume(){if(touchEnabled&&mobilePortrait){mobileResumeRequired=true;syncTouchState();return;}clearTouchInput();mobileResumeRequired=false;sound.init();if(network.online)network.setPaused(false);else game.state=resumeState;ui.closeModal();keys.clear();jump=false;capture();syncTouchState();}
-function leave(){clearTouchInput();mobileResumeRequired=false;sound.resetScene();game.spectator.reset();network.disconnect();onlineEntered=false;onlineSelection=false;requestedLobby=undefined;lobbyRequest++;menu=true;joining=false;equipRifle=false;game.state='menu';releaseMouse();ui.closeModal();ui.showMenu();keys.clear();for(const s of view.soldiers)s.visible=false;syncTouchState();}
+function start(){clearTouchInput();mobileResumeRequired=false;resetAudioScene();network.disconnect();onlineEntered=false;onlineSelection=false;ui.setOnline(false);equipRifle=false;initializeAudio();sound.click();game.start(ui.prefs.faction,ui.prefs.difficulty,ui.prefs.playerName);view.setupActors(game);menu=false;joining=true;resumeState='playing';game.state='paused';ui.begin();keys.clear();jump=false;endingReleased=false;accumulator=0;ui.openSelection();syncTouchState();}
+function pause(){killVoices.reset();clearTouchInput();if(game.state==='playing'||game.state==='killcam'){resumeState=game.state;if(network.online)network.setPaused(true);else game.state='paused';keys.clear();jump=false;if(game.player)game.player.ads=false;}releaseMouse();}
+function resume(){if(touchEnabled&&mobilePortrait){mobileResumeRequired=true;syncTouchState();return;}clearTouchInput();mobileResumeRequired=false;initializeAudio();if(network.online)network.setPaused(false);else game.state=resumeState;ui.closeModal();keys.clear();jump=false;capture();syncTouchState();}
+function leave(){clearTouchInput();mobileResumeRequired=false;resetAudioScene();game.spectator.reset();network.disconnect();onlineEntered=false;onlineSelection=false;requestedLobby=undefined;lobbyRequest++;menu=true;joining=false;equipRifle=false;game.state='menu';releaseMouse();ui.closeModal();ui.showMenu();keys.clear();for(const s of view.soldiers)s.visible=false;syncTouchState();}
 ui.start=start;ui.resume=resume;ui.pause=pause;ui.leave=leave;ui.skip=()=>network.online?network.skipReplay():game.skipReplay();
 ui.captureMouse=()=>{if(!menu&&!ui.selectionOpen&&!ui.modalOpen&&!ui.chatOpen&&(game.state==='playing'||game.state==='killcam'))capture();};
 function selectInGame(){
@@ -102,7 +106,7 @@ ui.selectSpectator=()=>{
  if(!landscapeReady())return;clearTouchInput();
  if(onlineSelection){joinOnline(true);return;}
  if(network.online)network.spectate();else game.spectate();
- sound.resetScene();resumeState='playing';joining=false;equipRifle=false;ui.damageUntil=0;ui.damageStarted=-Infinity;ui.closeSelection();resume();
+ resetAudioScene();resumeState='playing';joining=false;equipRifle=false;ui.damageUntil=0;ui.damageStarted=-Infinity;ui.closeSelection();resume();
 };
 ui.selectLoadout=()=>{
  if(!landscapeReady())return;clearTouchInput();
@@ -150,7 +154,7 @@ ui.touchAction=action=>{
   if((action==='up'||action==='down')&&!game.spectator.following)game.spectator.position.y=clamp(game.spectator.position.y+(action==='up'?1:-1),.15,24);
   syncTouchState();return;
  }
- sound.init();
+ initializeAudio();
  if(action==='aim'&&game.canADS())setADS(!player.ads);
  if(action==='reload')reload();
  if(action==='crouch'||action==='prone')setStance(action);
@@ -161,18 +165,18 @@ async function refreshLobbies(){
  catch(error){if(request===lobbyRequest&&ui.lobbyOpen&&!network.online)ui.setLobbyStatus(error instanceof Error?error.message:'Unable to load servers.');}
  finally{lobbyFetchBusy=false;}
 }
-ui.multiplayer=()=>{sound.init();sound.click();ui.showLobbies([],'Loading…');void refreshLobbies();};
+ui.multiplayer=()=>{initializeAudio();sound.click();ui.showLobbies([],'Loading…');void refreshLobbies();};
 ui.refreshLobbies=()=>void refreshLobbies();ui.lobbyBack=()=>{lobbyProbe?.abort();lobbyRequest++;if(!onlineEntered)network.disconnect();ui.closeLobbies();};
 ui.playLocation=id=>ui.joinLobby(`new:${id}`);
 ui.joinLobby=id=>{
- if(network.online||onlineSelection)return;clearTouchInput();mobileResumeRequired=false;lobbyProbe?.abort();sound.init();onlineSelection=true;requestedLobby=id;menu=false;joining=true;keys.clear();jump=false;accumulator=0;
+ if(network.online||onlineSelection)return;clearTouchInput();mobileResumeRequired=false;lobbyProbe?.abort();initializeAudio();onlineSelection=true;requestedLobby=id;menu=false;joining=true;keys.clear();jump=false;accumulator=0;
  // Choose the initial loadout before joining the server. This is a stationary
  // arena backdrop: no AI, live player, reserved seat, or vulnerable spawn.
  const actor=createActor(0,ui.prefs.faction,ui.prefs.playerName);Object.assign(actor,SPAWNS[0]);actor.yaw=Math.atan2(-actor.x,-actor.z);
  game.actors=[actor];game.time=0;game.remaining=RULES.roundSeconds;game.state='paused';game.events=[];game.history=[];game.replay=[];game.replayShots=[];game.shots=[];game.winner=null;
  view.setupActors(game);ui.closeLobbies();ui.setOnline(true);ui.begin();ui.openSelection();syncTouchState();
 };
-network.onRoster=()=>{sound.resetScene();view.syncActors(game);};
+network.onRoster=()=>{resetAudioScene();view.syncActors(game);};
 network.onJoined=name=>{
  clearTouchInput();ui.setOnline(true,name,network.lobbyLocation);ui.setNetworkStatus('');if(onlineEntered){syncTouchState();return;}
  onlineEntered=true;onlineSelection=false;menu=false;joining=false;resumeState='playing';keys.clear();jump=false;endingReleased=false;accumulator=0;equipRifle=false;ui.closeLobbies();ui.begin();network.setPaused(false);syncTouchState();capture();
@@ -181,11 +185,11 @@ network.onStatus=text=>{if(network.online&&!network.connected)clearTouchInput();
 network.onFailure=message=>{leave();lobbyFetchTime=performance.now();ui.showLobbies(lobbyRows,message);};
 network.onChat=message=>ui.addChat(message);
 network.onImpact=shot=>{if(game.state==='killcam')return;ui.showHit(shot);view.effect(shot,false,0,true,game.time);playImpactSound(sound,shot,game.actors,game.viewedActor?.id);};
-network.onRound=()=>{if(touchEnabled)clearTouchInput();sound.resetScene();endingReleased=false;ui.feed=[];ui.hitUntil=0;ui.killUntil=0;ui.damageUntil=0;ui.damageStarted=-Infinity;lastReplaySound=-1;};
+network.onRound=()=>{if(touchEnabled)clearTouchInput();resetAudioScene();endingReleased=false;ui.feed=[];ui.hitUntil=0;ui.killUntil=0;ui.damageUntil=0;ui.damageStarted=-Infinity;lastReplaySound=-1;};
 ui.chatSend=text=>network.chat(text);
 ui.chatOpened=()=>{clearTouchInput();releaseMouse();};
 ui.chatClosed=()=>{keys.clear();jump=false;updateTouchViewport();if(network.online&&!menu&&!ui.selectionOpen&&!ui.modalOpen&&game.state==='playing')capture();};
-window.addEventListener('pagehide',()=>{clearTouchInput();network.disconnect();});
+window.addEventListener('pagehide',()=>{killVoices.reset();clearTouchInput();network.disconnect();});
 function spectatorExit(source:'key'|'unlock'){
  if(!game.player?.spectator||game.state!=='playing'||!game.spectator.handleExit(source,performance.now(),game.actors))return false;
  keys.clear();jump=false;dragging=false;return true;
@@ -211,7 +215,7 @@ view.renderer.domElement.addEventListener('mousedown',e=>{
   const fallback=mouseCapture.fallback;dragging=e.button===0;previousX=e.clientX;previousY=e.clientY;capture();if(!fallback)return;
  }
  if(game.state!=='playing')return;
- sound.init();if(e.button===0){fire();dragging=true;previousX=e.clientX;previousY=e.clientY;}if(e.button===2&&game.canADS())setADS(ui.prefs.aim==='hold'?true:!game.player.ads);
+ initializeAudio();if(e.button===0){fire();dragging=true;previousX=e.clientX;previousY=e.clientY;}if(e.button===2&&game.canADS())setADS(ui.prefs.aim==='hold'?true:!game.player.ads);
 });
 view.renderer.domElement.addEventListener('wheel',e=>{if(menu||ui.selectionOpen||ui.modalOpen||ui.chatOpen||game.state!=='playing'||game.player.spectator)return;e.preventDefault();if(Math.abs(e.deltaY)>.01)selectWeapon(game.player.selectedWeapon==='rifle'?'grenade':'rifle');},{passive:false});
 document.addEventListener('mouseup',e=>{if(touchEnabled)return;if(e.button===0)dragging=false;if(e.button===2&&ui.prefs.aim==='hold'&&game.player)setADS(false);});
@@ -253,6 +257,7 @@ function updateAudioScene(){
 }
 function processEvents(){
  updateAudioScene();const viewed=game.viewedActor;
+ killVoices.update(game.actors,game.state==='playing'&&!ui.modalOpen&&!ui.selectionOpen,performance.now());
  for(const event of game.events){const a=game.actors[event.actor];
   if(event.type==='kill'){
    const victim=game.actors[event.victim!],actorName=event.actorName??a?.name,victimName=event.victimName??victim?.name,faction=event.actorFaction??a?.faction;
@@ -261,6 +266,7 @@ function processEvents(){
   if(!a)continue;
   const emitter={actor:a.id,position:game.eye(a),local:a.id===viewed?.id,faction:a.faction};
   if(game.state!=='killcam'){
+   if(event.type==='kill'&&game.state==='playing'&&!ui.modalOpen&&!ui.selectionOpen)killVoices.consider(event,a,emitter,performance.now(),ui.prefs.killVoiceChance);
    if(event.type==='shot'&&event.shot){ui.showHit(event.shot);view.effect(event.shot,emitter.local,0,false,network.online?game.time:event.shot.time);playCombatSound(sound,event.shot,game.actors,viewed?.id);}
    if(event.type==='bolt')sound.bolt(emitter);if(event.type==='reload')sound.reload(emitter);if(event.type==='step')sound.step(event.value??3,emitter,a.stance);
    if(event.type==='switch')sound.switch(emitter);

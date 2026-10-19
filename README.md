@@ -85,6 +85,15 @@ The mobile main menu is centered in either orientation. The online-player count 
 
 Combat feedback combines layered rifle reports, separate melee swings and contacts, and positional hit sounds. Muzzle blasts include animated flame, smoke, sparks and a brief gas ring. Confirmed hits emit denser directional blood mist, streaks and falling droplets; melee uses a wider fan. Effects reuse bounded GPU buffers, and killcams replay the same recorded effect shapes. Audio is originally synthesized with fixed nonrepeating variants; see [audio design and validation](research/audio-reference.md).
 
+Open **Sound review** from the main menu to audition the current rifle reports,
+an optional fuller DSP comparison, 36 stance/foot movement variations and nine
+AI-generated character voice lines. Only one preview plays at a time. Movement
+uses the same cached sounds during play, with alternating feet and no consecutive
+repeated takes. Kill lines use the killer's language, default to a 10% chance and
+have a saved 0–100% control in the panel. They never overlap or play for historical
+kill-feed notifications. Voice WAVs are static assets; gameplay makes no AI API
+calls. [Voice provenance and regeneration](public/assets/audio/voices/README.md).
+
 In multiplayer, **T** or **Enter** opens chat; **Enter** sends and **Escape** cancels. Gameplay input is suspended while typing, and recent messages fade until chat is reopened. **Tab** shows kills, deaths and each player's server-measured ping in milliseconds. Single player shows kills and deaths without a ping column. Multiplayer keeps running while a menu is open; single player pauses.
 
 Choose **Spectator** in the in-game team window for free flight or first-person following. Left/right click cycles forward/backward through living players, and Escape returns from following to free flight. In free flight, WASD moves, Space/Ctrl rises/descends, and Shift moves faster. Use the team window to join combat again.

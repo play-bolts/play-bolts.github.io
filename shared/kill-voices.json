@@ -1,0 +1,83 @@
+[
+  {
+    "id": "british-got-you",
+    "faction": "british",
+    "language": "English",
+    "text": "Got you, bastard!",
+    "translation": "Got you, bastard!",
+    "file": "/assets/audio/voices/british-got-you.wav",
+    "voice": "cedar"
+  },
+  {
+    "id": "british-stay-down",
+    "faction": "british",
+    "language": "English",
+    "text": "Stay down, you bastard!",
+    "translation": "Stay down, you bastard!",
+    "file": "/assets/audio/voices/british-stay-down.wav",
+    "voice": "cedar"
+  },
+  {
+    "id": "british-bloody-hell",
+    "faction": "british",
+    "language": "English",
+    "text": "Bloody hell. Got him!",
+    "translation": "Bloody hell. Got him!",
+    "file": "/assets/audio/voices/british-bloody-hell.wav",
+    "voice": "cedar"
+  },
+  {
+    "id": "german-hab-dich",
+    "faction": "german",
+    "language": "German",
+    "text": "Hab dich, Mistkerl!",
+    "translation": "Got you, bastard!",
+    "file": "/assets/audio/voices/german-hab-dich.wav",
+    "voice": "onyx"
+  },
+  {
+    "id": "german-bleib-liegen",
+    "faction": "german",
+    "language": "German",
+    "text": "Bleib liegen, Mistkerl!",
+    "translation": "Stay down, bastard!",
+    "file": "/assets/audio/voices/german-bleib-liegen.wav",
+    "voice": "onyx"
+  },
+  {
+    "id": "german-zur-hoelle",
+    "faction": "german",
+    "language": "German",
+    "text": "Zur Hölle mit dir!",
+    "translation": "To hell with you!",
+    "file": "/assets/audio/voices/german-zur-hoelle.wav",
+    "voice": "onyx"
+  },
+  {
+    "id": "russian-poluchay",
+    "faction": "russian",
+    "language": "Russian",
+    "text": "Получай, сука!",
+    "translation": "Take that, bitch!",
+    "file": "/assets/audio/voices/russian-poluchay.wav",
+    "voice": "cedar"
+  },
+  {
+    "id": "russian-lezhi",
+    "faction": "russian",
+    "language": "Russian",
+    "text": "Лежи, ублюдок!",
+    "translation": "Stay down, bastard!",
+    "file": "/assets/audio/voices/russian-lezhi.wav",
+    "voice": "cedar"
+  },
+  {
+    "id": "russian-vot-tak",
+    "faction": "russian",
+    "language": "Russian",
+    "text": "Вот так-то, чёрт возьми!",
+    "translation": "That's how it's done, damn it!",
+    "file": "/assets/audio/voices/russian-vot-tak.wav",
+    "voice": "cedar"
+  }
+]

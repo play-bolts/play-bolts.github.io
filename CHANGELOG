@@ -1,3 +1,4 @@
+v1.0.26 - Adds the classic welcome announcements board with email and feedback links.
 v1.0.25 - Defaults extra regional lobbies off, blocks paid provisioning, and records verified zero-capacity shutdown while preserving Oregon.
 v1.0.24 - Removes TCP batching from game sockets and adds latency probes and bounded simulation-stall diagnostics.
 v1.0.23 - Aligns melee damage with animation contact and widens bash reach, with moving-player and authoritative server checks.

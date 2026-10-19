@@ -69,6 +69,12 @@ export class UI {
      <h1>BOLTS</h1>
      <div class="main-choices"><button id="start" class="classic-choice">Single player</button><button id="multiplayer" class="classic-choice">Multiplayer</button><button id="leaderboard-open" class="classic-choice">Leaderboard</button><button id="feedback-open" class="classic-choice">Feedback</button><button class="classic-choice settings-button">Options</button><button class="classic-choice controls-button">Controls</button><button id="credits-open" class="classic-choice">Credits</button></div>
      <p id="mobile-notice" class="hidden"><strong>Best experienced on a PC.</strong><span>On mobile, rotate to landscape and use the touch controls.</span></p>
+     <aside class="welcome-board" aria-labelledby="welcome-title">
+      <h2 id="welcome-title">Welcome to Bolts</h2>
+      <p>I made this game in homage to the original Call of Duty.</p>
+      <p>Email me at <a href="mailto:ckrapu@gmail.com">ckrapu@gmail.com</a> with any feature requests. You can also submit using the <button id="welcome-feedback" type="button" aria-haspopup="dialog">feedback form</button>.</p>
+      <p class="welcome-signature">-Chris</p>
+     </aside>
     </section><div id="players-online" class="hidden" role="status" aria-live="polite"></div>
   <section id="lobby-window" class="classic-window lobby-window hidden" aria-labelledby="lobby-title">
    <header class="lobby-heading"><h2 id="lobby-title">Join game</h2></header>
@@ -173,6 +179,7 @@ export class UI {
   document.querySelectorAll<HTMLButtonElement>('[data-touch-action]').forEach(button=>bindTouchAction(button,()=>this.touchAction(button.dataset.touchAction as TouchAction)));
   this.el['mobile-resume-button'].onclick=()=>this.mobileResume();this.el['mobile-rotate-back'].onclick=this.el['mobile-resume-back'].onclick=()=>this.mobileBack();
   this.el['feedback-open'].onclick=()=>this.openModal('feedback');this.el['leaderboard-open'].onclick=()=>this.openModal('leaderboard');this.el['credits-open'].onclick=()=>this.openModal('credits');
+  this.el['welcome-feedback'].onclick=()=>this.openModal('feedback');
   this.el['feedback-form'].onsubmit=event=>{event.preventDefault();void this.submitFeedback();};
   this.el['leaderboard-refresh'].onclick=()=>this.leaderboardLoad();
   document.querySelectorAll<HTMLButtonElement>('[data-period]').forEach(button=>{button.onclick=()=>this.setLeaderboardPeriod(button.dataset.period as LeaderboardPeriod);button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.code))return;event.preventDefault();const period=event.code==='Home'?'allTime':event.code==='End'?'last24Hours':this.leaderboardPeriod==='allTime'?'last24Hours':'allTime';this.setLeaderboardPeriod(period);this.el[period==='allTime'?'leaderboard-alltime':'leaderboard-recent'].focus();};});
@@ -349,7 +356,7 @@ export class UI {
   if(event.code==='Escape'||digit==='0'){if(this.selectionOpen){event.preventDefault();this.cancelSelection();}return;}
   if(this.menuStage==='team'&&digit==='4'){event.preventDefault();(this.el['choose-spectator'] as HTMLButtonElement).click();return;}
   if(this.menuStage==='team'&&digit&&digit!=='0'){event.preventDefault();document.querySelector<HTMLButtonElement>(`[data-faction="${(['british','russian','german'] as const)[Number(digit)-1]}"]`)?.click();return;}
-  if(event.code==='Enter'&&this.menuStage==='main'&&!(event.target instanceof HTMLButtonElement)){event.preventDefault();(this.el.multiplayer as HTMLButtonElement).click();}
+  if(event.code==='Enter'&&this.menuStage==='main'&&!(event.target instanceof HTMLButtonElement)&&!(event.target instanceof HTMLAnchorElement)){event.preventDefault();(this.el.multiplayer as HTMLButtonElement).click();}
   if(event.code==='Slash'){event.preventDefault();this.openModal('controls');}
  }
  openSelection(){this.setSelectionBusy(false);this.spectatorSelection=this.spectating;this.selectionOpen=true;this.closeChat();this.closeModal();this.scoreHeld=false;this.el.menu.classList.remove('hidden');for(const id of ['hud','pause','scoreboard'])this.el[id].classList.add('hidden');this.refreshSelection();this.setMenuStage('team');}

@@ -495,3 +495,27 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
  .mobile-device .setting, .touch-mode .setting { font-size: 16px; }
  .mobile-device .setting select, .touch-mode .setting select { max-width: 65%; }
 }
+
+/* A quiet dispatch board beside the classic main-menu choices. */
+.welcome-board { position: fixed; left: clamp(24px, 4.5vw, 80px); bottom: clamp(30px, 7vh, 70px); width: min(430px, 35vw); padding: 20px 24px 18px; border: 3px double #9a9b828c; background: linear-gradient(135deg, #171b14f2, #080b09ed); box-shadow: 0 3px 16px #0005, inset 0 0 0 1px #0009; color: #d7d8c5; text-align: left; text-shadow: 1px 1px 2px #000; }
+.welcome-board h2 { margin: 0 0 15px; padding-bottom: 11px; border-bottom: 1px solid #d7d8ba40; color: #eee7c2; font-size: clamp(24px, 2.1vw, 30px); font-weight: normal; line-height: 1.15; }
+.welcome-board p { margin: 0 0 12px; font-size: clamp(16px, 1.35vw, 18px); line-height: 1.45; }
+.welcome-board a, .welcome-board button { padding: 0; color: #eee4ac; text-decoration: underline; text-decoration-color: #eee4ac80; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.welcome-board a:hover, .welcome-board button:hover { color: #fff4be; text-decoration-color: currentColor; }
+.welcome-board .welcome-signature { margin: 2px 0 0; color: #e5e0bc; font-size: 20px; font-style: italic; text-align: right; }
+@media (max-width: 700px) {
+ .intro-menu { position: relative; inset: auto; width: min(360px, 100%); max-height: calc(100dvh - 64px); margin: auto; overflow-y: auto; overscroll-behavior: contain; }
+ .welcome-board { position: static; width: 100%; margin-top: 25px; padding: 17px 18px 15px; }
+}
+.mobile-device .welcome-board, .touch-mode .welcome-board { position: static; width: 100%; margin-top: 24px; padding: 17px 18px 15px; }
+.mobile-device .welcome-board h2, .touch-mode .welcome-board h2 { font-size: 25px; }
+.mobile-device .welcome-board p, .touch-mode .welcome-board p { font-size: 16px; }
+@media (max-height: 500px) and (min-width: 550px) {
+ .mobile-device .intro-menu, .touch-mode .intro-menu { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 24px; width: min(740px, 100%); }
+ .mobile-device .intro-menu > :not(.welcome-board), .touch-mode .intro-menu > :not(.welcome-board) { grid-column: 1; }
+ .mobile-device .intro-menu .main-choices, .touch-mode .intro-menu .main-choices { width: 100%; }
+ .mobile-device .welcome-board, .touch-mode .welcome-board { grid-column: 2; grid-row: 1 / span 3; align-self: center; margin-top: 0; padding: 14px 16px; }
+ .mobile-device .welcome-board h2, .touch-mode .welcome-board h2 { font-size: 23px; margin-bottom: 11px; padding-bottom: 8px; }
+ .mobile-device .welcome-board p, .touch-mode .welcome-board p { font-size: 15px; line-height: 1.35; margin-bottom: 9px; }
+ .mobile-device .welcome-board .welcome-signature, .touch-mode .welcome-board .welcome-signature { margin-bottom: 0; }
+}

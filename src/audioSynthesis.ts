@@ -1,4 +1,4 @@
-import type {Faction} from './config';
+import type {Faction,Stance} from './config';
 
 type Band=readonly[frequency:number,q:number];
 type Envelope=readonly(readonly[time:number,gain:number])[];
@@ -112,6 +112,33 @@ export function synthesizeRifle(faction:Faction,sampleRate:number,seed=0x51f15e)
  return finish(out,sampleRate,.88,.48);
 }
 
+export type RiflePreviewProfile='current'|'fuller';
+/** Optional DSP comparison only; runtime keeps synthesizeRifle unchanged.
+ * Parallel low/mid coloration adds weight without extending the Kar's .656 s
+ * report. Match the original RMS so extra loudness cannot win the comparison. */
+export function synthesizeRiflePreview(faction:Faction,sampleRate:number,profile:RiflePreviewProfile='current',variant=0):Float32Array{
+ const baseline=synthesizeRifle(faction,sampleRate,0x51f15e+variant*7919);if(profile==='current')return baseline;
+ const shaped=new Float32Array(baseline.length),output=new Float32Array(baseline.length);
+ const lowPole=Math.exp(-2*Math.PI*300/sampleRate),midPole=Math.exp(-2*Math.PI*1800/sampleRate);
+ let low=0,broad=0,targetPower=0,targetPeak=0;
+ for(let i=0;i<baseline.length;i++){
+  const value=baseline[i];low=(1-lowPole)*value+lowPole*low;broad=(1-midPole)*value+midPole*broad;
+  const middle=broad-low,body=low+.55*middle;
+  shaped[i]=value+.18*low+.055*Math.tanh(middle*2.4)/2.4+.06*(Math.tanh(body*3.2)/3.2-body);
+  targetPower+=value*value;targetPeak=Math.max(targetPeak,Math.abs(value));
+ }
+ shaped[0]=0;shaped[shaped.length-1]=0;
+ // Gentle saturation can lower crest factor if RMS matching would otherwise
+ // exceed the original peak. No clipping, extra tail or time/pitch shift.
+ for(let pass=0;pass<16;pass++){
+  const drive=pass===0?0:.7*1.5**(pass-1);let power=0,peak=0;
+  for(let i=0;i<shaped.length;i++){const value=drive?Math.tanh(shaped[i]*drive)/drive:shaped[i];output[i]=value;power+=value*value;peak=Math.max(peak,Math.abs(value));}
+  const gain=Math.sqrt(targetPower/Math.max(power,1e-15));
+  if(peak*gain<=targetPeak+1e-6||pass===15){for(let i=0;i<output.length;i++)output[i]*=gain;break;}
+ }
+ return output;
+}
+
 export type CombatSound='swing'|'shot-impact'|'melee-impact';
 export const COMBAT_SOUNDS:readonly CombatSound[]=['swing','shot-impact','melee-impact'];
 /** Original short Foley-like layers, rendered once per variant in the warmup
@@ -140,4 +167,45 @@ export function synthesizeCombat(kind:CombatSound,sampleRate:number,seed=0x71a9)
   }
  }
  return finish(out,sampleRate,kind==='swing'?.34:kind==='melee-impact'?.65:.48,.8);
+}
+
+export const FOOTSTEP_VARIANTS=6;
+export const FOOTSTEP_STANCES:readonly Stance[]=['stand','crouch','prone'];
+export const FOOTSTEP_SIDES=['left','right'] as const;
+export type FootSide=typeof FOOTSTEP_SIDES[number];
+
+/** Original procedural boot/cloth Foley on the arena's packed, gritty ground.
+ * Each reusable take changes heel/toe timing, small grains and resonances; it
+ * is not a recorded or AI-generated sample. Left/right feet have their own
+ * textures. Crouching transfers weight softly, while prone movement scrapes. */
+export function synthesizeFootstep(stance:Stance,sampleRate:number,variant=0,side:FootSide='left'):Float32Array{
+ const take=((Math.trunc(variant)%FOOTSTEP_VARIANTS)+FOOTSTEP_VARIANTS)%FOOTSTEP_VARIANTS;
+ const seed=(0x5eeda11^Math.imul(take+1,0x9e3779b9)^(side==='left'?0x183f:0x985a)^({stand:0,crouch:0x3b921,prone:0x7c31a}[stance]))>>>0;
+ let state=seed;const random=()=>{state^=state<<13;state^=state>>>17;state^=state<<5;return(state>>>0)/4294967296;};
+ const crouch=stance==='crouch',prone=stance==='prone',duration=prone?.40:crouch?.36:.30;
+ const length=Math.ceil(sampleRate*duration),out=new Float32Array(length);
+ const pitch=.92+random()*.16+(side==='left'?-.025:.025),settle=.019+random()*.024,drag=.073+random()*.035;
+ const low=resonantNoise(length,sampleRate,165*pitch,.75,seed^0x825f);
+ const body=resonantNoise(length,sampleRate,420*pitch,.9,seed^0xc82f);
+ const grit=resonantNoise(length,sampleRate,(crouch?1700:2200)*pitch,.65,seed^0x713a);
+ const sand=resonantNoise(length,sampleRate,4900*pitch,.6,seed^0xf21a);
+ const cloth=resonantNoise(length,sampleRate,780*pitch,.72,seed^0xd308);
+ const grains=Array.from({length:12},(_,i)=>({time:.006+random()*(i<5?.04:.15),width:.0007+random()*.0028,gain:(.12+random()*.20)*(i<5?1:.55)}));
+ for(let i=0;i<length;i++){
+  const t=i/sampleRate,attack=smooth(t/.0008);
+  const heel=Math.exp(-t/(crouch?.023:.032)),toe=bell(t,settle,crouch?.016:.011);
+  const pressure=(Math.sin(2*Math.PI*102*pitch*t)+.40*Math.sin(2*Math.PI*191*pitch*t+.2)+.16*Math.sin(2*Math.PI*319*pitch*t))*(1-Math.exp(-t/.0015))*Math.exp(-t/.034);
+  let particles=0;for(const grain of grains)particles+=grain.gain*bell(t,grain.time,grain.width);
+  const scrape=bell(t,drag,crouch?.052:.035)+.25*bell(t,drag+.065,.033);
+  if(prone){
+   const slide=bell(t,.055,.043)+.65*bell(t,.155,.065);
+   out[i]=attack*(low[i]*.08*heel+body[i]*.14*toe+(cloth[i]*.45+grit[i]*.19+sand[i]*.035)*slide+grit[i]*particles*.22);
+  }else{
+   const weight=crouch?.51:1,crunch=crouch?.42:.68;
+   out[i]=attack*(weight*(pressure*.74+low[i]*.38*heel+body[i]*.17*toe)
+    +crunch*(grit[i]*(.23*heel+.28*toe+particles)+sand[i]*particles*.29)
+    +(cloth[i]*(crouch?.28:.13)+grit[i]*(crouch?.18:.10))*scrape);
+  }
+ }
+ return finish(out,sampleRate,prone?.48:crouch?.62:.74,.65);
 }

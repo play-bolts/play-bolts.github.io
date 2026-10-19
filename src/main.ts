@@ -262,7 +262,7 @@ function processEvents(){
   const emitter={actor:a.id,position:game.eye(a),local:a.id===viewed?.id,faction:a.faction};
   if(game.state!=='killcam'){
    if(event.type==='shot'&&event.shot){ui.showHit(event.shot);view.effect(event.shot,emitter.local,0,false,network.online?game.time:event.shot.time);playCombatSound(sound,event.shot,game.actors,viewed?.id);}
-   if(event.type==='bolt')sound.bolt(emitter);if(event.type==='reload')sound.reload(emitter);if(event.type==='step')sound.step(event.value??3,emitter);
+   if(event.type==='bolt')sound.bolt(emitter);if(event.type==='reload')sound.reload(emitter);if(event.type==='step')sound.step(event.value??3,emitter,a.stance);
    if(event.type==='switch')sound.switch(emitter);
   }
   if(event.type==='hurt'&&event.actor===0&&!game.player.spectator)ui.showDamage(event.lethal??!game.player.alive);

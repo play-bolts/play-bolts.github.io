@@ -4,6 +4,7 @@ import {Sound,type SoundEmitter} from '../src/audio.ts';
 import {listenerBasis,soundEnvironment} from '../src/audioSpatial.ts';
 import {BOXES} from '../src/config.ts';
 import {COMBAT_SOUNDS} from '../src/audioSynthesis.ts';
+import {FootstepSequence,FOOTSTEP_STANCES,FOOTSTEP_SIDES,FOOTSTEP_VARIANTS,synthesizeFootstep,footstepLevel} from '../src/movementAudio.ts';
 
 class Param {value=0;setValueAtTime(v:number){this.value=v;}setTargetAtTime(v:number){this.value=v;}exponentialRampToValueAtTime(v:number){this.value=v;}}
 class Node {
@@ -55,11 +56,11 @@ test('every remote shot band shares one spatial source; steps and reload tones u
  assert.equal(ctx.panners[0].panningModel,'HRTF');assert.equal(ctx.panners[0].positionX.value,-3);
  assert.equal(ctx.panners[0].distanceModel,'inverse');assert.ok(ctx.panners[0].rolloffFactor>0);
  sound.step(4,remote);sound.reload(remote);
- assert.equal(ctx.sources.length,9);assert.ok(ctx.gains.filter(g=>g.connections.includes(master)).length===0,'no unpanned remote bass/handling path');
+ assert.equal(ctx.sources.length,8);assert.ok(ctx.gains.filter(g=>g.connections.includes(master)).length===0,'no unpanned remote bass/handling path');
  for(const p of ctx.panners){assert.equal(p.positionX.value,-3);assert.ok(p.connections.includes(master));}
  sound.updateEmitter({...remote,position:{x:7,y:2,z:4}});assert.ok(ctx.panners.every(p=>p.positionX.value===7&&p.positionZ.value===4));
  // Following the actor switches every queued cue to the first-person bus; free fly restores spatial sound.
- sound.updateEmitter({...remote,local:true});assert.ok(ctx.gains.filter(g=>g.connections.includes(master)).length===9);
+ sound.updateEmitter({...remote,local:true});assert.ok(ctx.gains.filter(g=>g.connections.includes(master)).length===8);
  sound.updateEmitter(remote);assert.equal(ctx.gains.filter(g=>g.connections.includes(master)).length,0);
 });
 
@@ -124,7 +125,8 @@ test('initialization warms combat variants asynchronously and warm playback allo
   const factions=['british','russian','german'] as const;
   for(const faction of factions)for(let variant=0;variant<3;variant++)worker.onmessage!({data:{faction,variant,samples:new Float32Array([variant/10,.5,-.5,0])}});
   for(const kind of COMBAT_SOUNDS)for(let variant=0;variant<3;variant++)worker.onmessage!({data:{kind,variant,samples:new Float32Array([variant/10,.25,-.25,0])}});
-  worker.onmessage!({data:{done:true}});assert.equal(worker.terminated,true);assert.equal(ctx.buffers.length,19);
+  for(const stance of FOOTSTEP_STANCES)for(const side of FOOTSTEP_SIDES)for(let variant=0;variant<FOOTSTEP_VARIANTS;variant++)worker.onmessage!({data:{stance,side,variant,samples:new Float32Array([variant/10,.125,-.125,0])}});
+  worker.onmessage!({data:{done:true}});assert.equal(worker.terminated,true);assert.equal(ctx.buffers.length,55);
   for(const faction of factions)for(let variant=0;variant<3;variant++){
    Math.random=()=>variant/3+.01;sound.shot({...remote,faction});const buffer=ctx.sources.at(-1)!.buffer as ReturnType<Context['createBuffer']>;
    assert.deepEqual([...buffer.getChannelData()],[Math.fround(variant/10),.5,-.5,0]);
@@ -135,6 +137,30 @@ test('initialization warms combat variants asynchronously and warm playback allo
    const buffer=ctx.sources.at(-1)!.buffer as ReturnType<Context['createBuffer']>;
    assert.deepEqual([...buffer.getChannelData()],[Math.fround(variant/10),.25,-.25,0]);
   }
-  assert.equal(ctx.buffers.length,19,'rifles, swings and contacts use all 18 warmed buffers');sound.resetScene();
+  for(const stance of FOOTSTEP_STANCES)for(let step=0;step<24;step++){sound.step(2,remote,stance);const buffer=ctx.sources.at(-1)!.buffer as ReturnType<Context['createBuffer']>;assert.equal(buffer.getChannelData()[1],.125);}
+  assert.equal(ctx.buffers.length,55,'all weapon and footstep playback uses the warmed buffers');sound.resetScene();
  }finally{Math.random=random;if(contextDescriptor)Object.defineProperty(globalThis,'AudioContext',contextDescriptor);else delete(globalThis as any).AudioContext;if(workerDescriptor)Object.defineProperty(globalThis,'Worker',workerDescriptor);else delete(globalThis as any).Worker;}
+});
+
+test('runtime footsteps use the same alternating takes and gain as the review renderer',()=>{
+ const {sound,ctx}=setup(),sequence=new FootstepSequence(),local={...remote,actor:0,local:true};
+ for(const stance of FOOTSTEP_STANCES){
+  for(let i=0;i<12;i++){
+   const {variant,side}=sequence.next(stance),before=ctx.gains.length;sound.step(1.4,local,stance);
+   const buffer=ctx.sources.at(-1)!.buffer as ReturnType<Context['createBuffer']>;
+   assert.deepEqual(buffer.getChannelData(),synthesizeFootstep(stance,ctx.sampleRate,variant,side));
+   assert.equal(ctx.gains[before].gain.value,footstepLevel(stance,1.4));
+  }
+ }
+ const count=ctx.sources.length;for(const speed of [0,.2,-1,NaN])sound.step(speed,local);assert.equal(ctx.sources.length,count,'stationary actors cannot create contact sounds');
+ const first=ctx.sources[0].buffer;sound.resetScene();sound.step(1.4,local);assert.equal(ctx.sources.at(-1)!.buffer,first,'scene reset clears ordering without discarding reusable PCM');
+});
+
+test('decoded voice playback uses actor routing and stops on actor and scene cleanup',()=>{
+ const {sound,ctx,master}=setup(),buffer=ctx.createBuffer(1,4800,48000);
+ const source=sound.playBuffer(buffer as unknown as AudioBuffer,remote,.35) as unknown as Source;
+ assert.ok(source);assert.equal(source.buffer,buffer);assert.equal(ctx.gains[0].gain.value,.35);
+ assert.equal(ctx.panners[0].positionX.value,remote.position.x);assert.equal(ctx.gains.filter(g=>g.connections.includes(master)).length,0);
+ sound.stopActor(remote.actor);assert.equal(source.disconnected,true);
+ const next=sound.playBuffer(buffer as unknown as AudioBuffer,{...remote,actor:3}) as unknown as Source;sound.resetScene();assert.equal(next.disconnected,true);
 });

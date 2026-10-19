@@ -1,7 +1,8 @@
-import {clamp,type Faction,type Vec} from './config';
+import {clamp,type Faction,type Stance,type Vec} from './config';
 import {listenerBasis} from './audioSpatial';
 import {synthesizeRifle,synthesizeCombat,type CombatSound} from './audioSynthesis';
 import {AudioEnvironmentCache} from './audioEnvironmentCache';
+import {synthesizeFootstep,FootstepSequence,FOOTSTEP_SEQUENCE_SEED,footstepLevel,type FootSide} from './movementAudio';
 
 export interface SoundEmitter {actor:number;position:Vec;local:boolean;faction?:Faction}
 type Voice={source:AudioScheduledSourceNode;nodes:AudioNode[];filter:BiquadFilterNode;gain:GainNode;panner:PannerNode;actor:number|null;emitter?:SoundEmitter;local:boolean};
@@ -15,6 +16,8 @@ export class Sound {
  private emitters=new Map<number,SoundEmitter>();
  private rifleBuffers=new Map<string,AudioBuffer>();
  private combatBuffers=new Map<string,AudioBuffer>();
+ private footstepBuffers=new Map<string,AudioBuffer>();
+ private footsteps=new Map<number,FootstepSequence>();
  private lastVariant=new Map<string,number>();
  private listener={position:{x:0,y:0,z:0},yaw:0,pitch:0};
  private environments=new AudioEnvironmentCache();
@@ -39,14 +42,19 @@ export class Sound {
   const c=this.ctx!,key=`${kind}:${variant}`;if(this.combatBuffers.has(key))return;
   const buffer=c.createBuffer(1,samples.length,c.sampleRate);buffer.getChannelData(0).set(samples);this.combatBuffers.set(key,buffer);
  }
+ private saveFootstepBuffer(stance:Stance,side:FootSide,variant:number,samples:Float32Array){
+  const c=this.ctx!,key=`${stance}:${side}:${variant}`;if(this.footstepBuffers.has(key))return;
+  const buffer=c.createBuffer(1,samples.length,c.sampleRate);buffer.getChannelData(0).set(samples);this.footstepBuffers.set(key,buffer);
+ }
  private warmRifles(){
   if(!this.ctx||typeof Worker==='undefined')return;
   try{
    const worker=this.rifleWarmup=new Worker(new URL('./rifleAudio.worker.ts',import.meta.url),{type:'module'});
    const finish=()=>{worker.terminate();if(this.rifleWarmup===worker)this.rifleWarmup=null;};
-   worker.onmessage=(event:MessageEvent<{done?:boolean;faction:Faction;kind?:CombatSound;variant:number;samples:Float32Array}>)=>{
-    if(event.data.done){finish();return;}const {faction,kind,variant,samples}=event.data;
-    if(kind)this.saveCombatBuffer(kind,variant,samples);else this.saveRifleBuffer(faction,variant,samples);
+   worker.onmessage=(event:MessageEvent<{done?:boolean;faction:Faction;kind?:CombatSound;stance?:Stance;side?:FootSide;variant:number;samples:Float32Array}>)=>{
+    if(event.data.done){finish();return;}const {faction,kind,stance,side,variant,samples}=event.data;
+    if(stance&&side)this.saveFootstepBuffer(stance,side,variant,samples);
+    else if(kind)this.saveCombatBuffer(kind,variant,samples);else this.saveRifleBuffer(faction,variant,samples);
    };
    worker.onerror=finish;worker.postMessage(this.ctx.sampleRate);
   }catch{/* An exact first-use fallback preserves sound if workers are unavailable. */}
@@ -97,6 +105,14 @@ export class Sound {
   while(this.voices.size>=MAX_VOICES)this.stop(this.voices.keys().next().value!);
   this.voices.set(source,voice);source.onended=()=>this.release(source);this.syncVoice(voice,true);return source;
  }
+ /** Decoded voices and review-selected PCM share the same positional routing,
+  * limiter and actor/scene cancellation as every runtime sound. */
+ playBuffer(buffer:AudioBuffer,emitter:SoundEmitter=LOCAL,gain=1):AudioBufferSourceNode|undefined{
+  if(!this.ctx||!this.master)return;
+  const c=this.ctx,source=c.createBufferSource();source.buffer=buffer;
+  const level=c.createGain();level.gain.value=Number.isFinite(gain)?clamp(gain,0,2):1;
+  source.connect(level);this.route(source,level,[source,level],emitter);source.start();source.stop(c.currentTime+buffer.duration);return source;
+ }
  noiseBurst(volume:number,duration:number,freq:number,delay=0,_pan=0,emitter?:SoundEmitter){
   if(!this.ctx||!this.master||!this.noise)return;
   const c=this.ctx,t=c.currentTime+delay,s=c.createBufferSource(),f=c.createBiquadFilter(),g=c.createGain();
@@ -140,12 +156,21 @@ export class Sound {
   for(let i=0;i<3;i++)sounds.push(this.noiseBurst(.1,.1,3200,.7+i*.43,0,emitter));
   this.reloadSounds.set(emitter.actor,sounds.filter((source):source is AudioBufferSourceNode|OscillatorNode=>!!source));
  }
- step(speed:number,emitter:SoundEmitter=LOCAL){this.noiseBurst(clamp(speed/30,.025,.14),.12,950,0,0,emitter);this.tone(65,.09,.035,0,emitter);}
+ step(speed:number,emitter:SoundEmitter=LOCAL,stance:Stance='stand'){
+  if(!this.ctx||!this.master)return;
+  const gain=footstepLevel(stance,speed);if(!gain)return;
+  let sequence=this.footsteps.get(emitter.actor);
+  if(!sequence){sequence=new FootstepSequence(FOOTSTEP_SEQUENCE_SEED^Math.imul(emitter.actor,0x9e3779b9));this.footsteps.set(emitter.actor,sequence);}
+  const {variant,side}=sequence.next(stance),key=`${stance}:${side}:${variant}`;
+  let buffer=this.footstepBuffers.get(key);
+  if(!buffer){this.saveFootstepBuffer(stance,side,variant,synthesizeFootstep(stance,this.ctx.sampleRate,variant,side));buffer=this.footstepBuffers.get(key)!;}
+  this.playBuffer(buffer,emitter,gain);
+ }
  melee(emitter:SoundEmitter=LOCAL){this.combat('swing',emitter);}
  impact(emitter:SoundEmitter=LOCAL,kind:'shot'|'melee'='shot'){this.combat(kind==='melee'?'melee-impact':'shot-impact',emitter);}
  switch(emitter:SoundEmitter=LOCAL){this.noiseBurst(.13,.12,1700,0,0,emitter);}
- stopActor(actor:number){this.cancelReload(actor);for(const voice of [...this.voices.values()])if(voice.actor===actor)this.stop(voice.source);this.emitters.delete(actor);this.environments.delete(actor);}
- resetScene(){this.cancelReload();for(const voice of [...this.voices.values()])if(voice.actor!==null)this.stop(voice.source);this.emitters.clear();this.environments.clear();this.updatingScene=false;}
+ stopActor(actor:number){this.cancelReload(actor);for(const voice of [...this.voices.values()])if(voice.actor===actor)this.stop(voice.source);this.emitters.delete(actor);this.environments.delete(actor);this.footsteps.delete(actor);}
+ resetScene(){this.cancelReload();for(const voice of [...this.voices.values()])if(voice.actor!==null)this.stop(voice.source);this.emitters.clear();this.environments.clear();this.footsteps.clear();this.updatingScene=false;}
  hit(){this.impact(LOCAL);}
  click(){this.tone(700,.035,.04);}
 }

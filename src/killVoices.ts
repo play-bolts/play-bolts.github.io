@@ -1,10 +1,12 @@
 import manifest from '../shared/kill-voices.json';
+import features from '../shared/features.json';
 import type {Faction} from './config';
 import type {Actor,Event} from './engine';
 import type {Sound,SoundEmitter} from './audio';
 
 export interface KillVoiceLine {id:string;faction:Faction;language:string;text:string;translation:string;file:string;voice:string}
 export const KILL_VOICE_LINES:readonly KillVoiceLine[]=manifest as KillVoiceLine[];
+export const KILL_VOICES_ENABLED=features.killVoices===true;
 export const DEFAULT_KILL_VOICE_CHANCE=.1;
 export function normalizeKillVoiceChance(value:unknown):number {
  return typeof value==='number'&&Number.isFinite(value)?Math.min(1,Math.max(0,value)):DEFAULT_KILL_VOICE_CHANCE;
@@ -23,9 +25,10 @@ export class KillVoices {
  private nextAt=-Infinity;
  private previous=new Map<Faction,string>();
  private seen=new WeakSet<Event>();
- constructor(private sound:Pick<Sound,'ctx'|'playBuffer'>,private random:()=>number=Math.random,private fetchAudio:typeof fetch=fetch){}
+ constructor(private sound:Pick<Sound,'ctx'|'playBuffer'>,private random:()=>number=Math.random,private fetchAudio:typeof fetch=fetch,private enabled=KILL_VOICES_ENABLED){}
 
  preload():Promise<void>{
+  if(!this.enabled)return Promise.resolve();
   const ctx=this.sound.ctx;if(!ctx)return Promise.resolve();
   if(this.context===ctx&&this.loading)return this.loading;
   this.context=ctx;this.buffers.clear();
@@ -41,6 +44,7 @@ export class KillVoices {
  }
 
  consider(event:Event,actor:Actor|undefined,emitter:SoundEmitter,now:number,chance:number):boolean {
+  if(!this.enabled)return false;
   if(event.type!=='kill'||event.presentationOnly||this.seen.has(event))return false;
   this.seen.add(event);
   if(!actor||!actor.alive||actor.hp<=0||actor.spectator||event.actor!==actor.id||emitter.actor!==actor.id||event.victim===undefined||event.victim<0||event.victim===actor.id)return false;
@@ -61,6 +65,7 @@ export class KillVoices {
 
  /** Stop barks when their soldier dies/changes life or live play is suspended. */
  update(actors:readonly Actor[],live:boolean,now:number){
+  if(!this.enabled){this.stop();return;}
   const active=this.active;if(!active)return;
   const actor=actors[active.actor.id];
   if(!live||actor!==active.actor||!actor.alive||actor.hp<=0||actor.spectator||actor.deaths!==active.deaths||actor.faction!==active.faction||now>=active.until)this.stop();

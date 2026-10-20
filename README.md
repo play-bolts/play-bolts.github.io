@@ -111,13 +111,16 @@ For a portable file with all audio embedded, run
 `temp/sound-review.html` directly. Its preferences are separate from the game.
 
 Only one preview plays at a time; **Stop**, **Escape**, or leaving the page stops
-it. The page is separate from the game's main menu and shares saved Volume and
-kill-voice chance settings with the game.
+it. The page is separate from the game's main menu and shares saved Volume with
+the game.
 
-Kill lines use the killer's language, default to a 10% chance and have a saved
-0–100% control in **Options** and on the review page. They never overlap or play
-for historical kill-feed notifications. Voice WAVs are static assets; gameplay
-makes no AI API calls. [Voice provenance and regeneration](public/assets/audio/voices/README.md).
+Spoken kill lines are currently disabled by `killVoices: false` in
+[shared/features.json](shared/features.json). Gameplay neither downloads nor
+plays voice clips, even with a previously saved 100% chance. **Options** and the
+review page show the chance control as disabled; saved preferences and the
+underlying 10% default remain available for a future release. Existing static
+voice assets can still be auditioned manually on the review page. Gameplay makes
+no AI API calls. [Voice provenance and regeneration](public/assets/audio/voices/README.md).
 
 In multiplayer, **T** or **Enter** opens chat; **Enter** sends and **Escape** cancels. Gameplay input is suspended while typing, and recent messages fade until chat is reopened. **Tab** shows kills, deaths and each player's server-measured ping in milliseconds. Single player shows kills and deaths without a ping column. Multiplayer keeps running while a menu is open; single player pauses.
 

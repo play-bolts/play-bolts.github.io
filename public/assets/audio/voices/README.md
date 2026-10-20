@@ -10,7 +10,10 @@ generation time, final output hash and measured final RMS/peak levels. Text and 
 `shared/kill-voices.json` at the repository root.
 
 The checked-in 24 kHz, 16-bit, mono WAVs are served as static assets. Playback
-does not call any AI service. Surrounding silence was trimmed with an attack/tail
+does not call any AI service. Spoken kill lines are currently disabled by
+`killVoices: false` in `shared/features.json`: gameplay does not download or play
+them, regardless of saved chance. Manual review previews remain available.
+Surrounding silence was trimmed with an attack/tail
 margin; brief edge fades and -6 dBFS peak normalization leave mix headroom.
 The finished takes then receive one offline WSOLA time compression pass: each
 clip has 80% of its former frame count (rounded to a whole sample), making it 20%

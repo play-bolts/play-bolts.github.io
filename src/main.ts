@@ -5,7 +5,7 @@ import {UI} from './ui';
 import {Game,createActor,type Input} from './engine';
 import {View} from './renderer';
 import {Sound} from './audio';
-import {KillVoices} from './killVoices';
+import {KillVoices,KILL_VOICES_ENABLED} from './killVoices';
 import {playCombatSound,playImpactSound} from './combatAudio';
 import {RULES,SPAWNS,clamp} from './config';
 import {playerNameHTML} from './names';
@@ -27,7 +27,7 @@ import {preloadWorldModelLods} from './worldModelLod';
 startVisitorTracking();
 const ui=new UI(),game=new Game(),sound=new Sound(),network=new NetworkClient(game),community=new CommunityClient();
 const killVoices=new KillVoices(sound);
-function initializeAudio(){sound.init();void killVoices.preload();}
+function initializeAudio(){sound.init();if(KILL_VOICES_ENABLED)void killVoices.preload();}
 function resetAudioScene(){killVoices.reset();sound.resetScene();}
 const touchMedia=matchMedia('(pointer: coarse)');
 const mobileDevice=()=>navigator.maxTouchPoints>0&&touchMedia.matches;

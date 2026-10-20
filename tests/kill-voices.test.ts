@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {KillVoices,KILL_VOICE_LINES,DEFAULT_KILL_VOICE_CHANCE,normalizeKillVoiceChance} from '../src/killVoices.ts';
+import {KillVoices,KILL_VOICE_LINES,KILL_VOICES_ENABLED,DEFAULT_KILL_VOICE_CHANCE,normalizeKillVoiceChance} from '../src/killVoices.ts';
+import {readSoundReviewPreferences} from '../src/soundReviewPreferences.ts';
+import {soundReviewMarkup} from '../src/soundReview.ts';
 import {createActor,type Actor,type Event as GameEvent} from '../src/engine.ts';
 import type {SoundEmitter} from '../src/audio.ts';
 
@@ -28,12 +30,38 @@ function fixture(options:{random?:()=>number;gate?:Promise<void>;missing?:number
   if(options.fetchFailure?.includes(index))throw new Error('offline optional clip');
   return new Response(new Uint8Array([index]),{status:options.missing?.includes(index)?404:200});
  };
- const voices=new KillVoices(sound,options.random??(()=>0),fetchAudio);
+ // Exercise the preserved enabled behavior independently of the release flag.
+ const voices=new KillVoices(sound,options.random??(()=>0),fetchAudio,true);
  const actor=createActor(0,'british','Test soldier');
  const emitter=(value:Actor=actor):SoundEmitter=>({actor:value.id,position:{x:value.x,y:value.y,z:value.z},faction:value.faction,local:value.id===0});
  const kill=(value:Actor=actor):GameEvent=>({type:'kill',actor:value.id,victim:value.id+1,actorFaction:value.faction});
- return{voices,sound,requests,decodes,plays,actor,emitter,kill,context};
+ return{voices,sound,fetchAudio,requests,decodes,plays,actor,emitter,kill,context};
 }
+
+test('disabled release neither preloads nor speaks despite a saved 100% kill chance',async()=>{
+ assert.equal(KILL_VOICES_ENABLED,false);
+ const saved=JSON.stringify({volume:.6,killVoiceChance:1});
+ const preferences=readSoundReviewPreferences({getItem:()=>saved});
+ assert.equal(preferences.killVoiceChance,1,'the saved preference is retained for a future enabled release');
+ const f=fixture();let draws=0;
+ const voices=new KillVoices(f.sound,()=>{draws++;return 0;},f.fetchAudio);
+ for(const faction of ['british','german','russian']as const){
+  await voices.preload();f.actor.faction=faction;
+  assert.equal(voices.consider(f.kill(),f.actor,f.emitter(),1000,preferences.killVoiceChance),false);
+  voices.update([f.actor],true,1100);voices.reset();
+ }
+ assert.equal(f.requests.length,0,'disabled gameplay never fetches optional voice assets');
+ assert.equal(f.decodes.length,0);assert.equal(f.plays.length,0);assert.equal(draws,0);
+});
+
+test('disabled review chance explains gameplay status while retaining every manual voice preview',()=>{
+ const markup=soundReviewMarkup();
+ const input=markup.match(/<input[^>]*id="kill-voice-chance"[^>]*>/)?.[0];
+ assert.ok(input);assert.match(input,/\sdisabled(?:\s|>)/);assert.match(input,/value="0"/);
+ assert.match(markup,/Spoken kill lines are temporarily disabled in gameplay/);
+ assert.match(markup,/Manual previews still work/);
+ for(const line of KILL_VOICE_LINES)assert.ok(markup.includes(`data-sound-preview="voice:${line.id}"`));
+});
 
 test('kill voice probability defaults to ten percent and clamps finite settings',()=>{
  assert.equal(DEFAULT_KILL_VOICE_CHANCE,.1);

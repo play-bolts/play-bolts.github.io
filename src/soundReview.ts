@@ -1,7 +1,7 @@
 import {FACTIONS,WEAPONS,type Faction,type Stance} from './config';
 import {synthesizeRiflePreview,synthesizeCombat,type CombatSound} from './audioSynthesis';
 import {synthesizeFootstep,FOOTSTEP_VARIANTS,FOOTSTEP_STANCES,FOOTSTEP_SIDES,MOVEMENT_PREVIEW_SPEED,footstepLevel,renderMovementPreview} from './movementAudio';
-import {KILL_VOICE_LINES,normalizeKillVoiceChance} from './killVoices';
+import {KILL_VOICE_LINES,KILL_VOICES_ENABLED,normalizeKillVoiceChance} from './killVoices';
 import {SoundPreviewPlayer,previewBuffer,loadPreviewFile,type PreviewLoad,type PreviewState} from './soundPreview';
 import {AUDIO_CANDIDATES,audioCandidatesFor,type AudioCandidate,type AudioCandidateGroup} from './audioCandidates';
 
@@ -53,7 +53,7 @@ export function soundReviewMarkup():string {
    ${Object.entries(combatNames).map(([kind,name])=>`<section class="sound-family"><div class="sound-rifle-row"><h4>${name}</h4>${previewButton(`combat:${kind}`,'Current',`Play current ${name.toLowerCase()}`)}</div>${candidateMarkup('combat',kind,name)}</section>`).join('')}
   </section>
   <section class="sound-review-section" aria-labelledby="sound-voices-title"><h3 id="sound-voices-title">Kill voice lines</h3><p>These character voices are AI-generated. Each line is shown in its original language with an English translation.</p>
-   <label class="setting sound-voice-chance" for="kill-voice-chance">Chance after a kill <output id="kill-voice-chance-value" for="kill-voice-chance">10%</output><input id="kill-voice-chance" type="range" min="0" max="100" step="1" value="10" aria-describedby="kill-voice-chance-help"></label><p id="kill-voice-chance-help" class="sound-review-hint">Voice lines never overlap and have a short pause between them. Set to 0% to turn them off. This setting does not affect previews.</p>
+   <label class="setting sound-voice-chance" for="kill-voice-chance">Chance after a kill <output id="kill-voice-chance-value" for="kill-voice-chance">${KILL_VOICES_ENABLED?'10%':'Disabled'}</output><input id="kill-voice-chance" type="range" min="0" max="100" step="1" value="${KILL_VOICES_ENABLED?10:0}" ${KILL_VOICES_ENABLED?'':'disabled'} aria-describedby="kill-voice-chance-help"></label><p id="kill-voice-chance-help" class="sound-review-hint">${KILL_VOICES_ENABLED?'Voice lines never overlap and have a short pause between them. Set to 0% to turn them off. This setting does not affect previews.':'Spoken kill lines are temporarily disabled in gameplay. Your saved chance is retained. Manual previews still work.'}</p>
    <div class="sound-voice-list">${KILL_VOICE_LINES.map(line=>`<article class="sound-voice-row"><div><span class="sound-voice-language">${factionNames[line.faction]} · ${escape(line.language)}</span><h4 class="sound-voice-original" lang="${factionLanguages[line.faction]}">${escape(line.text)}</h4><p class="sound-voice-translation" lang="en">${escape(line.translation)}</p></div>${previewButton(`voice:${line.id}`,'Current',`Play current ${factionNames[line.faction]} voice line: ${line.text}`)}${candidateMarkup('voice',line.id,`${factionNames[line.faction]} voice line: ${line.text}`)}</article>`).join('')}</div>
   </section>
  </section>`;
@@ -78,14 +78,14 @@ export class SoundReviewPanel {
   for(const candidate of AUDIO_CANDIDATES)this.previews.set(`candidate:${candidate.id}`,{label:`${candidateFamily(candidate)} · ${candidate.label}`,load:(context,signal)=>loadCandidate(context,candidate,signal)});
   for(const button of root.querySelectorAll<HTMLButtonElement>('[data-sound-preview]'))button.onclick=()=>{const id=button.dataset.soundPreview!,preview=this.previews.get(id);if(preview)void this.player.play(id,preview.label,preview.load);};
   root.querySelector<HTMLButtonElement>('#sound-preview-stop')!.onclick=()=>this.stop();
-  root.querySelector<HTMLInputElement>('#kill-voice-chance')!.oninput=event=>{const value=Number((event.currentTarget as HTMLInputElement).value);if(Number.isFinite(value)){changeChance(normalizeKillVoiceChance(value/100));this.refresh();}};
+  root.querySelector<HTMLInputElement>('#kill-voice-chance')!.oninput=event=>{if(!KILL_VOICES_ENABLED)return;const value=Number((event.currentTarget as HTMLInputElement).value);if(Number.isFinite(value)){changeChance(normalizeKillVoiceChance(value/100));this.refresh();}};
   document.addEventListener('visibilitychange',()=>{if(document.hidden)this.stop();});
   window.addEventListener('pagehide',()=>this.stop());this.refresh();
  }
  stop(){this.player.stop();}
  refresh(){
-  const percent=Math.round(normalizeKillVoiceChance(this.chance())*100),input=this.root.querySelector<HTMLInputElement>('#kill-voice-chance')!;
-  input.value=String(percent);input.setAttribute('aria-valuetext',`${percent} percent`);this.root.querySelector<HTMLOutputElement>('#kill-voice-chance-value')!.textContent=`${percent}%`;this.player.refreshVolume();
+  const percent=KILL_VOICES_ENABLED?Math.round(normalizeKillVoiceChance(this.chance())*100):0,input=this.root.querySelector<HTMLInputElement>('#kill-voice-chance')!;
+  input.value=String(percent);input.disabled=!KILL_VOICES_ENABLED;input.setAttribute('aria-valuetext',KILL_VOICES_ENABLED?`${percent} percent`:'Disabled');this.root.querySelector<HTMLOutputElement>('#kill-voice-chance-value')!.textContent=KILL_VOICES_ENABLED?`${percent}%`:'Disabled';this.player.refreshVolume();
  }
  private renderState(state:PreviewState){
   for(const button of this.root.querySelectorAll<HTMLButtonElement>('[data-sound-preview]'))button.setAttribute('aria-pressed',String((state.phase==='loading'||state.phase==='playing')&&button.dataset.soundPreview===state.id));

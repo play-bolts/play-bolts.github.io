@@ -1,3 +1,4 @@
+v1.0.31 - Disables spoken kill lines and voice downloads regardless of saved chance while retaining manual sound review.
 v1.0.30 - Moves sound review into a standalone page and portable HTML with 54 Stability AI alternatives and speech review notes.
 v1.0.29 - Compresses all sound durations by 20% while preserving pitch, handling cue timing and gait cadence.
 v1.0.28 - Adds one-at-a-time sound review and nine multilingual kill voices with a configurable 10% default chance and stale-event protection.

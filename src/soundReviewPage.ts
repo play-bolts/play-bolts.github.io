@@ -10,7 +10,7 @@ const fileReview=location.protocol==='file:';
 const page=document.querySelector<HTMLElement>('#sound-review-page')!;
 page.innerHTML=`<header class="review-page-header"><h1>BOLTS</h1><a id="review-return" href="${fileReview?'http://127.0.0.1:5173/':'./'}">Return to game</a></header>
  <main class="review-page-card">
-  <div class="review-page-settings"><label class="setting" for="review-volume">Volume <output id="review-volume-value" for="review-volume">60%</output><input id="review-volume" type="range" min="0" max="100" step="1" value="60" aria-describedby="review-preferences-status"></label><p id="review-preferences-status" role="status">${fileReview?'Settings apply to this review file and are separate from the game.':'Volume and voice chance are shared with the game on this browser.'}</p></div>
+  <div class="review-page-settings"><label class="setting" for="review-volume">Volume <output id="review-volume-value" for="review-volume">60%</output><input id="review-volume" type="range" min="0" max="100" step="1" value="60" aria-describedby="review-preferences-status"></label><p id="review-preferences-status" role="status">${fileReview?'Settings apply to this review file and are separate from the game.':'Volume is shared with the game on this browser.'}</p></div>
   ${soundReviewMarkup()}
  </main>`;
 const panelRoot=page.querySelector<HTMLElement>('#tab-sounds')!;panelRoot.classList.remove('hidden');

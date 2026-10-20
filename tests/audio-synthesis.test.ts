@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {synthesizeRifle,synthesizeCombat,COMBAT_SOUNDS} from '../src/audioSynthesis.ts';
+import {synthesizeRifle,synthesizeCombat,COMBAT_SOUNDS,SOUND_DURATION_SCALE} from '../src/audioSynthesis.ts';
 import {FACTIONS,type Faction} from '../src/config.ts';
 
 // Independent frequency-domain measurements of produced PCM, not synthesis parameters.
@@ -19,7 +19,7 @@ function spectrum(samples:Float32Array,rate:number,start:number,end:number){
 }
 const phases=[[0,.025],[.025,.14],[.14,.35]] as const;
 const statistics=Object.fromEntries(FACTIONS.map(faction=>[faction,[0,1,2].map(variant=>{
- const pcm=synthesizeRifle(faction,48000,0x51f15e+variant*7919);return{pcm,phases:phases.map(([start,end])=>{const scale=faction==='german'?.8:1;return spectrum(pcm,48000,start*scale,end*scale);})};
+ const pcm=synthesizeRifle(faction,48000,0x51f15e+variant*7919);return{pcm,phases:phases.map(([start,end])=>{const scale=(faction==='german'?.8:1)*SOUND_DURATION_SCALE;return spectrum(pcm,48000,start*scale,end*scale);})};
 })])) as Record<Faction,{pcm:Float32Array;phases:ReturnType<typeof spectrum>[]}[]>;
 const mean=(values:number[])=>values.reduce((sum,value)=>sum+value,0)/values.length;
 
@@ -29,7 +29,7 @@ test('all rifle variants have finite bounded PCM, a substantial body, and a clic
    const total=pcm.reduce((sum,v)=>sum+v*v,0);let cumulative=0,energy95=0;
    assert.ok(pcm.every(Number.isFinite));assert.ok(Math.max(...pcm.map(Math.abs))<.89);assert.equal(pcm[0],0);assert.ok(Math.abs(pcm.at(-1)!)<1e-5);
    for(let i=0;i<pcm.length;i++){cumulative+=pcm[i]**2;if(cumulative>=total*.95){energy95=i/48000;break;}}
-   assert.ok(energy95>.26&&energy95<.44,`${faction}: ${energy95}s must retain a shot body without an excessive tail`);
+   assert.ok(energy95>.26*SOUND_DURATION_SCALE&&energy95<.44*SOUND_DURATION_SCALE,`${faction}: ${energy95}s must retain a compressed shot body without an excessive tail`);
   }
   assert.notDeepEqual(statistics[faction][0].pcm,statistics[faction][1].pcm);
   assert.deepEqual(synthesizeRifle(faction,48000),statistics[faction][0].pcm,'repeatable review signal');
@@ -43,7 +43,9 @@ test('attack/body/tail spectra follow multiple verified reference shots instead 
  const reference={british:[2233,945,819],russian:[2210,857,617],german:[3000,1667,1535]};
  for(const faction of FACTIONS)for(let phase=0;phase<3;phase++){
   const measured=mean(statistics[faction].map(item=>item.phases[phase].centroid));
-  assert.ok(Math.abs(measured/reference[faction][phase]-1)<(phase===2?.25:.15),`${faction} phase${phase}: ${measured}Hz must track the reference band`);
+  // The compressed attack window is only 20 ms (16 ms for Kar); its few
+  // low-frequency cycles allow more sample-to-sample variance than the body.
+  assert.ok(Math.abs(measured/reference[faction][phase]-1)<(phase===2?.25:phase===0?.20:.15),`${faction} phase${phase}: ${measured}Hz must track the reference band`);
  }
  const avg=(faction:Faction,phase:number,key:'centroid'|'low'|'high')=>mean(statistics[faction].map(item=>item.phases[phase][key]));
  assert.ok(avg('german',0,'centroid')>avg('british',0,'centroid')*1.25,'Kar98k has the sharpest crack');
@@ -70,7 +72,7 @@ test('combat Foley is bounded, click-free, repeatable, and varies across hits at
    assert.ok(pcm.every(Number.isFinite));assert.ok(Math.max(...pcm.map(Math.abs))<=.651);
    assert.equal(pcm[0],0);assert.equal(pcm.at(-1),0);
    const dc=pcm.reduce((sum,value)=>sum+value,0)/pcm.length;assert.ok(Math.abs(dc)<.002,'no headroom wasted on DC');
-   assert.ok(pcm.length<=rate*.33,'short Foley does not produce an excessive tail');
+   assert.ok(pcm.length<=rate*.33*SOUND_DURATION_SCALE,'short Foley does not produce an excessive tail');
   }
   assert.notDeepEqual(variants[0],variants[1]);assert.deepEqual(variants[0],synthesizeCombat(kind,rate));
  }
@@ -78,7 +80,7 @@ test('combat Foley is bounded, click-free, repeatable, and varies across hits at
 
 test('contact has an immediate transient and low body, while a missed swing has a rising air envelope',()=>{
  const rate=48000,swing=synthesizeCombat('swing',rate),strike=synthesizeCombat('melee-impact',rate),bullet=synthesizeCombat('shot-impact',rate);
- const opening=(pcm:Float32Array)=>spectrum(pcm,rate,0,.025),body=(pcm:Float32Array)=>spectrum(pcm,rate,.025,.10);
+ const opening=(pcm:Float32Array)=>spectrum(pcm,rate,0,.025*SOUND_DURATION_SCALE),body=(pcm:Float32Array)=>spectrum(pcm,rate,.025*SOUND_DURATION_SCALE,.10*SOUND_DURATION_SCALE);
  assert.ok(body(swing).rms>opening(swing).rms*2,'swing builds with the arm motion');
  for(const hit of [strike,bullet])assert.ok(opening(hit).rms>body(hit).rms*1.5,'contact starts at the confirmed hit without a delayed attack');
  assert.ok(body(strike).rms>body(bullet).rms*1.4,'melee has a weightier sustained body than a bullet contact');
@@ -86,9 +88,11 @@ test('contact has an immediate transient and low body, while a missed swing has 
 });
 
 
-test('Kar98k report lasts 20% less at both device sample rates',()=>{
+test('every rifle and combat report is 20% shorter at both device sample rates',()=>{
+ assert.equal(SOUND_DURATION_SCALE,.8);
  for(const rate of [44100,48000]){
-  assert.equal(synthesizeRifle('german',rate).length,Math.ceil(rate*.82*.8));
-  for(const faction of ['british','russian'] as const)assert.equal(synthesizeRifle(faction,rate).length,Math.ceil(rate*.82));
+  assert.equal(synthesizeRifle('german',rate).length,Math.ceil(rate*.5248),'Kar keeps its previous compression and becomes .5248 seconds');
+  for(const faction of ['british','russian'] as const)assert.equal(synthesizeRifle(faction,rate).length,Math.ceil(rate*.656));
+  for(const kind of COMBAT_SOUNDS){const previous={swing:.32,'melee-impact':.28,'shot-impact':.22}[kind];assert.equal(synthesizeCombat(kind,rate).length,Math.ceil(rate*previous*.8));}
  }
 });

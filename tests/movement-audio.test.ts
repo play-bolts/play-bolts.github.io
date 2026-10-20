@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {FootstepSequence,FOOTSTEP_VARIANTS,FOOTSTEP_STANCES,FOOTSTEP_SIDES,synthesizeFootstep,footstepLevel,renderMovementPreview,MOVEMENT_PREVIEW_SPEED} from '../src/movementAudio.ts';
-import {synthesizeRifle,synthesizeRiflePreview} from '../src/audioSynthesis.ts';
+import {synthesizeRifle,synthesizeRiflePreview,SOUND_DURATION_SCALE} from '../src/audioSynthesis.ts';
 import {FACTIONS} from '../src/config.ts';
 import {gaitRate} from '../src/soldierGait.ts';
 
@@ -17,7 +17,7 @@ test('all stance/foot/take combinations produce bounded, deterministic contact P
    assert.ok(pcm.every(Number.isFinite));assert.equal(pcm[0],0);assert.equal(pcm.at(-1),0);
    assert.ok(peak(pcm)<=.741);assert.ok(rms(pcm)>.035,'contact has an audible body');
    assert.ok(Math.abs(pcm.reduce((sum,value)=>sum+value,0)/pcm.length)<.003,'no audible DC offset');
-   assert.ok(pcm.length>=rate*.25&&pcm.length<=Math.ceil(rate*.40));
+   assert.equal(pcm.length,Math.ceil(rate*({stand:.30,crouch:.36,prone:.40}[stance])*.8),'each contact is exactly 20% shorter');
    assert.deepEqual(pcm,synthesizeFootstep(stance,rate,variant,side));
   }
   for(let i=1;i<takes.length;i++)assert.notDeepEqual(takes[0],takes[i],'each foot/take has its own grain pattern and weight transfer');
@@ -41,7 +41,7 @@ test('shuffled movement bags alternate feet, visit every take and never repeat a
 
 test('crouch has a softer weight transfer and quieter but present scrape than walking',()=>{
  const rate=48000,walk=synthesizeFootstep('stand',rate),crouch=synthesizeFootstep('crouch',rate);
- const windowRms=(pcm:Float32Array,start:number,end:number)=>rms(pcm.slice(Math.round(start*rate),Math.round(end*rate)));
+ const windowRms=(pcm:Float32Array,start:number,end:number)=>rms(pcm.slice(Math.round(start*rate*SOUND_DURATION_SCALE),Math.round(end*rate*SOUND_DURATION_SCALE)));
  assert.ok(windowRms(crouch,.07,.15)/windowRms(crouch,0,.04)>windowRms(walk,.07,.15)/windowRms(walk,0,.04),'crouch shifts emphasis from heel thump to sole/cloth movement');
  const walkLevel=rms(walk)*footstepLevel('stand',2.5),crouchLevel=rms(crouch)*footstepLevel('crouch',1.4);
  assert.ok(crouchLevel<walkLevel*.85&&crouchLevel>walkLevel*.25,'crouching stays quieter without disappearing');
@@ -55,6 +55,9 @@ test('review sequence uses runtime takes and gait cadence with no loudness norma
   const first=sequence.next(stance),pcm=synthesizeFootstep(stance,rate,first.variant,first.side),gain=footstepLevel(stance,speed);
   const secondAt=Math.round(rate/(2*gaitRate(speed,Number(stance==='crouch'),Number(stance==='prone'))));
   for(let i=0;i<Math.min(secondAt,pcm.length);i++)assert.equal(preview[i],Math.fround(pcm[i]*gain));
+  assert.ok(secondAt>pcm.length,'shorter samples leave more room without speeding up animation contacts');
+  assert.ok(preview.slice(pcm.length,secondAt).every(sample=>sample===0),'the next contact keeps its original gait onset');
+  assert.equal(preview.length,Math.ceil(2*rate/(2*gaitRate(speed,Number(stance==='crouch'),Number(stance==='prone'))))+pcm.length);
   assert.deepEqual(preview,renderMovementPreview(stance,rate,{steps:3}));
   assert.ok(peak(preview)<=.75,'cadence overlap retains ample headroom');
  }

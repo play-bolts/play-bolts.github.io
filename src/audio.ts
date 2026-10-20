@@ -1,6 +1,6 @@
 import {clamp,type Faction,type Stance,type Vec} from './config';
 import {listenerBasis} from './audioSpatial';
-import {synthesizeRifle,synthesizeCombat,type CombatSound} from './audioSynthesis';
+import {synthesizeRifle,synthesizeCombat,SOUND_DURATION_SCALE,type CombatSound} from './audioSynthesis';
 import {AudioEnvironmentCache} from './audioEnvironmentCache';
 import {synthesizeFootstep,FootstepSequence,FOOTSTEP_SEQUENCE_SEED,footstepLevel,type FootSide} from './movementAudio';
 
@@ -115,12 +115,14 @@ export class Sound {
  }
  noiseBurst(volume:number,duration:number,freq:number,delay=0,_pan=0,emitter?:SoundEmitter){
   if(!this.ctx||!this.master||!this.noise)return;
+  duration*=SOUND_DURATION_SCALE;
   const c=this.ctx,t=c.currentTime+delay,s=c.createBufferSource(),f=c.createBiquadFilter(),g=c.createGain();
   s.buffer=this.noise;f.type='lowpass';f.frequency.value=freq;g.gain.setValueAtTime(Math.max(.001,volume),t);g.gain.exponentialRampToValueAtTime(.001,t+duration);
   s.connect(f).connect(g);this.route(s,g,[s,f,g],emitter);s.start(t,Math.random()*.6);s.stop(t+duration);return s;
  }
  tone(freq:number,duration:number,vol:number,delay=0,emitter?:SoundEmitter){
   if(!this.ctx||!this.master)return;
+  duration*=SOUND_DURATION_SCALE;
   const c=this.ctx,t=c.currentTime+delay,o=c.createOscillator(),g=c.createGain();
   o.type='triangle';o.frequency.setValueAtTime(freq,t);o.frequency.exponentialRampToValueAtTime(freq*.3,t+duration);g.gain.setValueAtTime(Math.max(.001,vol),t);g.gain.exponentialRampToValueAtTime(.001,t+duration);
   o.connect(g);this.route(o,g,[o,g],emitter);o.start(t);o.stop(t+duration);return o;

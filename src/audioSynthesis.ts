@@ -1,5 +1,9 @@
 import type {Faction,Stance} from './config';
 
+/** Shorten each authored sound by 20%. Frequencies stay on real sample time;
+ * only envelopes and internal sound timings use this compressed time scale. */
+export const SOUND_DURATION_SCALE=.8;
+
 type Band=readonly[frequency:number,q:number];
 type Envelope=readonly(readonly[time:number,gain:number])[];
 type RifleSound={bands:readonly Band[];attack:readonly number[];body:readonly number[];tail:readonly number[];envelope:Envelope;roughness:number;roughHz:number;shock:number;reflections:readonly(readonly[number,number])[]};
@@ -55,7 +59,7 @@ function finish(samples:Float32Array,rate:number,ceiling:number,drive=0){
  for(let i=0;i<samples.length;i++){
   const input=samples[i];filtered=pole*(filtered+input-previous);previous=input;
   const value=drive?Math.tanh(filtered*drive)/drive:filtered;
-  samples[i]=value*Math.min(1,i/(rate*.00015),(samples.length-1-i)/(rate*.02));peak=Math.max(peak,Math.abs(samples[i]));
+  samples[i]=value*Math.min(1,i/(rate*.00015*SOUND_DURATION_SCALE),(samples.length-1-i)/(rate*.02*SOUND_DURATION_SCALE));peak=Math.max(peak,Math.abs(samples[i]));
  }
  const gain=ceiling/Math.max(peak,.001);for(let i=0;i<samples.length;i++)samples[i]*=gain;
  samples[0]=0;samples[samples.length-1]=0;
@@ -79,9 +83,9 @@ function reflections(samples:Float32Array,rate:number,seed:number,timeScale=1){
 
 /** One mono shot carries its complete crack/body/tail through the same spatial route. */
 export function synthesizeRifle(faction:Faction,sampleRate:number,seed=0x51f15e):Float32Array{
- // Compress the Kar98k's authored timing by 20% while retaining its resonant
- // frequencies. Playback-rate changes would raise its pitch by 25% as well.
- const timeScale=faction==='german'?.8:1;
+ // Keep the existing shorter Kar envelope, then shorten every rifle by 20%.
+ // Playback-rate changes would also raise pitch; oscillator time stays real.
+ const timeScale=(faction==='german'?.8:1)*SOUND_DURATION_SCALE;
  const p=RIFLE_SOUND[faction],length=Math.ceil(sampleRate*.82*timeScale),out=new Float32Array(length);
  const salt={british:0x2510b2,russian:0x6e4181,german:0x934fb3}[faction];
  const bands=p.bands.map(([hz,q],i)=>resonantNoise(length,sampleRate,hz,q,(seed^salt^Math.imul(i+1,0x9e3779b9))>>>0));
@@ -114,7 +118,7 @@ export function synthesizeRifle(faction:Faction,sampleRate:number,seed=0x51f15e)
 
 export type RiflePreviewProfile='current'|'fuller';
 /** Optional DSP comparison only; runtime keeps synthesizeRifle unchanged.
- * Parallel low/mid coloration adds weight without extending the Kar's .656 s
+ * Parallel low/mid coloration adds weight without extending the Kar's .5248 s
  * report. Match the original RMS so extra loudness cannot win the comparison. */
 export function synthesizeRiflePreview(faction:Faction,sampleRate:number,profile:RiflePreviewProfile='current',variant=0):Float32Array{
  const baseline=synthesizeRifle(faction,sampleRate,0x51f15e+variant*7919);if(profile==='current')return baseline;
@@ -144,20 +148,20 @@ export const COMBAT_SOUNDS:readonly CombatSound[]=['swing','shot-impact','melee-
 /** Original short Foley-like layers, rendered once per variant in the warmup
  * worker. Swing is deliberately separate: a miss must not play contact audio. */
 export function synthesizeCombat(kind:CombatSound,sampleRate:number,seed=0x71a9):Float32Array{
- const duration=kind==='swing'?.32:kind==='melee-impact'?.28:.22,length=Math.ceil(sampleRate*duration),out=new Float32Array(length);
+ const duration=(kind==='swing'?.32:kind==='melee-impact'?.28:.22)*SOUND_DURATION_SCALE,length=Math.ceil(sampleRate*duration),out=new Float32Array(length);
  const low=resonantNoise(length,sampleRate,kind==='swing'?440:180,.7,seed^0x165b);
  const mid=resonantNoise(length,sampleRate,kind==='swing'?1450:950,.65,seed^0xa237);
  const high=resonantNoise(length,sampleRate,kind==='swing'?4600:3600,.6,seed^0x362d);
  const variation=.96+(seed%71)/900;
  for(let i=0;i<length;i++){
-  const t=i/sampleRate;
+  const seconds=i/sampleRate,t=seconds/SOUND_DURATION_SCALE;
   if(kind==='swing'){
    const whoosh=Math.sin(Math.PI*Math.min(1,t/.25))**2*Math.exp(-t/.28);
    const cloth=bell(t,.025,.015)+.45*bell(t,.16,.027);
    out[i]=(low[i]*.32+mid[i]*(.35+t*2.5)+high[i]*.15)*whoosh+mid[i]*cloth*.14;
   }else{
    const heavy=kind==='melee-impact',attack=smooth(t/.0004),bodyDecay=heavy?.055:.035;
-   const phase=2*Math.PI*(78*t+1.1*(1-Math.exp(-t/.018)))*variation;
+   const phase=2*Math.PI*(78*seconds+1.1*SOUND_DURATION_SCALE*(1-Math.exp(-t/.018)))*variation;
    const body=(Math.sin(phase)*(heavy?.9:.62)+low[i]*.42)*Math.exp(-t/bodyDecay);
    const snap=(mid[i]*.65+high[i]*(heavy?.28:.9))*Math.exp(-t/(heavy?.014:.012));
    // Several tiny irregular grains add texture to contact instead of a single
@@ -183,7 +187,7 @@ export function synthesizeFootstep(stance:Stance,sampleRate:number,variant=0,sid
  const seed=(0x5eeda11^Math.imul(take+1,0x9e3779b9)^(side==='left'?0x183f:0x985a)^({stand:0,crouch:0x3b921,prone:0x7c31a}[stance]))>>>0;
  let state=seed;const random=()=>{state^=state<<13;state^=state>>>17;state^=state<<5;return(state>>>0)/4294967296;};
  const crouch=stance==='crouch',prone=stance==='prone',duration=prone?.40:crouch?.36:.30;
- const length=Math.ceil(sampleRate*duration),out=new Float32Array(length);
+ const length=Math.ceil(sampleRate*duration*SOUND_DURATION_SCALE),out=new Float32Array(length);
  const pitch=.92+random()*.16+(side==='left'?-.025:.025),settle=.019+random()*.024,drag=.073+random()*.035;
  const low=resonantNoise(length,sampleRate,165*pitch,.75,seed^0x825f);
  const body=resonantNoise(length,sampleRate,420*pitch,.9,seed^0xc82f);
@@ -192,9 +196,9 @@ export function synthesizeFootstep(stance:Stance,sampleRate:number,variant=0,sid
  const cloth=resonantNoise(length,sampleRate,780*pitch,.72,seed^0xd308);
  const grains=Array.from({length:12},(_,i)=>({time:.006+random()*(i<5?.04:.15),width:.0007+random()*.0028,gain:(.12+random()*.20)*(i<5?1:.55)}));
  for(let i=0;i<length;i++){
-  const t=i/sampleRate,attack=smooth(t/.0008);
+  const seconds=i/sampleRate,t=seconds/SOUND_DURATION_SCALE,attack=smooth(t/.0008);
   const heel=Math.exp(-t/(crouch?.023:.032)),toe=bell(t,settle,crouch?.016:.011);
-  const pressure=(Math.sin(2*Math.PI*102*pitch*t)+.40*Math.sin(2*Math.PI*191*pitch*t+.2)+.16*Math.sin(2*Math.PI*319*pitch*t))*(1-Math.exp(-t/.0015))*Math.exp(-t/.034);
+  const pressure=(Math.sin(2*Math.PI*102*pitch*seconds)+.40*Math.sin(2*Math.PI*191*pitch*seconds+.2)+.16*Math.sin(2*Math.PI*319*pitch*seconds))*(1-Math.exp(-t/.0015))*Math.exp(-t/.034);
   let particles=0;for(const grain of grains)particles+=grain.gain*bell(t,grain.time,grain.width);
   const scrape=bell(t,drag,crouch?.052:.035)+.25*bell(t,drag+.065,.033);
   if(prone){

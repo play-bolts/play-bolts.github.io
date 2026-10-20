@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import {Sound,type SoundEmitter} from '../src/audio.ts';
 import {listenerBasis,soundEnvironment} from '../src/audioSpatial.ts';
 import {BOXES} from '../src/config.ts';
-import {COMBAT_SOUNDS} from '../src/audioSynthesis.ts';
+import {COMBAT_SOUNDS,SOUND_DURATION_SCALE} from '../src/audioSynthesis.ts';
 import {FootstepSequence,FOOTSTEP_STANCES,FOOTSTEP_SIDES,FOOTSTEP_VARIANTS,synthesizeFootstep,footstepLevel} from '../src/movementAudio.ts';
 
-class Param {value=0;setValueAtTime(v:number){this.value=v;}setTargetAtTime(v:number){this.value=v;}exponentialRampToValueAtTime(v:number){this.value=v;}}
+class Param {value=0;sets:{value:number;time:number}[]=[];ramps:{value:number;time:number}[]=[];setValueAtTime(v:number,time=0){this.value=v;this.sets.push({value:v,time});}setTargetAtTime(v:number){this.value=v;}exponentialRampToValueAtTime(v:number,time=0){this.value=v;this.ramps.push({value:v,time});}}
 class Node {
  connections:Node[]=[];disconnected=false;
  connect(node:Node){this.connections.push(node);return node;}
  disconnect(){this.connections=[];this.disconnected=true;}
 }
-class Source extends Node {onended:(()=>void)|null=null;stops:number[]=[];buffer:unknown;type='';frequency=new Param();start(){}stop(time=0){this.stops.push(time);}end(){this.onended?.();}}
+class Source extends Node {onended:(()=>void)|null=null;starts:number[]=[];stops:number[]=[];buffer:unknown;type='';frequency=new Param();start(time=0){this.starts.push(time);}stop(time=0){this.stops.push(time);}end(){this.onended?.();}}
 class Gain extends Node {gain=new Param();}
 class Filter extends Node {frequency=new Param();Q=new Param();type='';}
 class Panner extends Node {positionX=new Param();positionY=new Param();positionZ=new Param();panningModel='';distanceModel='';refDistance=0;maxDistance=0;rolloffFactor=0;}
@@ -160,7 +160,24 @@ test('decoded voice playback uses actor routing and stops on actor and scene cle
  const {sound,ctx,master}=setup(),buffer=ctx.createBuffer(1,4800,48000);
  const source=sound.playBuffer(buffer as unknown as AudioBuffer,remote,.35) as unknown as Source;
  assert.ok(source);assert.equal(source.buffer,buffer);assert.equal(ctx.gains[0].gain.value,.35);
+ assert.equal(source.stops[0],ctx.currentTime+buffer.duration,'already compressed static voice PCM is not shortened a second time');
  assert.equal(ctx.panners[0].positionX.value,remote.position.x);assert.equal(ctx.gains.filter(g=>g.connections.includes(master)).length,0);
  sound.stopActor(remote.actor);assert.equal(source.disconnected,true);
  const next=sound.playBuffer(buffer as unknown as AudioBuffer,{...remote,actor:3}) as unknown as Source;sound.resetScene();assert.equal(next.disconnected,true);
+});
+
+test('handling sounds shorten their envelopes while preserving reload/bolt cue onsets and frequencies',()=>{
+ const {sound,ctx}=setup();sound.reload(remote);
+ const delays=[0,0,.17,.7,1.13,1.56],durations=[.06,.035,.09,.1,.1,.1];
+ for(let i=0;i<ctx.sources.length;i++){
+  const source=ctx.sources[i],start=ctx.currentTime+delays[i];
+  assert.ok(Math.abs(source.starts[0]-start)<1e-10,'reload manipulation stays aligned to the animation');
+  assert.ok(Math.abs(source.stops[0]-(start+durations[i]*SOUND_DURATION_SCALE))<1e-10);
+ }
+ const tone=ctx.sources[1];assert.deepEqual(tone.frequency.sets,[{value:800,time:10}]);
+ assert.deepEqual(tone.frequency.ramps,[{value:240,time:10+.035*.8}],'tone frequencies remain unchanged through the shorter sweep');
+ const before=ctx.sources.length;sound.bolt(remote);
+ for(let i=0;i<3;i++){const source=ctx.sources[before+i];assert.ok(Math.abs(source.starts[0]-(10+delays[i]))<1e-10);assert.ok(Math.abs(source.stops[0]-(10+delays[i]+durations[i]*.8))<1e-10);}
+ sound.switch(remote);assert.equal(ctx.sources.at(-1)!.stops[0],10+.12*.8);
+ sound.click();assert.equal(ctx.sources.at(-1)!.stops[0],10+.035*.8);
 });

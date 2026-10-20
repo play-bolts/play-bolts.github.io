@@ -10,10 +10,18 @@
     "model": "gpt-4o-mini-tts-2025-12-15",
     "instructions": "Perform this original fictional adult soldier's brief victory bark. A powerful, deep, chest-resonant male voice, commanding and gritty, confident after winning a fight. Punchy natural delivery, not singsong. Sound strong without prolonged screaming or strained distortion. Say only the supplied line, once. No added words, music, sound effects, whispering, background ambience, or theatrical reverb. Dry close recording. Native British English, a rough and confident English infantry sergeant.",
     "generatedAt": "2026-10-19T13:46:17.067535+00:00",
-    "sha256": "10c793072b342ce65fbe8adb7ca74c93c37e932c974534a5f349d40fc2cc4f8a",
-    "durationSeconds": 1.421,
-    "rmsDbfs": -26.43,
-    "peakDbfs": -6
+    "sha256": "897faa0621c8e20e55b7ab30b77bf5ceb2d0c2c2fed2d0b9c36f3f156087ea2c",
+    "durationSeconds": 1.136875,
+    "rmsDbfs": -26.01,
+    "peakDbfs": -6.0,
+    "processing": [
+      {
+        "method": "WSOLA pitch-preserving time compression",
+        "timeScale": 0.8,
+        "originalSha256": "10c793072b342ce65fbe8adb7ca74c93c37e932c974534a5f349d40fc2cc4f8a",
+        "originalDurationSeconds": 1.4210833333333333
+      }
+    ]
   },
   {
     "id": "british-stay-down",
@@ -26,10 +34,18 @@
     "model": "gpt-4o-mini-tts-2025-12-15",
     "instructions": "Perform this original fictional adult soldier's brief victory bark. A powerful, deep, chest-resonant male voice, commanding and gritty, confident after winning a fight. Punchy natural delivery, not singsong. Sound strong without prolonged screaming or strained distortion. Say only the supplied line, once. No added words, music, sound effects, whispering, background ambience, or theatrical reverb. Dry close recording. Native British English, a rough and confident English infantry sergeant.",
     "generatedAt": "2026-10-19T13:46:18.930559+00:00",
-    "sha256": "4e6a996908761bb441efdfb22a7f655cb88da791666a26b4694ed8bc899d9fc3",
-    "durationSeconds": 2.077,
-    "rmsDbfs": -22.92,
-    "peakDbfs": -6
+    "sha256": "9011f332f6478708dd5311c4585287b3fa91323e93113d1358e807250190b822",
+    "durationSeconds": 1.661292,
+    "rmsDbfs": -22.87,
+    "peakDbfs": -6.0,
+    "processing": [
+      {
+        "method": "WSOLA pitch-preserving time compression",
+        "timeScale": 0.8,
+        "originalSha256": "4e6a996908761bb441efdfb22a7f655cb88da791666a26b4694ed8bc899d9fc3",
+        "originalDurationSeconds": 2.076625
+      }
+    ]
   },
   {
     "id": "british-bloody-hell",
@@ -42,10 +58,18 @@
     "model": "gpt-4o-mini-tts-2025-12-15",
     "instructions": "Perform this original fictional adult soldier's brief victory bark. A powerful, deep, chest-resonant male voice, commanding and gritty, confident after winning a fight. Punchy natural delivery, not singsong. Sound strong without prolonged screaming or strained distortion. Say only the supplied line, once. No added words, music, sound effects, whispering, background ambience, or theatrical reverb. Dry close recording. Native British English, a rough and confident English infantry sergeant.",
     "generatedAt": "2026-10-19T13:46:20.921513+00:00",
-    "sha256": "184e8914ca0357052c45c74854579769b0a106a9b755770fb13a04e936214c8f",
-    "durationSeconds": 2.029,
-    "rmsDbfs": -25.52,
-    "peakDbfs": -6
+    "sha256": "73f6bc3f709ba5047f37e8f7ba323646ff0597b04321458fc36bb53d8e2b6b9d",
+    "durationSeconds": 1.623208,
+    "rmsDbfs": -25.28,
+    "peakDbfs": -6.0,
+    "processing": [
+      {
+        "method": "WSOLA pitch-preserving time compression",
+        "timeScale": 0.8,
+        "originalSha256": "184e8914ca0357052c45c74854579769b0a106a9b755770fb13a04e936214c8f",
+        "originalDurationSeconds": 2.029
+      }
+    ]
   },
   {
     "id": "german-hab-dich",
@@ -58,10 +82,18 @@
     "model": "gpt-4o-mini-tts-2025-12-15",
     "instructions": "Perform this original fictional adult soldier's brief victory bark. A powerful, deep, chest-resonant male voice, commanding and gritty, confident after winning a fight. Punchy natural delivery, not singsong. Sound strong without prolonged screaming or strained distortion. Say only the supplied line, once. No added words, music, sound effects, whispering, background ambience, or theatrical reverb. Dry close recording. Native German pronunciation, a forceful German infantry sergeant. Speak entirely in German.",
     "generatedAt": "2026-10-19T13:46:22.087719+00:00",
-    "sha256": "c6619fa97758102eeed2aeeeae5cef9c580955d8ca5a66e40c55282c2f814a63",
-    "durationSeconds": 2.158,
-    "rmsDbfs": -21.42,
-    "peakDbfs": -6
+    "sha256": "33c62cbabaf74a73f31e33dd0ddca030413188320838296b61fe333f863ed38c",
+    "durationSeconds": 1.726083,
+    "rmsDbfs": -21.59,
+    "peakDbfs": -6.0,
+    "processing": [
+      {
+        "method": "WSOLA pitch-preserving time compression",
+        "timeScale": 0.8,
+        "originalSha256": "c6619fa97758102eeed2aeeeae5cef9c580955d8ca5a66e40c55282c2f814a63",
+        "originalDurationSeconds": 2.157625
+      }
+    ]
   },
   {
     "id": "german-bleib-liegen",
@@ -74,10 +106,18 @@
     "model": "gpt-4o-mini-tts-2025-12-15",
     "instructions": "Perform this original fictional adult soldier's brief victory bark. A powerful, deep, chest-resonant male voice, commanding and gritty, confident after winning a fight. Punchy natural delivery, not singsong. Sound strong without prolonged screaming or strained distortion. Say only the supplied line, once. No added words, music, sound effects, whispering, background ambience, or theatrical reverb. Dry close recording. Native German pronunciation, a forceful German infantry sergeant. Speak entirely in German.",
     "generatedAt": "2026-10-19T13:46:24.759517+00:00",
-    "sha256": "98bd45b3af0a35451f30b2400cf87b732d97a6b3b4092b00e84c29039f13bb1b",
-    "durationSeconds": 2.532,
-    "rmsDbfs": -20.38,
-    "peakDbfs": -6
+    "sha256": "846565adfab1ad0853126c7c464802c772c140b92e50c02d27da7f973b48eef7",
+    "durationSeconds": 2.025542,
+    "rmsDbfs": -20.13,
+    "peakDbfs": -6.0,
+    "processing": [
+      {
+        "method": "WSOLA pitch-preserving time compression",
+        "timeScale": 0.8,
+        "originalSha256": "98bd45b3af0a35451f30b2400cf87b732d97a6b3b4092b00e84c29039f13bb1b",
+        "originalDurationSeconds": 2.5319166666666666
+      }
+    ]
   },
   {
     "id": "german-zur-hoelle",
@@ -90,10 +130,18 @@
     "model": "gpt-4o-mini-tts-2025-12-15",
     "instructions": "Perform this original fictional adult soldier's brief victory bark. A powerful, deep, chest-resonant male voice, commanding and gritty, confident after winning a fight. Punchy natural delivery, not singsong. Sound strong without prolonged screaming or strained distortion. Say only the supplied line, once. No added words, music, sound effects, whispering, background ambience, or theatrical reverb. Dry close recording. Sprich Deutsch als Muttersprachler, deutlich und natürlich. Eine kräftige, tiefe männliche Stimme, ein kurzer entschlossener Ausruf. Sage ausschließlich den angegebenen Satz einmal, ohne Wiederholung. Kein übertriebenes Brüllen und keine langen Pausen.",
     "generatedAt": "2026-10-19T13:49:30.129033+00:00",
-    "sha256": "0013925d3843de1abcdec48089572c77763729436ff0e01cf2bb074b2be99797",
-    "durationSeconds": 1.489,
-    "rmsDbfs": -20.55,
-    "peakDbfs": -6
+    "sha256": "469e938aa4bb29bdd086c09aeb874698763befeab00ed9444e42e732f3cc0101",
+    "durationSeconds": 1.191417,
+    "rmsDbfs": -20.11,
+    "peakDbfs": -6.0,
+    "processing": [
+      {
+        "method": "WSOLA pitch-preserving time compression",
+        "timeScale": 0.8,
+        "originalSha256": "0013925d3843de1abcdec48089572c77763729436ff0e01cf2bb074b2be99797",
+        "originalDurationSeconds": 1.4892916666666667
+      }
+    ]
   },
   {
     "id": "russian-poluchay",
@@ -106,10 +154,18 @@
     "model": "gpt-4o-mini-tts-2025-12-15",
     "instructions": "Perform this original fictional adult soldier's brief victory bark. A powerful, deep, chest-resonant male voice, commanding and gritty, confident after winning a fight. Punchy natural delivery, not singsong. Sound strong without prolonged screaming or strained distortion. Say only the supplied line, once. No added words, music, sound effects, whispering, background ambience, or theatrical reverb. Dry close recording. Говори по-русски, естественно, без иностранного акцента. Голос взрослого мужчины, низкий, сильный и уверенный: короткий резкий возглас победы. Произнеси только указанную фразу один раз. Без дополнительных слов, повторов, долгих пауз или крика. Чёткое произношение.",
     "generatedAt": "2026-10-19T13:49:31.668987+00:00",
-    "sha256": "4482464ad5fcd5ffa29d5ea2ca2e3be952cb6ec07b954eed43803f75af391029",
-    "durationSeconds": 1.651,
-    "rmsDbfs": -22.97,
-    "peakDbfs": -6
+    "sha256": "e8d98487849d9bbe2126d4a88caedab0196556038caf94da4a3471847da73237",
+    "durationSeconds": 1.320792,
+    "rmsDbfs": -23.1,
+    "peakDbfs": -6.0,
+    "processing": [
+      {
+        "method": "WSOLA pitch-preserving time compression",
+        "timeScale": 0.8,
+        "originalSha256": "4482464ad5fcd5ffa29d5ea2ca2e3be952cb6ec07b954eed43803f75af391029",
+        "originalDurationSeconds": 1.651
+      }
+    ]
   },
   {
     "id": "russian-lezhi",
@@ -122,10 +178,18 @@
     "model": "gpt-4o-mini-tts-2025-12-15",
     "instructions": "Perform this original fictional adult soldier's brief victory bark. A powerful, deep, chest-resonant male voice, commanding and gritty, confident after winning a fight. Punchy natural delivery, not singsong. Sound strong without prolonged screaming or strained distortion. Say only the supplied line, once. No added words, music, sound effects, whispering, background ambience, or theatrical reverb. Dry close recording. Говори по-русски, естественно, без иностранного акцента. Голос взрослого мужчины, низкий, сильный и уверенный: короткий резкий возглас победы. Произнеси только указанную фразу один раз. Без дополнительных слов, повторов, долгих пауз или крика. Чёткое произношение.",
     "generatedAt": "2026-10-19T13:49:32.631478+00:00",
-    "sha256": "0f9afd710e9362006d1c615a971ded4fff8a17a5fb837810d37301637585cc2c",
-    "durationSeconds": 1.781,
-    "rmsDbfs": -20.03,
-    "peakDbfs": -6
+    "sha256": "f4b2ef57bc53eb629d2c774c73913ffd8319387c35de2da07f5bf78b834a77d9",
+    "durationSeconds": 1.425167,
+    "rmsDbfs": -20.07,
+    "peakDbfs": -6.0,
+    "processing": [
+      {
+        "method": "WSOLA pitch-preserving time compression",
+        "timeScale": 0.8,
+        "originalSha256": "0f9afd710e9362006d1c615a971ded4fff8a17a5fb837810d37301637585cc2c",
+        "originalDurationSeconds": 1.7814583333333334
+      }
+    ]
   },
   {
     "id": "russian-vot-tak",
@@ -138,9 +202,17 @@
     "model": "gpt-4o-mini-tts-2025-12-15",
     "instructions": "Perform this original fictional adult soldier's brief victory bark. A powerful, deep, chest-resonant male voice, commanding and gritty, confident after winning a fight. Punchy natural delivery, not singsong. Sound strong without prolonged screaming or strained distortion. Say only the supplied line, once. No added words, music, sound effects, whispering, background ambience, or theatrical reverb. Dry close recording. Говори по-русски, естественно, без иностранного акцента. Голос взрослого мужчины, низкий, сильный и уверенный: короткий резкий возглас победы. Произнеси только указанную фразу один раз. Без дополнительных слов, повторов, долгих пауз или крика. Чёткое произношение.",
     "generatedAt": "2026-10-19T13:49:33.684812+00:00",
-    "sha256": "fbe6b4865bb2494f04ea1703f0885fbec16501f88726433b87b3fa931cac6842",
-    "durationSeconds": 2.286,
-    "rmsDbfs": -22.98,
-    "peakDbfs": -6
+    "sha256": "0dad84c7ec97d2c793849ea9c255e8932f5277eefa448092944f0376ff32ee2a",
+    "durationSeconds": 1.829083,
+    "rmsDbfs": -23.13,
+    "peakDbfs": -6.0,
+    "processing": [
+      {
+        "method": "WSOLA pitch-preserving time compression",
+        "timeScale": 0.8,
+        "originalSha256": "fbe6b4865bb2494f04ea1703f0885fbec16501f88726433b87b3fa931cac6842",
+        "originalDurationSeconds": 2.2863333333333333
+      }
+    ]
   }
 ]

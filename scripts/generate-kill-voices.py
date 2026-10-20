@@ -17,6 +17,7 @@ import sys
 import urllib.error
 import urllib.request
 import wave
+from audio_processing import compress_pcm16
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = "gpt-4o-mini-tts-2025-12-15"
@@ -56,11 +57,21 @@ def finish_pcm(raw: bytes) -> tuple[bytes, dict]:
     for i, sample in enumerate(samples):
         envelope = min(1, i / head, (len(samples) - 1 - i) / tail)
         samples[i] = round(sample * scale * envelope)
-    rms = math.sqrt(sum(s * s for s in samples) / len(samples)) / 32768
-    meta = {"durationSeconds": round(len(samples) / RATE, 3), "rmsDbfs": round(20 * math.log10(max(rms, 1e-9)), 2), "peakDbfs": -6}
     if sys.byteorder != "little":
         samples.byteswap()
-    return samples.tobytes(), meta
+    original_duration = len(samples) / RATE
+    shortened = compress_pcm16(samples.tobytes(), RATE, .8)
+    # WSOLA can change RMS even when it preserves the peak. Provenance describes
+    # the final PCM shipped to the browser, not the intermediate normalized take.
+    finished = array.array("h")
+    finished.frombytes(shortened)
+    if sys.byteorder != "little":
+        finished.byteswap()
+    rms = math.sqrt(sum(s * s for s in finished) / len(finished)) / 32768
+    peak = max(abs(s) for s in finished) / 32768
+    meta = {"durationSeconds": round(len(finished) / RATE, 6), "rmsDbfs": round(20 * math.log10(max(rms, 1e-9)), 2), "peakDbfs": round(20 * math.log10(max(peak, 1e-9)), 2)}
+    meta['processing'] = [{'method': 'WSOLA pitch-preserving time compression', 'timeScale': .8, 'originalDurationSeconds': original_duration}]
+    return shortened, meta
 
 
 def main() -> None:

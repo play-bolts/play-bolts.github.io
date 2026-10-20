@@ -1,3 +1,4 @@
+v1.0.29 - Compresses all sound durations by 20% while preserving pitch, handling cue timing and gait cadence.
 v1.0.28 - Adds one-at-a-time sound review and nine multilingual kill voices with a configurable 10% default chance and stale-event protection.
 v1.0.27 - Adds varied stance-specific footsteps and a fuller rifle comparison while preserving current reports.
 v1.0.26 - Adds the classic welcome announcements board with email and feedback links.

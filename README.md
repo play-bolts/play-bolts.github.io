@@ -85,14 +85,39 @@ The mobile main menu is centered in either orientation. The online-player count 
 
 Combat feedback combines layered rifle reports, separate melee swings and contacts, and positional hit sounds. Muzzle blasts include animated flame, smoke, sparks and a brief gas ring. Confirmed hits emit denser directional blood mist, streaks and falling droplets; melee uses a wider fan. Effects reuse bounded GPU buffers, and killcams replay the same recorded effect shapes. Audio is originally synthesized with fixed nonrepeating variants; see [audio design and validation](research/audio-reference.md).
 
-Open **Sound review** from the main menu to audition the current rifle reports,
-an optional fuller DSP comparison, 36 stance/foot movement variations and nine
-AI-generated character voice lines. Only one preview plays at a time. Movement
-uses the same cached sounds during play, with alternating feet and no consecutive
-repeated takes. Kill lines use the killer's language, default to a 10% chance and
-have a saved 0–100% control in the panel. They never overlap or play for historical
-kill-feed notifications. Voice WAVs are static assets; gameplay makes no AI API
-calls. [Voice provenance and regeneration](public/assets/audio/voices/README.md).
+Open the standalone [Sound review page](sound-review.html) at
+`/sound-review.html` on the development or production site. It includes the current
+rifle reports, an optional fuller DSP comparison, 36 stance/foot movement
+variations with sequences, three combat effects and nine AI-generated character
+voice lines with their English translations. The current sound bank has a further
+20% duration compression with pitch preserved; the Kar98k retains its earlier
+20% shortening as well. Movement uses the same cached sounds during play, with
+alternating feet and no consecutive repeated takes.
+
+The candidate bank contains three Stability AI options for each of 18 sound
+families (three rifles, three movement stances, three combat effects and nine
+voice lines): **Warm & full**, **Crisp & detailed**, and **Gritty & powerful**,
+54 options in total. The page lists only completed assets from
+`shared/audio-candidates.json`. Each candidate has Play and Download controls;
+reviewing one does not replace game audio. Movement candidates use the same
+stance gain as current step previews, leaving the downloadable WAV unchanged.
+Voice options whose local transcription differs from the intended words carry a
+review note; short accented speech can also confuse transcription, so audition
+these alongside the originals. These are experimental options, not approved
+replacements.
+
+For a portable file with all audio embedded, run
+`node --import tsx scripts/export-sound-review-html.ts` and open
+`temp/sound-review.html` directly. Its preferences are separate from the game.
+
+Only one preview plays at a time; **Stop**, **Escape**, or leaving the page stops
+it. The page is separate from the game's main menu and shares saved Volume and
+kill-voice chance settings with the game.
+
+Kill lines use the killer's language, default to a 10% chance and have a saved
+0–100% control in **Options** and on the review page. They never overlap or play
+for historical kill-feed notifications. Voice WAVs are static assets; gameplay
+makes no AI API calls. [Voice provenance and regeneration](public/assets/audio/voices/README.md).
 
 In multiplayer, **T** or **Enter** opens chat; **Enter** sends and **Escape** cancels. Gameplay input is suspended while typing, and recent messages fade until chat is reopened. **Tab** shows kills, deaths and each player's server-measured ping in milliseconds. Single player shows kills and deaths without a ping column. Multiplayer keeps running while a menu is open; single player pauses.
 

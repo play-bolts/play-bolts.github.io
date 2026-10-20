@@ -1,3 +1,49 @@
+# Shorter audio and standalone AI auditions — 19 October 2026
+
+Sound review is now a separate page at `/sound-review.html`; the main app has no
+review tab or button. The page provides the current game sounds, the existing
+fuller DSP rifle comparison, and three source-conditioned Stability AI candidates
+for each rifle, movement stance, combat effect and spoken line. Selecting a sound
+stops the previous preview, including pending downloads. These candidates are
+review assets; none replaces the current game audio automatically.
+
+All sound durations are another 20% shorter than v1.0.28. Procedural envelopes,
+transients and reflection delays use the shared 0.8 duration scale while
+oscillator frequencies and noise-filter frequencies remain unchanged. Enfield
+and Mosin reports are now 656 ms; the previously shortened Kar98k is 524.8 ms.
+Individual bolt/reload cues are shorter, while their animation-aligned start
+times and footstep cadence remain unchanged. The nine existing voice WAVs use
+pitch-preserving WSOLA compression to exactly 80% of their former frame count,
+with no playback-rate increase or second runtime compression.
+
+The source-conditioned candidates use Stable Audio 3's audio-to-audio endpoint.
+Three prompts explore warm/full, crisp/detailed and gritty/powerful textures.
+Input padding meets the service's six-second minimum without repeating the
+original sound. Finishing selects the dominant isolated SFX event, retains the
+whole spoken utterance for voices, and fits the shortened source duration using
+pitch-preserving compression or trailing silence. Excessively long takes are
+rejected rather than truncated. Candidate levels match the source where the
+source peak ceiling permits; preview gain matches the current movement sample.
+
+The API key is local shell configuration only. The browser serves static WAVs
+and never calls Stability. Exact prompts, settings, extraction bounds, duration
+processing and final hashes are recorded in
+[candidate provenance](../public/assets/audio/candidates/provenance.json).
+The generation, verification and source-export workflow is documented in the
+[candidate README](../public/assets/audio/candidates/README.md).
+
+Automated checks cover exact duration, pitch preservation, isolated-event
+extraction, complete-utterance handling, finite PCM, preview cancellation and
+saved preferences. Local Whisper transcription supplies the language but never the expected
+words. Eight of nine original lines transcribe as expected, while several
+Stability transformations lose intelligibility. Candidate cards flag mismatches
+for audition; the very short German “Zur Hölle” line is inconclusive because
+its original also mistranscribes. These are experimental speech options, not
+approved replacements. Perceived quality and pronunciation remain review decisions.
+
+Official references: [Stability API](https://platform.stability.ai/docs/api-reference),
+[audio-to-audio guidance](https://kb.stability.ai/knowledge-base/tips-for-using-the-audio-to-audio-api).
+
 # Sound review, movement and character voices — 19 October 2026
 
 The main-menu Sound review panel is available in production builds. Its isolated

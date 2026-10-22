@@ -4,11 +4,11 @@ import os, subprocess, wave
 import imageio_ffmpeg
 import numpy as np
 from PIL import Image, ImageDraw
-os.environ.setdefault('MPLCONFIGDIR', str(Path('temp/game-audio-reference/reload-inspection/mpl-cache').resolve()))
+os.environ.setdefault('MPLCONFIGDIR', str(Path('temp/game-audio/reload-inspection/mpl-cache').resolve()))
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-OUT=Path('temp/game-audio-reference/reload-inspection'); OUT.mkdir(parents=True,exist_ok=True)
+OUT=Path('temp/game-audio/reload-inspection'); OUT.mkdir(parents=True,exist_ok=True)
 VIDEO='artifacts/audio-reference/showcase-video.webm'
 FF=imageio_ffmpeg.get_ffmpeg_exe()
 with wave.open('artifacts/audio-reference/showcase.wav') as w:

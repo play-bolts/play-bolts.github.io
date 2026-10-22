@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'temp/game-audio-reference/bolt-inspection'
+OUT = ROOT / 'temp/game-audio/bolt-inspection'
 OUT.mkdir(parents=True, exist_ok=True)
 os.environ['MPLCONFIGDIR'] = str(OUT / 'matplotlib-cache')
 import matplotlib

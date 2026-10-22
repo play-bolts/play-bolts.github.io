@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract annotated action windows from saved gameplay streams for local analysis.
 
-Run: .tools/audio-analysis/bin/python scripts/extract-game-audio-reference.py
+Run: .tools/audio-analysis/bin/python scripts/extract-game-audio.py
 Requires NumPy and FFmpeg (PATH or imageio-ffmpeg). Sources and generated files
 remain ignored; this script never changes the game's audio assets.
 """
@@ -97,7 +97,7 @@ def make_report(records, manifest, out):
 <p>Playback previews are embedded in this HTML; WAV downloads and context videos work alongside the extracted package. <a href="manifest.json">Manifest</a> · <a href="measurements.csv">Measurements CSV</a></p></div>
 <label>Category <select id="filter"><option value="">All actions</option>''' + options + '''</select></label><button id="stop">Stop playback</button><span id="count"></span><main class="grid">''' + ''.join(cards) + '''</main>
 <section><h2>Coverage gaps</h2><p>No sample has been substituted for an action that the inspected footage cannot establish.</p><ul>''' + missing + '''</ul></section>
-<footer>Sources and exact sample boundaries are in manifest.json. Clips remain local analysis material. Original media is retained in artifacts/audio-reference; generated output is under temp/game-audio-reference.</footer>
+<footer>Sources and exact sample boundaries are in manifest.json. Clips remain local analysis material. Original media is retained in artifacts/audio-reference; generated output is under temp/game-audio.</footer>
 <script>const media=[...document.querySelectorAll('audio,video')];function stop(except){for(const m of media)if(m!==except){m.pause();m.currentTime=0;}}for(const m of media)m.addEventListener('play',()=>stop(m));document.querySelector('#stop').onclick=()=>stop();const cards=[...document.querySelectorAll('article')];function filter(){stop();const category=document.querySelector('#filter').value;for(const c of cards)c.hidden=!!category&&c.dataset.category!==category;document.querySelector('#count').textContent=cards.filter(c=>!c.hidden).length+' clips';}document.querySelector('#filter').onchange=filter;filter();</script></html>'''
     (out / 'index.html').write_text(document)
 
@@ -177,7 +177,7 @@ def run(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--manifest', type=Path, default=ROOT / 'scripts/game-audio-reference-segments.json')
-    parser.add_argument('--out', type=Path, default=ROOT / 'temp/game-audio-reference')
+    parser.add_argument('--manifest', type=Path, default=ROOT / 'scripts/game-audio-segments.json')
+    parser.add_argument('--out', type=Path, default=ROOT / 'temp/game-audio')
     parser.add_argument('--ffmpeg')
     run(parser.parse_args())

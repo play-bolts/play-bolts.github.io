@@ -11,7 +11,7 @@ import unittest
 
 import numpy as np
 
-from audio_processing import compress_pcm16, compress_time, read_wav, wav_bytes
+from audio_processing import compress_pcm16, compress_time, cosine_release, read_wav, wav_bytes
 
 generator_spec = importlib.util.spec_from_file_location('stability_audio', Path(__file__).with_name('generate-stability-audio.py'))
 generator = importlib.util.module_from_spec(generator_spec)
@@ -37,6 +37,24 @@ def provider_wav(samples, rate, channels=1, encoding=3, bits=32):
     if len(samples) % 2:
         body += b'\0'
     return b'RIFF' + struct.pack('<I', len(body) + 4) + b'WAVE' + body
+
+
+class ReleaseTests(unittest.TestCase):
+    def test_release_preserves_body_stereo_balance_and_timing(self):
+        rate = 48000
+        source = np.tile([.6, -.3], (rate, 1))
+        release_start = round(rate * .6)
+        result = cosine_release(source, rate, .4)
+        self.assertEqual(result.shape, source.shape)
+        np.testing.assert_array_equal(result[:release_start], source[:release_start])
+        np.testing.assert_array_equal(source, np.tile([.6, -.3], (len(source), 1)))
+        np.testing.assert_allclose(result[:, 0], -2 * result[:, 1])
+        self.assertTrue(np.all(np.diff(result[release_start:, 0]) <= 0))
+        self.assertGreater(result[release_start + 4800, 0], .45, 'first quarter of release remains audible')
+        self.assertTrue(np.all(result[-1] == 0))
+        self.assertLess(abs(result[-2, 0]), 1e-7, 'no steep final envelope step')
+        self.assertLess(abs(result[release_start + 1, 0] - result[release_start, 0]), 1e-7)
+        np.testing.assert_allclose(cosine_release(source[:, 0], rate, .4), result[:, 0])
 
 
 class TimeCompressionTests(unittest.TestCase):

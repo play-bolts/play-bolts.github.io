@@ -92,8 +92,9 @@ two movement clips with stance sequences, three combat effects and nine
 AI-generated character voice lines with their English translations. The recorded
 clips retain their supplied duration and natural pitch, with short boundary fades.
 An older procedural rifle report remains available as a fuller DSP comparison.
-Reports now last 700 ms, retaining 10 ms pre-roll and 690 ms after onset with a
-60 ms ending fade. Handling retains overlapping sounds and ambience. The Mosin
+Reports now last 1.0 second, retaining the shot and following audio
+with a gradual 400 ms curved fade from 0.6 to 1.0 seconds. Handling retains
+overlapping sounds and ambience. The Mosin
 reload source is a partial refill, and the movement
 clips are unconfirmed footstep candidates rather than verified stance recordings.
 

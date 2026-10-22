@@ -86,8 +86,8 @@ test('runtime WAV files match their provenance, declared durations and spatial-a
   assert.equal(pcm.length/2,record.frames);assert.equal(pcm.readInt16LE(0),0);assert.equal(pcm.readInt16LE(pcm.length-2),0);
   near(pcm.length/format.readUInt32LE(8),clip.duration);
   if(clip.id.includes('-report-')){
-   assert.ok(clip.duration>=.65,`${clip.id}: retain decay beyond the former 360 ms cut`);
-   let energy=0;const start=19200,end=28800; // 400–600 ms, after the old endpoint.
+   assert.equal(clip.duration,1,`${clip.id}: preserve the requested one-second report`);
+   let energy=0;const start=28800,end=38400; // 600–800 ms retains useful audio through the fade.
    for(let frame=start;frame<end;frame++)energy+=pcm.readInt16LE(frame*2)**2;
    assert.ok(Math.sqrt(energy/(end-start))>64,`${clip.id}: extended tail contains audio, not silence padding`);
   }

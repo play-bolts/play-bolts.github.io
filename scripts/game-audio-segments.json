@@ -27,100 +27,100 @@
       "id": "enfield-report-1",
       "source": "firing",
       "start": 327.306,
-      "end": 328.006,
+      "end": 328.306,
       "label": "Lee\u2013Enfield \u00b7 report 1",
       "category": "Rifle reports",
-      "isolation": "report with extended decay",
-      "notes": "Includes 10 ms pre-roll and 690 ms after the shot onset. Preserves the following decay before prominent bolt clicks; ambience and quieter handling may remain. No silence padding or time stretching.",
-      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. The endpoint follows the decay and precedes the prominent opening/ejection burst in the waveform."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 990 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.6 to 1.0 seconds.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "enfield-report-2",
       "source": "firing",
       "start": 329.033,
-      "end": 329.733,
+      "end": 330.033,
       "label": "Lee\u2013Enfield \u00b7 report 2",
       "category": "Rifle reports",
-      "isolation": "report with extended decay",
-      "notes": "Includes 10 ms pre-roll and 690 ms after the shot onset. Preserves the following decay before prominent bolt clicks; ambience and quieter handling may remain. No silence padding or time stretching.",
-      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. The endpoint follows the decay and precedes the prominent opening/ejection burst in the waveform."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 990 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.6 to 1.0 seconds.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "enfield-report-3",
       "source": "firing",
       "start": 332.375,
-      "end": 333.075,
+      "end": 333.375,
       "label": "Lee\u2013Enfield \u00b7 report 3",
       "category": "Rifle reports",
-      "isolation": "report with extended decay",
-      "notes": "Includes 10 ms pre-roll and 690 ms after the shot onset. Preserves the following decay before prominent bolt clicks; ambience and quieter handling may remain. No silence padding or time stretching.",
-      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. The endpoint follows the decay and precedes the prominent opening/ejection burst in the waveform."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 990 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.6 to 1.0 seconds.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "mosin-report-1",
       "source": "firing",
       "start": 235.255,
-      "end": 235.955,
+      "end": 236.255,
       "label": "Mosin\u2013Nagant \u00b7 report 1",
       "category": "Rifle reports",
-      "isolation": "report with extended decay",
-      "notes": "Includes 10 ms pre-roll and 690 ms after the shot onset. Preserves the following decay before prominent bolt clicks; ambience and quieter handling may remain. No silence padding or time stretching.",
-      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. The endpoint follows the decay and precedes the prominent opening/ejection burst in the waveform."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 990 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.6 to 1.0 seconds.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "mosin-report-2",
       "source": "firing",
       "start": 237.056,
-      "end": 237.756,
+      "end": 238.056,
       "label": "Mosin\u2013Nagant \u00b7 report 2",
       "category": "Rifle reports",
-      "isolation": "report with extended decay",
-      "notes": "Includes 10 ms pre-roll and 690 ms after the shot onset. Preserves the following decay before prominent bolt clicks; ambience and quieter handling may remain. No silence padding or time stretching.",
-      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. The endpoint follows the decay and precedes the prominent opening/ejection burst in the waveform."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 990 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.6 to 1.0 seconds.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "mosin-report-3",
       "source": "firing",
       "start": 242.039,
-      "end": 242.739,
+      "end": 243.039,
       "label": "Mosin\u2013Nagant \u00b7 report 3",
       "category": "Rifle reports",
-      "isolation": "report with extended decay",
-      "notes": "Includes 10 ms pre-roll and 690 ms after the shot onset. Preserves the following decay before prominent bolt clicks; ambience and quieter handling may remain. No silence padding or time stretching.",
-      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. The endpoint follows the decay and precedes the prominent opening/ejection burst in the waveform."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 990 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.6 to 1.0 seconds.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "kar98k-report-1",
       "source": "firing",
       "start": 252.431,
-      "end": 253.131,
+      "end": 253.431,
       "label": "Kar98k \u00b7 report 1",
       "category": "Rifle reports",
-      "isolation": "report with extended decay",
-      "notes": "Includes 10 ms pre-roll and 690 ms after the shot onset. Preserves the following decay before prominent bolt clicks; ambience and quieter handling may remain. No silence padding or time stretching.",
-      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. The endpoint follows the decay and precedes the prominent opening/ejection burst in the waveform."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 990 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.6 to 1.0 seconds.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "kar98k-report-2",
       "source": "firing",
       "start": 253.86,
-      "end": 254.56,
+      "end": 254.86,
       "label": "Kar98k \u00b7 report 2",
       "category": "Rifle reports",
-      "isolation": "report with extended decay",
-      "notes": "Includes 10 ms pre-roll and 690 ms after the shot onset. Preserves the following decay before prominent bolt clicks; ambience and quieter handling may remain. No silence padding or time stretching.",
-      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. The endpoint follows the decay and precedes the prominent opening/ejection burst in the waveform."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 990 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.6 to 1.0 seconds.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "kar98k-report-3",
       "source": "firing",
       "start": 258.219,
-      "end": 258.919,
+      "end": 259.219,
       "label": "Kar98k \u00b7 report 3",
       "category": "Rifle reports",
-      "isolation": "report with extended decay",
-      "notes": "Includes 10 ms pre-roll and 690 ms after the shot onset. Preserves the following decay before prominent bolt clicks; ambience and quieter handling may remain. No silence padding or time stretching.",
-      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. The endpoint follows the decay and precedes the prominent opening/ejection burst in the waveform."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 990 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.6 to 1.0 seconds.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "enfield-whole-bolt-cycle",
@@ -423,7 +423,7 @@
   "unavailable": [
     {
       "action": "Clean complete rifle report",
-      "reason": "The latest decay overlaps bolt handling. Extended report excerpts stop before prominent bolt clicks; combined sequences include the later mechanical sounds."
+      "reason": "The extended reports retain the decay together with overlapping bolt handling; the final recorded mix does not provide a separate clean report stem."
     },
     {
       "action": "Separate clip insertion / cartridge push / clip removal",

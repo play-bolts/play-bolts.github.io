@@ -9,15 +9,17 @@ timestamps, input/output hashes, processing settings and limitations.
 
 The recordings are 48 kHz mono PCM16 WAVs. Preparation averages stereo channels,
 applies one −2.3 dB gain to weapon clips, and gives both movement candidates a
-shared gain targeting −12 dBFS peak. Brief boundary fades prevent clicks; reports
-use a 60 ms release to smooth their ending. Duration and natural pitch remain
+shared gain targeting −12 dBFS peak. Boundary fades prevent clicks; reports
+use a 400 ms raised-cosine release with flat envelope slopes at either end.
+Duration and natural pitch remain
 unchanged. These assets do not receive the older procedural duration compression.
 Reproduce or verify them with `.tools/audio-analysis/bin/python scripts/prepare-game-audio.py`
 or the same command with `--check`; the original extraction files remain unchanged.
 
-The reports now preserve 10 ms pre-roll and 690 ms after each shot onset, for
-700 ms total. This keeps the following decay before prominent bolt clicks;
-the latest decay overlaps handling and quieter mechanical sounds can remain. Bolt
+The reports now preserve 10 ms pre-roll and 990 ms after each shot onset,
+for 1.0 second total. This retains the decay and some early bolt handling while
+ending before the next gunshot. Raw analysis WAVs remain unprocessed; both the
+listening copies and game versions fade from 0.6 to 1.0 seconds. Bolt
 subdivisions retain report decay and overlapping mechanical sounds, especially
 for the Enfield. Reload loading bursts combine insertion, cartridge push and
 clip removal. The Mosin source shows a partial refill from one to five rounds,

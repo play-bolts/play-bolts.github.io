@@ -1,3 +1,4 @@
+v1.0.37 - Extends all nine gunshot recordings to 1.0 second with a smooth 400 ms ending fade, preserving filenames and updating listening previews.
 v1.0.36 - Extends all nine gunshot recordings to 700 ms with smooth endings, preserves audio filenames, and removes source-game wording from the audio package.
 v1.0.35 - Simplifies the credits page to contributor names and their assets.
 v1.0.34 - Replaces rifle reports, bolt actions, reloads and movement audio with supplied recordings, with timed reload cues, cached loading and matching sound previews.

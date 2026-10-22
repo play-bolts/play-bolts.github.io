@@ -128,7 +128,7 @@ export class NetworkClient {
    const result=await response.json().catch(()=>({}));if(generation!==this.generation)return;
    if(response.status===202){this.onStatus('Starting server…');if(this.now()>=deadline)throw new Error('Server startup timed out. Please try again.');await new Promise<void>((resolve,reject)=>{const cancel=()=>{clearTimeout(timer);reject(new Error('Connection cancelled.'));};const timer=setTimeout(()=>{abort.signal.removeEventListener('abort',cancel);resolve();},2000);abort.signal.addEventListener('abort',cancel,{once:true});});continue;}
    if(response.status===401){this.token='';try{this.storage?.removeItem(TOKEN_KEY);}catch{}}
-   if(!response.ok)throw new Error(typeof result.message==='string'?result.message:'Unable to join this game.');
+   if(!response.ok)throw new Error(typeof result.message==='string'?result.message.replace('Choose a location and press Play.','Refresh the server list.'):'Unable to join this game.');
    if(typeof result.websocketUrl!=='string'||typeof result.ticket!=='string'||result.ticket.length<32||result.ticket.length>2048||typeof result.lobbyId!=='string')throw new Error('Invalid game reservation.');
    const url=gameEndpoint(result.websocketUrl,this.origin);if(url.protocol!=='wss:'&&url.protocol!=='ws:')throw new Error('Invalid game reservation.');
    this.gameUrl=url.href;this.admission=result.ticket;this.lobbyId=result.lobbyId;this.onStatus('Connecting…');return;

@@ -168,7 +168,6 @@ async function refreshLobbies(){
 }
 ui.multiplayer=()=>{initializeAudio();sound.click();ui.showLobbies([],'Loading…');void refreshLobbies();};
 ui.refreshLobbies=()=>void refreshLobbies();ui.lobbyBack=()=>{lobbyProbe?.abort();lobbyRequest++;if(!onlineEntered)network.disconnect();ui.closeLobbies();};
-ui.playLocation=id=>ui.joinLobby(`new:${id}`);
 ui.joinLobby=id=>{
  if(network.online||onlineSelection)return;clearTouchInput();mobileResumeRequired=false;lobbyProbe?.abort();initializeAudio();onlineSelection=true;requestedLobby=id;menu=false;joining=true;keys.clear();jump=false;accumulator=0;
  // Choose the initial loadout before joining the server. This is a stationary
@@ -183,7 +182,7 @@ network.onJoined=name=>{
  onlineEntered=true;onlineSelection=false;menu=false;joining=false;resumeState='playing';keys.clear();jump=false;endingReleased=false;accumulator=0;equipRifle=false;ui.closeLobbies();ui.begin();network.setPaused(false);syncTouchState();capture();
 };
 network.onStatus=text=>{if(network.online&&!network.connected)clearTouchInput();if(onlineEntered)ui.setNetworkStatus(text);else if(ui.selectionOpen)ui.setSelectionStatus(text);else if(ui.lobbyOpen)ui.setLobbyStatus(text,!!text&&network.online);};
-network.onFailure=message=>{leave();lobbyFetchTime=performance.now();ui.showLobbies(lobbyRows,message);};
+network.onFailure=message=>{leave();lobbyFetchTime=performance.now();ui.showLobbies(lobbyRows,message,network.locations);};
 network.onChat=message=>ui.addChat(message);
 network.onImpact=shot=>{if(game.state==='killcam')return;ui.showHit(shot);view.effect(shot,false,0,true,game.time);playImpactSound(sound,shot,game.actors,game.viewedActor?.id);};
 network.onRound=()=>{if(touchEnabled)clearTouchInput();resetAudioScene();endingReleased=false;ui.feed=[];ui.hitUntil=0;ui.killUntil=0;ui.damageUntil=0;ui.damageStarted=-Infinity;lastReplaySound=-1;};

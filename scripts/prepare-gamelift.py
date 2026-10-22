@@ -52,14 +52,17 @@ def template(enabled=None):
             'Effect': 'Allow', 'Action': 'ssm:GetParameter', 'Resource': secret_arn}]}}],
     }}
     locations = [{'Location': HOME_REGION, 'LocationCapacity': {'MinSize': 0, 'DesiredEC2Instances': 0, 'MaxSize': 0}}]
-    policies = []
-    for key, location in LOCATIONS.items():
+    for location in LOCATIONS.values():
         locations.append({'Location': location, 'LocationCapacity': {
             'MinSize': 1 if enabled else 0, 'DesiredEC2Instances': 1 if enabled else 0,
             'MaxSize': ref('MaximumInstancesPerLocation') if enabled else 0}})
-        if enabled:
-            policies.append({'Name': 'spare-capacity-' + key, 'Location': location, 'PolicyType': 'TargetBased',
-                             'MetricName': 'PercentAvailableGameSessions', 'TargetConfiguration': {'TargetValue': 20}})
+    # GameLift permits one target policy per fleet. It propagates that policy to
+    # every location, which scales independently within its own capacity limits.
+    # PutScalingPolicy has no Location input; emitting one policy per city makes
+    # CloudFormation roll back when it tries to create the second target policy.
+    # https://docs.aws.amazon.com/gameliftservers/latest/developerguide/fleets-autoscaling-target.html
+    policies = [{'Name': 'spare-capacity', 'PolicyType': 'TargetBased',
+                 'MetricName': 'PercentAvailableGameSessions', 'TargetConfiguration': {'TargetValue': 20}}] if enabled else []
     fleet = {'Type': 'AWS::GameLift::Fleet', 'DeletionPolicy': 'Retain', 'UpdateReplacePolicy': 'Retain', 'Properties': {
         'Name': sub('${AWS::StackName}-games'), 'BuildId': ref('BuildId'), 'FleetType': 'ON_DEMAND',
         'EC2InstanceType': ref('InstanceType'), 'ComputeType': 'EC2',

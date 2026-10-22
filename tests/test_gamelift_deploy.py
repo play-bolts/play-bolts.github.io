@@ -69,12 +69,36 @@ class GameLiftDeployTests(unittest.TestCase):
         manifest = {name: deploy.digest(data) for name, data in files.items()}
         (folder / 'manifest.json').write_text(json.dumps(manifest))
         (folder / 'build-provenance.json').write_text(json.dumps({'outputs': manifest, 'configSha256': manifest['host.json'], 'sourceFiles': {'source.rs': deploy.digest(source.read_bytes())}}))
-        template = {'Parameters': {'MaximumInstancesPerLocation': {'Default': 2}}, 'Resources': {'Fleet': {'Properties': {'Locations': [
+        template = {'Parameters': {'MaximumInstancesPerLocation': {'Default': 2}}, 'Resources': {'Fleet': {'Properties': {'ScalingPolicies': [
+            {'Name': 'spare-capacity', 'PolicyType': 'TargetBased', 'MetricName': 'PercentAvailableGameSessions', 'TargetConfiguration': {'TargetValue': 20}}
+        ], 'Locations': [
             {'Location': deploy.REGION, 'LocationCapacity': {'MinSize': 0, 'DesiredEC2Instances': 0, 'MaxSize': 0}},
             *[{'Location': value, 'LocationCapacity': {'MinSize': 1, 'DesiredEC2Instances': 1, 'MaxSize': {'Ref': 'MaximumInstancesPerLocation'}}} for value in deploy.LOCATIONS.values()]
         ]}}}}
         (folder / 'fleet.template.json').write_text(json.dumps(template))
         return folder, files, config, template
+
+    def test_target_scaling_is_fleet_wide_and_never_repeated_per_location(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, _, _, template = self.fixture(Path(directory))
+            deploy.validate_capacity(template)
+            for failure in ('duplicate_targets', 'location_on_single_target', 'missing_policy', 'wrong_type', 'read_only_status'):
+                with self.subTest(failure=failure):
+                    changed = copy.deepcopy(template)
+                    policies = changed['Resources']['Fleet']['Properties']['ScalingPolicies']
+                    if failure == 'duplicate_targets':
+                        policies.extend([{**copy.deepcopy(policies[0]), 'Name': f'spare-{key}', 'Location': location}
+                                         for key, location in deploy.LOCATIONS.items()])
+                    elif failure == 'location_on_single_target':
+                        policies[0]['Location'] = deploy.LOCATIONS['lon']
+                    elif failure == 'missing_policy':
+                        policies.clear()
+                    elif failure == 'wrong_type':
+                        policies[0]['PolicyType'] = 'RuleBased'
+                    else:
+                        policies[0]['Status'] = 'ACTIVE'
+                    with self.assertRaisesRegex(deploy.DeploymentError, 'one fleet-wide target'):
+                        deploy.validate_capacity(changed)
 
     def test_managed_capacity_is_rejected_anywhere_in_the_template(self):
         with tempfile.TemporaryDirectory() as directory:

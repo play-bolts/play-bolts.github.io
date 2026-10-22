@@ -7,7 +7,7 @@ import {FEEDBACK_MESSAGE_LIMIT,FEEDBACK_EMAIL_LIMIT,validateFeedback,type Leader
 import {DEFAULT_PLAYER_NAME,PLAYER_NAME_PREFERENCE_VERSION,MAX_NAME_RAW_LENGTH,playerNameHTML,sanitizePlayerName,restorePlayerNamePreference} from './names';
 import {HudMarkup,hudClass,hudStyle,hudText} from './hudUpdates';
 import {LoadingTips} from './loadingTips';
-import {locationLabel,type Lobby,type LobbyLocation} from './lobbies';
+import {locationLabel,lobbyBrowserRows,selectedBrowserLobby,type LobbyBrowserRow,type LobbyLocation} from './lobbies';
 import {bindTouchAction} from './touchActions';
 import {bindGameplayZoomGuard} from './touchGestures';
 import {touchActionIcon} from './touchIcons';
@@ -18,7 +18,7 @@ const controls=[['W A S D','Move'],['Mouse','Look'],['LMB','Fire / grenade bash'
 export interface Preferences {faction:Faction;difficulty:Difficulty;playerName:string;playerNameVersion:number;sensitivity:number;volume:number;killVoiceChance:number;aim:'toggle'|'hold';quality:string;invert:boolean;hitIndicators:boolean;controlsMode:'auto'|'touch'|'mouse';touchSensitivity:number;touchSensitivityVersion:number;touchSize:number}
 export type TouchAction='aim'|'reload'|'crouch'|'prone'|'team'|'score'|'chat'|'menu'|'up'|'down'|'next'|'previous'|'unfollow';
 export interface TouchState {enabled:boolean;mobile:boolean;controls:boolean;rotate:boolean;resume:boolean;spectator:boolean;following:boolean;ads:boolean;stance:Stance;weapon:'rifle'|'grenade'}
-export type LobbyRow=Pick<Lobby,'id'|'name'|'players'|'capacity'|'ping'|'location'> & Partial<Pick<Lobby,'phase'>>;
+export type LobbyRow=LobbyBrowserRow;
 export interface ChatLine {id?:string;name?:string;message:string;system?:boolean}
 export function scoreboardRows(actors:readonly Actor[],online:boolean){
  return [...actors].sort((a,b)=>Number(a.spectator)-Number(b.spectator)||b.kills-a.kills||a.deaths-b.deaths).map((a,i)=>`<tr class="${a.id===0?'player-row':''}"><td>${a.spectator?'—':i+1}</td><td><span class="flag ${a.faction}">${a.faction==='russian'?'★':''}</span><strong>${playerNameHTML(a.name)}</strong>${a.spectator?'<span class=score-spectator>Spectator</span>':''}</td><td>${a.kills}</td><td>${a.deaths}</td>${online?`<td class="score-ping">${typeof a.ping==='number'&&Number.isInteger(a.ping)&&a.ping>=0&&a.ping<=999?a.ping:'—'}</td>`:''}</tr>`).join('');
@@ -28,7 +28,6 @@ export class UI {
  private inGame=false;private spectating=false;private spectatorSelection=false;
  online=false;lobbyOpen=false;chatOpen=false;private onlineCount:number|null=null;
  private lobbyRows:LobbyRow[]=[];private selectedLobby='';private lobbyBusy=false;
- private lobbyLocations:readonly LobbyLocation[]=[];private selectedLocation:LobbyLocation='lon';
  private chatIds=new Set<string>();
  private chatKeys=new Set<string>();
  private hudMarkup=new HudMarkup();
@@ -36,7 +35,7 @@ export class UI {
  private loadingTips:LoadingTips;
  private touchStateKey='';private touchEnabled=false;
  private mobileGate:'rotate'|'resume'|null=null;private mobileReturnFocus:HTMLElement|null=null;
- multiplayer=()=>{};refreshLobbies=()=>{};joinLobby=(_id:string)=>{};playLocation=(_location:LobbyLocation)=>{};lobbyBack=()=>this.closeLobbies();
+ multiplayer=()=>{};refreshLobbies=()=>{};joinLobby=(_id:string)=>{};lobbyBack=()=>this.closeLobbies();
  chatSend=(_text:string)=>{};chatOpened=()=>{};chatClosed=()=>{};
  private modalReturnFocus:HTMLElement|null=null;
  private feedbackBusy=false;private leaderboardBusy=false;private leaderboardStatus='';private leaderboardData:Leaderboard|null=null;private leaderboardPeriod:LeaderboardPeriod='allTime';
@@ -80,7 +79,6 @@ export class UI {
     </section><div id="players-online" class="hidden" role="status" aria-live="polite"></div>
   <section id="lobby-window" class="classic-window lobby-window hidden" aria-labelledby="lobby-title">
    <header class="lobby-heading"><h2 id="lobby-title">Join game</h2></header>
-   <div id="lobby-location-controls" class="lobby-location-controls hidden"><div class="lobby-location-picker" role="group" aria-labelledby="lobby-location-label"><span id="lobby-location-label">Location</span><div id="lobby-locations"></div></div><button id="lobby-play" aria-describedby="lobby-location-hint">Play</button><p id="lobby-location-hint"></p></div>
    <div class="lobby-list"><table aria-label="Available games"><thead><tr><th scope="col">Name</th><th scope="col">Location</th><th scope="col">Players</th><th scope="col" title="Your round-trip time to this server">Ping</th></tr></thead><tbody id="lobby-rows"></tbody></table><div id="lobby-status" role="status" aria-live="polite"></div></div>
    <nav class="lobby-actions" aria-label="Lobby actions"><button id="lobby-back">Back</button><button id="lobby-refresh">Refresh</button><button id="lobby-join" disabled>Join</button></nav>
   </section>
@@ -192,7 +190,6 @@ export class UI {
   this.el['leaderboard-refresh'].onclick=()=>this.leaderboardLoad();
   document.querySelectorAll<HTMLButtonElement>('[data-period]').forEach(button=>{button.onclick=()=>this.setLeaderboardPeriod(button.dataset.period as LeaderboardPeriod);button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.code))return;event.preventDefault();const period=event.code==='Home'?'allTime':event.code==='End'?'last24Hours':this.leaderboardPeriod==='allTime'?'last24Hours':'allTime';this.setLeaderboardPeriod(period);this.el[period==='allTime'?'leaderboard-alltime':'leaderboard-recent'].focus();};});
   this.el.multiplayer.onclick=()=>this.multiplayer();this.el['lobby-refresh'].onclick=()=>this.refreshLobbies();this.el['lobby-join'].onclick=()=>{if(this.selectedLobby&&!this.lobbyBusy)this.joinLobby(this.selectedLobby);};this.el['lobby-back'].onclick=()=>this.lobbyBack();
-  this.el['lobby-play'].onclick=()=>{if(!this.lobbyBusy&&this.lobbyLocations.includes(this.selectedLocation))this.playLocation(this.selectedLocation);};
   this.el['chat-form'].onsubmit=event=>{event.preventDefault();this.submitChat();};
   (this.el['chat-input'] as HTMLInputElement).oninput=()=>{const input=this.el['chat-input'] as HTMLInputElement,points=Array.from(input.value);if(points.length>256)input.value=points.slice(0,256).join('');};
   document.querySelectorAll<HTMLButtonElement>('[data-menu-tab]').forEach(b=>b.onclick=()=>this.setMenuStage(b.dataset.menuTab as typeof this.menuStage));
@@ -259,18 +256,14 @@ export class UI {
  }
  showLobbies(rows:LobbyRow[],status='',locations:readonly LobbyLocation[]=[]){
   const focusedLobby=document.activeElement?.closest<HTMLTableRowElement>('[data-lobby]')?.dataset.lobby;
-  this.lobbyRows=rows.map(row=>({...row}));
-  this.el['lobby-location-controls'].classList.toggle('hidden',!locations.length);
-  if(locations.join()!==this.lobbyLocations.join()){
-   this.lobbyLocations=[...locations];if(!locations.includes(this.selectedLocation))this.selectedLocation=locations[0]??'lon';this.el['lobby-locations'].replaceChildren();
-   for(const id of locations){const label=locationLabel(id)!;const button=document.createElement('button'),flag=document.createElement('img');button.type='button';button.dataset.location=id;button.title=label.name;button.setAttribute('aria-label',label.name);flag.className='lobby-flag';flag.src=`${import.meta.env?.BASE_URL??'/'}flags/${label.country}.svg`;flag.alt='';button.append(flag,document.createTextNode(` ${label.name}`));button.onclick=()=>{this.selectedLocation=id;this.refreshLobbyButtons();};this.el['lobby-locations'].append(button);}
-  }
-  if(!rows.some(row=>row.id===this.selectedLobby))this.selectedLobby=rows.find(row=>row.players<row.capacity)?.id??rows[0]?.id??'';
+  const previous=this.lobbyRows.find(row=>row.id===this.selectedLobby);
+  this.lobbyRows=lobbyBrowserRows(rows,locations);
+  this.selectedLobby=selectedBrowserLobby(this.lobbyRows,previous);
   const opening=!this.lobbyOpen;this.lobbyOpen=true;this.menuStage='main';this.el.menu.classList.remove('hidden','intro-active');this.el['menu-main'].classList.add('hidden');this.el['selection-window'].classList.add('hidden');this.el['lobby-window'].classList.remove('hidden');this.refreshOnlineCountVisibility();
   this.el['lobby-rows'].replaceChildren();
   for(const row of this.lobbyRows){
    const tr=document.createElement('tr'),name=document.createElement('td'),location=document.createElement('td'),players=document.createElement('td'),ping=document.createElement('td'),button=document.createElement('button');
-   tr.dataset.lobby=row.id;button.type='button';button.textContent=row.name;button.setAttribute('aria-label',row.name);button.setAttribute('aria-pressed',String(row.id===this.selectedLobby));name.append(button);
+   tr.dataset.lobby=row.id;button.type='button';button.textContent=row.name;button.setAttribute('aria-label',row.name);button.setAttribute('aria-pressed',String(row.id===this.selectedLobby));button.onfocus=()=>this.selectLobbyRow(row.id);name.append(button);
    const label=locationLabel(row.location);location.className='lobby-location';location.title=label?.name??'Location unavailable';location.setAttribute('aria-label',location.title);
    if(label){const flag=document.createElement('img');flag.className='lobby-flag';flag.src=`${import.meta.env?.BASE_URL??'/'}flags/${label.country}.svg`;flag.alt='';location.append(flag,document.createTextNode(` ${label.name}`));}else location.textContent='—';
    players.textContent=`${row.players} / ${row.capacity}`;ping.textContent=typeof row.ping==='number'&&Number.isFinite(row.ping)?`${Math.max(0,Math.round(row.ping))} ms`:'—';ping.title=row.phase==='starting'?'Server is starting':row.ping===undefined?'Ping unavailable':'Your round-trip time to this server';
@@ -279,16 +272,12 @@ export class UI {
    tr.onclick=()=>this.selectLobbyRow(row.id);tr.ondblclick=()=>{if(!this.lobbyBusy&&row.players<row.capacity)this.joinLobby(row.id);};
    this.el['lobby-rows'].append(tr);
   }
-  this.setLobbyStatus(status||(!rows.length?(locations.length?'No active games. Choose a location and press Play.':'No games'):rows.every(row=>row.players>=row.capacity)&&locations.length?'All games are full. Choose a location and press Play.':''),false);if(opening)(this.el['lobby-rows'].querySelector<HTMLButtonElement>('tr.selected button')??(locations.length?this.el['lobby-locations'].querySelector<HTMLButtonElement>('button'):null)??this.el['lobby-refresh']).focus();
-  else if(focusedLobby)Array.from(this.el['lobby-rows'].querySelectorAll<HTMLTableRowElement>('tr')).find(row=>row.dataset.lobby===focusedLobby)?.querySelector('button')?.focus({preventScroll:true});
+  this.setLobbyStatus(status||(!this.lobbyRows.length?'No games':this.lobbyRows.every(row=>row.players>=row.capacity)?'All games are full.':''),false);if(opening)(this.el['lobby-rows'].querySelector<HTMLButtonElement>('tr.selected button')??this.el['lobby-refresh']).focus();
+  else if(focusedLobby)(Array.from(this.el['lobby-rows'].querySelectorAll<HTMLTableRowElement>('tr')).find(row=>row.dataset.lobby===focusedLobby)?.querySelector('button')??this.el['lobby-rows'].querySelector<HTMLButtonElement>('tr.selected button')??this.el['lobby-refresh']).focus({preventScroll:true});
  }
  private selectLobbyRow(id:string){this.selectedLobby=id;for(const row of this.el['lobby-rows'].children){const active=(row as HTMLElement).dataset.lobby===id;row.classList.toggle('selected',active);row.querySelector('button')?.setAttribute('aria-pressed',String(active));}this.refreshLobbyButtons();}
  private refreshLobbyButtons(){
   const selected=this.lobbyRows.find(row=>row.id===this.selectedLobby);(this.el['lobby-join'] as HTMLButtonElement).disabled=this.lobbyBusy||!selected||selected.players>=selected.capacity;(this.el['lobby-refresh'] as HTMLButtonElement).disabled=this.lobbyBusy;for(const button of this.el['lobby-rows'].querySelectorAll('button'))button.disabled=this.lobbyBusy;
-  for(const button of this.el['lobby-locations'].querySelectorAll<HTMLButtonElement>('button')){button.disabled=this.lobbyBusy;button.setAttribute('aria-pressed',String(button.dataset.location===this.selectedLocation));}
-  (this.el['lobby-play'] as HTMLButtonElement).disabled=this.lobbyBusy||!this.lobbyLocations.includes(this.selectedLocation);
-  const games=this.lobbyRows.filter(row=>row.location===this.selectedLocation),city=locationLabel(this.selectedLocation)?.name??'';
-  this.el['lobby-location-hint'].textContent=games.some(row=>row.players<row.capacity)?`Play joins an open lobby in ${city}.`:`Play starts ${games.length?'another':'a'} lobby in ${city}. Startup may take a few minutes.`;
  }
  setLobbyStatus(text:string,busy=false){this.lobbyBusy=busy;this.el['lobby-status'].textContent=text;this.el['lobby-window'].setAttribute('aria-busy',String(busy));this.refreshLobbyButtons();}
  closeLobbies(){this.lobbyOpen=false;this.el['lobby-window'].classList.add('hidden');this.setMenuStage('main');}

@@ -78,12 +78,13 @@ function user(name:string,faction:Faction,relayPort?:number){
 type User=ReturnType<typeof user>;
 function events(user:User,after=0){return user.messages.slice(after).flatMap(message=>message.events??[]);}
 function actorOn(user:User,name:string){const actor=user.game.actors.find(actor=>actor.name===name);assert.ok(actor);return actor;}
+function firingPosition(position:{x:number;z:number},target:WireActor){const distance=Math.hypot(position.x-target.x,position.z-target.z);return distance>=3.5&&distance<=6&&visible({x:position.x,y:1.65,z:position.z},{x:target.x,y:target.y+target.eyeHeight,z:target.z})&&visible({x:position.x,y:1.65,z:position.z},{x:target.x,y:target.y+.25,z:target.z});}
 function route(shooter:WireActor,target:WireActor,actors:WireActor[]){
  const step=.5,minX=-ARENA.width/2+.5,minZ=-ARENA.depth/2+.5,nx=Math.floor((ARENA.width-1)/step)+1,nz=Math.floor((ARENA.depth-1)/step)+1;
  const point=(index:number)=>({x:minX+(index%nx)*step,z:minZ+Math.floor(index/nx)*step});
  const index=(x:number,z:number)=>Math.round((z-minZ)/step)*nx+Math.round((x-minX)/step);
  const occupied=(x:number,z:number)=>blocked(x,z,0,.42)||actors.some(actor=>actor.id!==shooter.id&&!actor.spectator&&actor.alive&&Math.hypot(x-actor.x,z-actor.z)<.82);
- const goal=(p:{x:number;z:number})=>{const distance=Math.hypot(p.x-target.x,p.z-target.z);return distance>=3.5&&distance<=6&&visible({x:p.x,y:1.65,z:p.z},{x:target.x,y:target.y+target.eyeHeight,z:target.z})&&visible({x:p.x,y:1.65,z:p.z},{x:target.x,y:target.y+.25,z:target.z});};
+ const goal=(p:{x:number;z:number})=>firingPosition(p,target);
  if(goal(shooter))return [];
  const start=index(shooter.x,shooter.z),queue=[start],previous=new Map<number,number|null>([[start,null]]);let found:number|undefined;
  for(let cursor=0;cursor<queue.length;cursor++){
@@ -97,7 +98,8 @@ function route(shooter:WireActor,target:WireActor,actors:WireActor[]){
 }
 async function navigate(shooter:User,target:User){
  shooter.network.skipReplay();shooter.network.setADS(false);shooter.input={...idle};
- let path=route(shooter.authority,target.authority,shooter.snapshot.actors),best=Infinity,lastProgress=Date.now();const deadline=Date.now()+35000,start={x:shooter.authority.x,z:shooter.authority.z};
+ let path=route(shooter.authority,target.authority,shooter.snapshot.actors),best=Infinity,lastProgress=Date.now();const deadline=Date.now()+35000,start={x:shooter.authority.x,z:shooter.authority.z},needsMovement=path.length>0;
+ if(!needsMovement)assert.ok(firingPosition(shooter.authority,target.authority),'an empty route is valid only when the shooter already has a clear firing position');
  while(path.length){
   if(isolationError)throw new Error(isolationError);
   assert.ok(Date.now()<deadline,'input-only navigation completes within 35 seconds');const a=shooter.authority,p=path[0],distance=Math.hypot(p.x-a.x,p.z-a.z);
@@ -109,7 +111,7 @@ async function navigate(shooter:User,target:User){
   shooter.game.player.yaw=Math.atan2(p.x-shooter.game.player.x,p.z-shooter.game.player.z);shooter.game.player.pitch=0;shooter.input.forward=Math.min(1,Math.min(distance,predictedDistance)/.24);await delay(40);
  }
  shooter.input={...idle};await delay(400);
- check(`${shooter.name} reaches line of sight by moving through the map`,()=>{assert.ok(Math.hypot(shooter.authority.x-start.x,shooter.authority.z-start.z)>.2);assert.ok(visible(shooter.game.eye(shooter.game.player),{x:target.authority.x,y:target.authority.y+.3,z:target.authority.z}));});
+ check(needsMovement?`${shooter.name} reaches line of sight by moving through the map`:`${shooter.name} already has a clear firing position`,()=>{if(needsMovement)assert.ok(Math.hypot(shooter.authority.x-start.x,shooter.authority.z-start.z)>.2);else assert.ok(firingPosition(shooter.authority,target.authority));assert.ok(visible(shooter.game.eye(shooter.game.player),{x:target.authority.x,y:target.authority.y+.3,z:target.authority.z}));});
 }
 function aimPoint(shooter:User,target:User,part:'head'|'leg'){
  shooter.network.present();const shown=actorOn(shooter,target.name),volumes=sampleHitVolumes(shown,shooter.network.remoteTime),origin=shooter.game.eye(shooter.game.player);
@@ -219,7 +221,7 @@ try{
   const actor=observer.actorId,identity=[...observer.storage.values()],joins=observer.messages.filter(message=>message.type==='joined').length;
   observer.dropTransport();
   await until(()=>observer.network.connected&&observer.messages.filter(message=>message.type==='joined').length>joins&&users.every(u=>u.snapshot.actors.length===3&&u.snapshot.actors.every(actor=>actor.bot!==true)),'spectator reconnect preserves the isolated room and removes temporary AI',20000);
-  check('automatic reconnect retains the same identity, actor and regional lobby',()=>{assert.equal(observer.actorId,actor);assert.equal(observer.network.lobbyId,qaLobbyId);assert.deepEqual([...observer.storage.values()],identity);assert.equal(observer.authority.spectator,true);});
+  check('automatic reconnect retains the same identity, actor and regional lobby',()=>{assert.equal(observer.actorId,actor);assert.equal(observer.network.lobbyId,qaLobbyId);assert.ok(observer.storage.size===identity.length&&[...observer.storage.values()].every((value,index)=>value===identity[index]),'automatic reconnect preserves the stored session credential');assert.equal(observer.authority.spectator,true);});
   netcodeEvidence.reconnect={location:remoteLocation,actorId:actor,lobbyId:qaLobbyId};
   await listedRoom(3);
  }

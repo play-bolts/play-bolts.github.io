@@ -106,12 +106,12 @@ def wav_bytes(samples, rate):
     return data.getvalue()
 
 
-def cosine_release(samples, rate, seconds):
-    """Fade a mono/stereo tail smoothly to zero without changing its duration."""
+def cosine_release(samples, rate, seconds, *, power=1):
+    """Fade smoothly to zero; power > 1 attenuates the tail earlier."""
     result = np.asarray(samples, dtype=np.float64).copy()
     frames = min(len(result), round(rate * seconds))
     if frames < 2:
         raise ValueError("Release must contain at least two samples")
-    envelope = .5 * (1 + np.cos(np.linspace(0, np.pi, frames)))
+    envelope = (.5 * (1 + np.cos(np.linspace(0, np.pi, frames)))) ** power
     result[-frames:] *= envelope.reshape((frames,) + (1,) * (result.ndim - 1))
     return result

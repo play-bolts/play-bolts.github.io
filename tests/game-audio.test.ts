@@ -87,7 +87,7 @@ test('runtime WAV files match their provenance, declared durations and spatial-a
   near(pcm.length/format.readUInt32LE(8),clip.duration);
   if(clip.id.includes('-report-')){
    assert.equal(clip.duration,.8,`${clip.id}: preserve the requested 800 ms report`);
-   let energy=0;const start=24000,end=33600; // 500–700 ms retains useful audio through the fade.
+   let energy=0;const start=14400,end=24000; // 300–500 ms retains useful audio as the earlier fade begins.
    for(let frame=start;frame<end;frame++)energy+=pcm.readInt16LE(frame*2)**2;
    assert.ok(Math.sqrt(energy/(end-start))>64,`${clip.id}: extended tail contains audio, not silence padding`);
   }

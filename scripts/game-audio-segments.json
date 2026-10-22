@@ -31,7 +31,7 @@
       "label": "Lee\u2013Enfield \u00b7 report 1",
       "category": "Rifle reports",
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
@@ -42,7 +42,7 @@
       "label": "Lee\u2013Enfield \u00b7 report 2",
       "category": "Rifle reports",
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
@@ -53,7 +53,7 @@
       "label": "Lee\u2013Enfield \u00b7 report 3",
       "category": "Rifle reports",
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
@@ -64,7 +64,7 @@
       "label": "Mosin\u2013Nagant \u00b7 report 1",
       "category": "Rifle reports",
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
@@ -75,7 +75,7 @@
       "label": "Mosin\u2013Nagant \u00b7 report 2",
       "category": "Rifle reports",
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
@@ -86,7 +86,7 @@
       "label": "Mosin\u2013Nagant \u00b7 report 3",
       "category": "Rifle reports",
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
@@ -97,7 +97,7 @@
       "label": "Kar98k \u00b7 report 1",
       "category": "Rifle reports",
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
@@ -108,7 +108,7 @@
       "label": "Kar98k \u00b7 report 2",
       "category": "Rifle reports",
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
@@ -119,7 +119,7 @@
       "label": "Kar98k \u00b7 report 3",
       "category": "Rifle reports",
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {

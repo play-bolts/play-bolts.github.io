@@ -1,13 +1,13 @@
 {
   "format": "48 kHz mono PCM16 WAV",
   "preparation_script": "scripts/prepare-game-audio.py",
-  "source_manifest_sha256": "d0db5b90b7ca3695afd699304499978c9b810614ecbf8e034e24c76f3d25a018",
-  "method": "Selected local raw gameplay excerpts, stereo averaged to mono, fixed gain and a short attack fade, then PCM16 quantization. Reports use a 300 ms raised-cosine release; other clips retain short linear releases. Duration and pitch retained.",
+  "source_manifest_sha256": "ee5928533e2349beb70d529c7111c8eeb5d36bbe2eda871e6f54abe4d6618963",
+  "method": "Selected local raw gameplay excerpts, stereo averaged to mono, fixed gain and a short attack fade, then PCM16 quantization. Reports use a 500 ms squared raised-cosine release beginning at 300 ms; other clips retain short linear releases. Duration and pitch retained.",
   "weapon_gain_db": -2.3,
   "movement_pair_peak_target_dbfs": -12.0,
   "limitations": [
     "These are excerpts from the final recorded game mix, not isolated original game assets. Ambience and overlapping sounds remain.",
-    "Reports retain 800 ms including pre-roll, decay and some early bolt handling; the final 300 ms fades smoothly. These excerpts do not include a complete bolt cycle.",
+    "Reports retain 800 ms including pre-roll, decay and some early bolt handling; the final 500 ms fades with stronger early attenuation. These excerpts do not include a complete bolt cycle.",
     "Bolt subdivisions are approximate mixed handling phases, especially for the Enfield. Reload loading bursts combine insertion, cartridge push and clip removal.",
     "Movement clips are unconfirmed footstep candidates. The source does not establish foot contact, side, gait, surface, or stance, and an off-screen sound cannot be excluded."
   ],
@@ -24,19 +24,19 @@
       "source_start_seconds": 327.306,
       "source_end_seconds": 328.106,
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot.",
       "processing": {
         "channel_mix": "arithmetic mean of stereo channels",
         "gain_db": -2.3,
         "linear_attack_seconds": 0.002,
-        "release_seconds": 0.3,
-        "release_curve": "raised cosine",
+        "release_seconds": 0.5,
+        "release_curve": "squared raised cosine",
         "timing": "original sample count and pitch preserved"
       },
-      "output_sha256": "a8368dc35997d760cb2b08bcde2209d6888931f84f923e42299addffe0d4debd",
+      "output_sha256": "cc5e480fa26a0e8ccf78b9189a18265f8d23ee7afddaef35d4020503b438b518",
       "output_peak_dbfs": -2.463151,
-      "output_rms_dbfs": -16.47884
+      "output_rms_dbfs": -16.591148
     },
     {
       "id": "enfield-report-2",
@@ -50,19 +50,19 @@
       "source_start_seconds": 329.033,
       "source_end_seconds": 329.833,
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot.",
       "processing": {
         "channel_mix": "arithmetic mean of stereo channels",
         "gain_db": -2.3,
         "linear_attack_seconds": 0.002,
-        "release_seconds": 0.3,
-        "release_curve": "raised cosine",
+        "release_seconds": 0.5,
+        "release_curve": "squared raised cosine",
         "timing": "original sample count and pitch preserved"
       },
-      "output_sha256": "a1cd15aa0355e8f46f157976fb914abe3d44228b0497a22949b509ff17b1b225",
+      "output_sha256": "f8e547f863cf312c1b6ab387d50ad27131b4269129e5fcaf81258b620701ac34",
       "output_peak_dbfs": -3.028866,
-      "output_rms_dbfs": -15.435243
+      "output_rms_dbfs": -15.546084
     },
     {
       "id": "enfield-report-3",
@@ -76,19 +76,19 @@
       "source_start_seconds": 332.375,
       "source_end_seconds": 333.175,
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot.",
       "processing": {
         "channel_mix": "arithmetic mean of stereo channels",
         "gain_db": -2.3,
         "linear_attack_seconds": 0.002,
-        "release_seconds": 0.3,
-        "release_curve": "raised cosine",
+        "release_seconds": 0.5,
+        "release_curve": "squared raised cosine",
         "timing": "original sample count and pitch preserved"
       },
-      "output_sha256": "2b3039408dd1b4bec818d61b0b33f77e276babde213c266233fd4cc41b18be5e",
+      "output_sha256": "4931caef1516245d60e891ae47b7893827e25252aea11c05b896c0ad01ee9d7d",
       "output_peak_dbfs": -2.167982,
-      "output_rms_dbfs": -14.76272
+      "output_rms_dbfs": -14.928611
     },
     {
       "id": "mosin-report-1",
@@ -102,19 +102,19 @@
       "source_start_seconds": 235.255,
       "source_end_seconds": 236.055,
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot.",
       "processing": {
         "channel_mix": "arithmetic mean of stereo channels",
         "gain_db": -2.3,
         "linear_attack_seconds": 0.002,
-        "release_seconds": 0.3,
-        "release_curve": "raised cosine",
+        "release_seconds": 0.5,
+        "release_curve": "squared raised cosine",
         "timing": "original sample count and pitch preserved"
       },
-      "output_sha256": "70ade813e052c16d6b21b0a259f2d8ca2627baf5c9c6d1f9a7de30c1985eb3ee",
+      "output_sha256": "da8b603ec12eeaf2ae22f126179f1da7ef73a6e400ed8f8dcb09ce0685eb1c56",
       "output_peak_dbfs": -4.882391,
-      "output_rms_dbfs": -17.764959
+      "output_rms_dbfs": -18.088538
     },
     {
       "id": "mosin-report-2",
@@ -128,19 +128,19 @@
       "source_start_seconds": 237.056,
       "source_end_seconds": 237.856,
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot.",
       "processing": {
         "channel_mix": "arithmetic mean of stereo channels",
         "gain_db": -2.3,
         "linear_attack_seconds": 0.002,
-        "release_seconds": 0.3,
-        "release_curve": "raised cosine",
+        "release_seconds": 0.5,
+        "release_curve": "squared raised cosine",
         "timing": "original sample count and pitch preserved"
       },
-      "output_sha256": "62ab94953151fdda8e3f6a16d89bb648f22369a1150d9445819d2d62c514758c",
+      "output_sha256": "ddd2e5f0ff3438cfbe70aff51e6dd7dceb4085dd1702e1296268bbbc0972430c",
       "output_peak_dbfs": -5.175125,
-      "output_rms_dbfs": -17.891896
+      "output_rms_dbfs": -18.233104
     },
     {
       "id": "mosin-report-3",
@@ -154,19 +154,19 @@
       "source_start_seconds": 242.039,
       "source_end_seconds": 242.839,
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot.",
       "processing": {
         "channel_mix": "arithmetic mean of stereo channels",
         "gain_db": -2.3,
         "linear_attack_seconds": 0.002,
-        "release_seconds": 0.3,
-        "release_curve": "raised cosine",
+        "release_seconds": 0.5,
+        "release_curve": "squared raised cosine",
         "timing": "original sample count and pitch preserved"
       },
-      "output_sha256": "6673e8f80b34616d4d55371b60f9c09263505a9f293562e185410fb7b90c0939",
+      "output_sha256": "c195a84bb27a5bc3901ed9bdcc8119ec1202e54f80304306310750ef20fe9520",
       "output_peak_dbfs": -1.963552,
-      "output_rms_dbfs": -17.590477
+      "output_rms_dbfs": -17.945517
     },
     {
       "id": "kar98k-report-1",
@@ -180,19 +180,19 @@
       "source_start_seconds": 252.431,
       "source_end_seconds": 253.231,
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot.",
       "processing": {
         "channel_mix": "arithmetic mean of stereo channels",
         "gain_db": -2.3,
         "linear_attack_seconds": 0.002,
-        "release_seconds": 0.3,
-        "release_curve": "raised cosine",
+        "release_seconds": 0.5,
+        "release_curve": "squared raised cosine",
         "timing": "original sample count and pitch preserved"
       },
-      "output_sha256": "5461a4d04039b3660906f3661c6e9922440f7afd20438cd82ff242261177972b",
+      "output_sha256": "cd6dd6f6624d39a160c1b8a91a8b845044c0c937b8d943eadf5896c8ad006b31",
       "output_peak_dbfs": -3.061989,
-      "output_rms_dbfs": -15.582798
+      "output_rms_dbfs": -15.833691
     },
     {
       "id": "kar98k-report-2",
@@ -206,19 +206,19 @@
       "source_start_seconds": 253.86,
       "source_end_seconds": 254.66,
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot.",
       "processing": {
         "channel_mix": "arithmetic mean of stereo channels",
         "gain_db": -2.3,
         "linear_attack_seconds": 0.002,
-        "release_seconds": 0.3,
-        "release_curve": "raised cosine",
+        "release_seconds": 0.5,
+        "release_curve": "squared raised cosine",
         "timing": "original sample count and pitch preserved"
       },
-      "output_sha256": "94ce7399891b873310ca70e8bc5d96e42ad644345afd5dc348394c97f4a10ee1",
+      "output_sha256": "44efc17331760f395158985e80fe55cc3f79fc5df56a24975e98a8be3d876cf3",
       "output_peak_dbfs": -3.472002,
-      "output_rms_dbfs": -15.344933
+      "output_rms_dbfs": -15.607627
     },
     {
       "id": "kar98k-report-3",
@@ -232,19 +232,19 @@
       "source_start_seconds": 258.219,
       "source_end_seconds": 259.019,
       "isolation": "report with decay and partial handling",
-      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade smoothly from 0.5 to 0.8 seconds.",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
       "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot.",
       "processing": {
         "channel_mix": "arithmetic mean of stereo channels",
         "gain_db": -2.3,
         "linear_attack_seconds": 0.002,
-        "release_seconds": 0.3,
-        "release_curve": "raised cosine",
+        "release_seconds": 0.5,
+        "release_curve": "squared raised cosine",
         "timing": "original sample count and pitch preserved"
       },
-      "output_sha256": "8234a476161cadabeb10c50710fda15ed26d4118a0498699d98cf993641bda12",
+      "output_sha256": "8b9bdcd0222c9d0814b03c2c099f528bb28ae61388d1e194f5bda4557af6ddf1",
       "output_peak_dbfs": -3.134316,
-      "output_rms_dbfs": -14.578535
+      "output_rms_dbfs": -14.847434
     },
     {
       "id": "enfield-open-eject",

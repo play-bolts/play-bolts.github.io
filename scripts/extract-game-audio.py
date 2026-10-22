@@ -47,7 +47,7 @@ def listening_wav(samples, rate, release_seconds=0):
     peak = float(np.abs(samples).max())
     gain = 10 ** (-6 / 20) / peak if peak else 1
     if release_seconds:
-        samples = cosine_release(samples, rate, release_seconds)
+        samples = cosine_release(samples, rate, release_seconds, power=2)
     buffer = io.BytesIO()
     with wave.open(buffer, 'wb') as handle:
         handle.setnchannels(samples.shape[1])
@@ -96,7 +96,7 @@ def make_report(records, manifest, out):
 <div class="intro"><div class="tag">BOLTS · ACTION SOUND LIBRARY · 21 OCTOBER 2026</div><h1>Individual action sounds</h1>
 <p>Listen to each action separately and use the unprocessed WAVs for measurement.</p>
 <p class="notice"><b>Audio excerpts.</b> Rifle clips retain 800 ms of the shot and following audio, including decay and some early bolt handling. Ambience and overlapping effects remain. No AI replacement, denoising, EQ, time stretching, or fades have been applied to the analysis WAVs.</p>
-<p><b>Analysis files:</b> 48 kHz stereo, 32-bit float WAV, original decoded samples and levels. Float preserves codec peaks above 0 dBFS without introducing clipping. <b>Players:</b> separate 16-bit copies, each peak-normalized to −6 dBFS for audition; gunshots have a smooth 300 ms ending fade. Do not use listening copies to compare original loudness. Waveforms are scaled independently.</p>
+<p><b>Analysis files:</b> 48 kHz stereo, 32-bit float WAV, original decoded samples and levels. Float preserves codec peaks above 0 dBFS without introducing clipping. <b>Players:</b> separate 16-bit copies, each peak-normalized to −6 dBFS for audition; gunshots have a stronger fade from 300 to 800 ms. Do not use listening copies to compare original loudness. Waveforms are scaled independently.</p>
 <p>Playback previews are embedded in this HTML; WAV downloads and context videos work alongside the extracted package. <a href="manifest.json">Manifest</a> · <a href="measurements.csv">Measurements CSV</a></p></div>
 <label>Category <select id="filter"><option value="">All actions</option>''' + options + '''</select></label><button id="stop">Stop playback</button><span id="count"></span><main class="grid">''' + ''.join(cards) + '''</main>
 <section><h2>Coverage gaps</h2><p>No sample has been substituted for an action that the inspected footage cannot establish.</p><ul>''' + missing + '''</ul></section>
@@ -145,7 +145,7 @@ def run(args):
             # Readback proves exact preservation of every decoded float sample.
             if not np.array_equal(np.frombuffer(raw[56:], dtype='<f4').reshape(-1, channels), clip):
                 raise ValueError('Raw WAV did not preserve source samples')
-            release_seconds = .3 if segment['category'] == 'Rifle reports' else 0
+            release_seconds = .5 if segment['category'] == 'Rifle reports' else 0
             preview, gain = listening_wav(clip, rate, release_seconds)
             name = segment['id']
             raw_path, listen_path, context_path = f'raw/{name}.wav', f'listen/{name}.wav', f'context/{name}.mp4'
@@ -161,11 +161,11 @@ def run(args):
             records.append(item)
             item['context_gain_db'] = level(context_gain)
             item['listen_release_seconds'] = release_seconds
-            item['listen_release_curve'] = 'raised cosine' if release_seconds else 'none'
+            item['listen_release_curve'] = 'squared raised cosine' if release_seconds else 'none'
             print(f'  {name}: {item["duration_seconds"]:.3f} s', flush=True)
         del samples, result
     make_report(records, manifest, out)
-    report = {'method': 'Sample-accurate temporal cuts of decoded game-video stereo mix. Analysis WAVs have no source separation, denoising, EQ, fading, resampling or time compression. Listening copies use a fixed per-clip gain and PCM16 quantization; gunshots have a 300 ms raised-cosine release.', 'raw_sample_format': 'IEEE float32, 48 kHz, stereo', 'ffmpeg_version': subprocess.check_output([ffmpeg, '-version'], text=True).splitlines()[0], 'annotation_sha256': digest(args.manifest), 'sources': sources, 'clips': records, 'unavailable': manifest['unavailable']}
+    report = {'method': 'Sample-accurate temporal cuts of decoded game-video stereo mix. Analysis WAVs have no source separation, denoising, EQ, fading, resampling or time compression. Listening copies use a fixed per-clip gain and PCM16 quantization; gunshots have a 500 ms squared raised-cosine release beginning at 300 ms.', 'raw_sample_format': 'IEEE float32, 48 kHz, stereo', 'ffmpeg_version': subprocess.check_output([ffmpeg, '-version'], text=True).splitlines()[0], 'annotation_sha256': digest(args.manifest), 'sources': sources, 'clips': records, 'unavailable': manifest['unavailable']}
     (out / 'manifest.json').write_text(json.dumps(report, indent=2) + '\n')
     columns = ['id', 'category', 'label', 'source', 'start_seconds', 'end_seconds', 'duration_seconds', 'frames', 'peak_dbfs', 'rms_dbfs', 'samples_above_full_scale', 'listen_gain_db', 'isolation', 'raw_file', 'notes']
     with (out / 'measurements.csv').open('w', newline='') as handle:

@@ -43,18 +43,21 @@ class ReleaseTests(unittest.TestCase):
     def test_release_preserves_body_stereo_balance_and_timing(self):
         rate = 48000
         source = np.tile([.6, -.3], (round(rate * .8), 1))
-        release_start = round(rate * .5)
-        result = cosine_release(source, rate, .3)
+        release_start = round(rate * .3)
+        result = cosine_release(source, rate, .5, power=2)
         self.assertEqual(result.shape, source.shape)
         np.testing.assert_array_equal(result[:release_start], source[:release_start])
         np.testing.assert_array_equal(source, np.tile([.6, -.3], (len(source), 1)))
         np.testing.assert_allclose(result[:, 0], -2 * result[:, 1])
         self.assertTrue(np.all(np.diff(result[release_start:, 0]) <= 0))
-        self.assertGreater(result[release_start + 3600, 0], .45, 'first quarter of release remains audible')
+        self.assertGreater(result[round(rate * .5), 0], .24, 'early decay remains audible')
+        self.assertLess(result[round(rate * .5), 0], .27, 'gain falls below 45% by 500 ms')
+        self.assertLess(result[round(rate * .6), 0], .078, 'gain falls below 13% by 600 ms')
+        self.assertLess(result[round(rate * .7), 0], .006, 'gain falls below 1% by 700 ms')
         self.assertTrue(np.all(result[-1] == 0))
         self.assertLess(abs(result[-2, 0]), 1e-7, 'no steep final envelope step')
         self.assertLess(abs(result[release_start + 1, 0] - result[release_start, 0]), 1e-7)
-        np.testing.assert_allclose(cosine_release(source[:, 0], rate, .3), result[:, 0])
+        np.testing.assert_allclose(cosine_release(source[:, 0], rate, .5, power=2), result[:, 0])
 
 
 class TimeCompressionTests(unittest.TestCase):

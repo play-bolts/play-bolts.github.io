@@ -79,8 +79,8 @@ func TestFailedLocationDoesNotHideHealthyRoomsOrAdmitStaleGames(t *testing.T) {
 	d.list(w, httptest.NewRequest("GET", "/api/lobbies", nil))
 	var listed struct{ Locations []string }
 	json.Unmarshal(w.Body.Bytes(), &listed)
-	if strings.Join(listed.Locations, ",") != "lon,sp" {
-		t.Fatalf("unhealthy location still selectable: %s", w.Body.String())
+	if strings.Join(listed.Locations, ",") != "lon,sg,sp" {
+		t.Fatalf("transient failure removed a configured location: %s", w.Body.String())
 	}
 	if w := joinForTest(d, "new:sg", "a"); w.Code != 503 {
 		t.Fatalf("failed-region placement accepted: %d %s", w.Code, w.Body.String())

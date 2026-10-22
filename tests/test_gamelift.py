@@ -50,6 +50,14 @@ class GameLiftConfigurationTests(unittest.TestCase):
         self.assertEqual(prepare.LOCATIONS, {'lon': 'eu-west-2', 'sg': 'ap-southeast-1', 'sp': 'sa-east-1'})
         self.assertNotIn('us-west-2', prepare.LOCATIONS.values())
 
+    def test_directory_can_check_queues_without_changing_capacity(self):
+        statements = prepare.template()['Resources']['DirectoryPolicy']['Properties']['PolicyDocument']['Statement']
+        actions = {action for statement in statements for action in
+                   (statement['Action'] if isinstance(statement['Action'], list) else [statement['Action']])}
+        self.assertIn('gamelift:DescribeGameSessionQueues', actions)
+        self.assertNotIn('gamelift:UpdateFleetCapacity', actions)
+        self.assertNotIn('gamelift:UpdateGameSessionQueue', actions)
+
 
 if __name__ == '__main__':
     unittest.main()

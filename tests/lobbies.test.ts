@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {gameEndpoint,locationLabel,LOBBY_LOCATIONS,probeLobby,type ProbeSocket} from '../src/lobbies.ts';
 import {NetworkClient,type SocketLike} from '../src/network.ts';
-import {Game} from '../src/engine.ts';
+import {Game,createActor} from '../src/engine.ts';
 
 test('location labels map to the requested physical GameLift locations',()=>{
  assert.deepEqual(Object.values(LOBBY_LOCATIONS).map(v=>`${v.flag} ${v.abbreviation}`),['🇺🇸 OR','🇬🇧 LON','🇸🇬 SG','🇧🇷 SP']);
@@ -111,4 +111,67 @@ test('extra lobbies default off, including direct joins, while Oregon remains li
  assert.deepEqual((await client.lobbies()).map(row=>row.id),['home']);assert.deepEqual(client.locations,[]);
  for(const location of ['lon','sg','sp'])for(const id of [location,`new:${location}`])await assert.rejects(client.join(id,'Alice','british'),/location is unavailable/);
  assert.equal(requests.length,1,'disabled joins cannot authenticate or request regional capacity');
+});
+
+for(const location of ['or','lon','sg','sp']as const)for(const existing of location==='or'?[true]:[true,false])test(`${location} ${existing?'listed lobby':'location Play'} completes admission, handshake and initial game state`,async()=>{
+ const game=new Game(),messages:any[]=[],requests:string[]=[],urls:string[]=[],lobbyId=`game-${location}`,managed=location!=='or';
+ const {ai,...player}=createActor(42,'british','Regional join test');
+ const wire:any={...player,ack:0,spawnGeneration:1,hipSpread:.08};
+ for(const [key,value]of Object.entries(wire))if(typeof value==='number'&&!Number.isFinite(value))wire[key]=-1000;
+ const initial={type:'snapshot',inputTiming:'tick-v2',tick:1,time:0,remaining:300,roundNumber:1,ended:false,winner:null,actors:[wire],events:[]};
+ const client=new NetworkClient(game,{extraLobbiesEnabled:true,origin:'https://api.example.com',fetch:async(url,options)=>{
+  const path=new URL(String(url)).pathname;
+  if(path==='/api/lobbies')return new Response(JSON.stringify({version:2,locations:['lon','sg','sp'],lobbies:existing?[{id:lobbyId,name:`${location} lobby`,location,managed,players:0,capacity:6,phase:'playing'}]:[]}));
+  if(path==='/api/session')return new Response(JSON.stringify({token:'permanent-identity-'.repeat(4)}));
+  assert.equal(path,'/api/join');requests.push(JSON.parse(String(options?.body)).lobbyId);
+  return new Response(JSON.stringify({lobbyId,ticket:'temporary-admission-'.repeat(4),websocketUrl:`wss://${location}.amazongamelift.com:8080/api/ws`}));
+ },socket:url=>{
+  urls.push(url);const socket:SocketLike={readyState:1,onopen:null,onmessage:null,onerror:null,onclose:null,send(raw){
+   const message=JSON.parse(String(raw));messages.push(message);
+   if(message.type==='hello')queueMicrotask(()=>socket.onmessage?.({data:JSON.stringify({type:'welcome',version:3})}));
+   if(message.type==='join')queueMicrotask(()=>socket.onmessage?.({data:JSON.stringify({type:'joined',cueSeq:0,actorId:42,lobbyId,lobbyName:`${location} lobby`,snapshot:initial})}));
+  },close(){socket.readyState=3;}};queueMicrotask(()=>socket.onopen?.({}));return socket;
+ }});
+ try{
+  await client.lobbies();await client.join(existing?lobbyId:`new:${location}`,'Regional join test','british');
+  assert.equal(client.connected,true);assert.equal(client.lobbyLocation,location);assert.equal(client.lobbyId,lobbyId);assert.equal(game.state,'playing');assert.equal(game.player.name,'Regional join test');
+  assert.deepEqual(requests,managed?[existing?lobbyId:`new:${location}`]:[]);
+  assert.deepEqual(urls,[managed?`wss://${location}.amazongamelift.com:8080/api/ws`:'wss://api.example.com/api/ws']);
+  assert.equal(messages[0].token,managed?'temporary-admission-'.repeat(4):'permanent-identity-'.repeat(4));
+ }finally{client.disconnect();}
+});
+
+test('cancelling during authentication aborts the request before any regional reservation',async()=>{
+ let signal:AbortSignal|undefined,reservations=0;
+ const client=new NetworkClient(new Game(),{extraLobbiesEnabled:true,origin:'https://api.example.com',fetch:async(url,options)=>{
+  if(String(url).endsWith('/lobbies'))return new Response(JSON.stringify({version:2,locations:['lon'],lobbies:[]}));
+  if(!String(url).endsWith('/session'))reservations++;
+  signal=options?.signal as AbortSignal;return new Promise((_resolve,reject)=>signal!.addEventListener('abort',()=>reject(signal!.reason),{once:true}));
+ },socket:()=>{throw Error('Cancelled authentication must not open a socket');}});
+ await client.lobbies();const joining=client.join('new:lon','Alice','british');await new Promise(r=>setImmediate(r));client.disconnect();await joining;
+ assert.equal(signal?.aborted,true);assert.equal(reservations,0);assert.equal(client.online,false);
+});
+
+test('the regional startup deadline aborts a pending reservation and returns a useful error',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});let signal:AbortSignal|undefined;
+ const client=new NetworkClient(new Game(),{extraLobbiesEnabled:true,origin:'https://api.example.com',fetch:async(url,options)=>{
+  if(String(url).endsWith('/lobbies'))return new Response(JSON.stringify({version:2,locations:['sg'],lobbies:[]}));
+  if(String(url).endsWith('/session'))return new Response(JSON.stringify({token:'a'.repeat(64)}));
+  signal=options?.signal as AbortSignal;return new Promise((_resolve,reject)=>signal!.addEventListener('abort',()=>reject(signal!.reason),{once:true}));
+ },socket:()=>{throw Error('Timed-out reservation must not open a socket');}});
+ await client.lobbies();const joining=client.join('new:sg','Alice','british'),failed=assert.rejects(joining,/Server startup timed out\. Please try again\./);
+ await new Promise(r=>setImmediate(r));t.mock.timers.tick(600000);await failed;
+ assert.equal(signal?.aborted,true);assert.equal(client.online,false);
+});
+
+test('regional startup reports its location and elapsed wait, then cancellation stops polling immediately',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const statuses:string[]=[];let requests=0,now=0;
+ const client=new NetworkClient(new Game(),{extraLobbiesEnabled:true,origin:'https://api.example.com',now:()=>now,fetch:async url=>{
+  if(String(url).endsWith('/lobbies'))return new Response(JSON.stringify({version:2,locations:['sp'],lobbies:[]}));
+  if(String(url).endsWith('/session'))return new Response(JSON.stringify({token:'a'.repeat(64)}));
+  requests++;return new Response(JSON.stringify({status:'starting'}),{status:202});
+ }});
+ client.onStatus=status=>{statuses.push(status);if(status.includes('elapsed'))client.disconnect();};
+ await client.lobbies();const joining=client.join('new:sp','Alice','british');await new Promise(r=>setImmediate(r));now=65000;t.mock.timers.tick(2000);await joining;
+ assert.ok(statuses.includes('Starting São Paulo server…'));assert.ok(statuses.includes('Starting São Paulo server… 1:05 elapsed'));assert.equal(requests,2);assert.equal(client.online,false);
 });

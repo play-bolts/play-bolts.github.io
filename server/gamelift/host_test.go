@@ -132,16 +132,19 @@ func TestAdmissionScopeAndExpiry(t *testing.T) {
 
 type fakeFleet struct {
 	gameAPI
-	mu        sync.Mutex
-	games     map[string][]types.GameSession
-	errors    map[string]error
-	placement *types.GameSessionPlacement
-	starts    int
-	queue     string
-	name      string
-	seats     map[string][]types.PlayerSession
-	creates   int
-	racedFull string
+	mu         sync.Mutex
+	games      map[string][]types.GameSession
+	errors     map[string]error
+	placement  *types.GameSessionPlacement
+	starts     int
+	queue      string
+	name       string
+	seats      map[string][]types.PlayerSession
+	creates    int
+	racedFull  string
+	queues     map[string]types.GameSessionQueue
+	queueErr   error
+	queueReads int
 }
 
 func (f *fakeFleet) DescribeGameSessions(_ context.Context, q *gamelift.DescribeGameSessionsInput, _ ...func(*gamelift.Options)) (*gamelift.DescribeGameSessionsOutput, error) {
@@ -159,6 +162,23 @@ func (f *fakeFleet) DescribeGameSessionPlacement(_ context.Context, q *gamelift.
 		return nil, &smithy.GenericAPIError{Code: "NotFoundException"}
 	}
 	return &gamelift.DescribeGameSessionPlacementOutput{GameSessionPlacement: f.placement}, nil
+}
+func (f *fakeFleet) DescribeGameSessionQueues(_ context.Context, q *gamelift.DescribeGameSessionQueuesInput, _ ...func(*gamelift.Options)) (*gamelift.DescribeGameSessionQueuesOutput, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.queueReads++
+	if f.queueErr != nil {
+		return nil, f.queueErr
+	}
+	queues := []types.GameSessionQueue{}
+	for _, name := range q.Names {
+		if f.queues == nil {
+			queues = append(queues, types.GameSessionQueue{Name: aws.String(name), Destinations: []types.GameSessionQueueDestination{{DestinationArn: aws.String("arn:aws:gamelift:us-east-1:123456789012:fleet/fleet-test")}}})
+		} else if queue, ok := f.queues[name]; ok {
+			queues = append(queues, queue)
+		}
+	}
+	return &gamelift.DescribeGameSessionQueuesOutput{GameSessionQueues: queues}, nil
 }
 func (f *fakeFleet) StartGameSessionPlacement(_ context.Context, q *gamelift.StartGameSessionPlacementInput, _ ...func(*gamelift.Options)) (*gamelift.StartGameSessionPlacementOutput, error) {
 	f.mu.Lock()

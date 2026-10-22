@@ -102,13 +102,13 @@ export class NetworkClient {
    return {...row,ping};
   }));
  }
- private async authenticate(){
+ private async authenticate(signal:AbortSignal){
   if(this.token)return;const generation=this.generation;
   let stored:string|null=null;try{stored=this.storage?.getItem(TOKEN_KEY)??null;}catch{}
-  let response=await this.fetcher(this.endpoint('/api/session'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(stored?{token:stored}:{}),signal:AbortSignal.timeout(8000)});
+  let response=await this.fetcher(this.endpoint('/api/session'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(stored?{token:stored}:{}),signal:AbortSignal.any([signal,AbortSignal.timeout(8000)])});
   // An expired/revoked browser token is not reused. A fresh server-issued identity
   // is the only fallback; names and network addresses never authenticate users.
-  if(response.status===401&&stored){try{this.storage?.removeItem(TOKEN_KEY);}catch{}response=await this.fetcher(this.endpoint('/api/session'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(8000)});}
+  if(response.status===401&&stored){signal.throwIfAborted();try{this.storage?.removeItem(TOKEN_KEY);}catch{}response=await this.fetcher(this.endpoint('/api/session'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.any([signal,AbortSignal.timeout(8000)])});}
   if(!response.ok)throw new Error('Unable to connect.');const body=await response.json();if(typeof body.token!=='string'||body.token.length<20)throw new Error('Invalid session.');if(generation!==this.generation)return;this.token=body.token;try{this.storage?.setItem(TOKEN_KEY,this.token);}catch{}
  }
  async join(lobbyId:string|undefined,name:string,faction:Faction,spectator=false){
@@ -116,23 +116,27 @@ export class NetworkClient {
   const listed=this.directory.get(lobbyId??'');
   if(listed&&!this.lobbyEnabled(listed))throw new Error('This location is unavailable. Refresh the server list.');
   if(byLocation&&!this.directoryLocations.some(id=>`new:${id}`===lobbyId))throw new Error('This location is unavailable. Refresh the server list.');
-  this.disconnect();this.online=true;this.profile={name:sanitizePlayerName(name),faction,spectator};this.lobbyId=lobbyId??'';this.reconnectAttempt=0;this.onStatus('Connecting…');const generation=this.generation;
+  this.disconnect();const abort=new AbortController();this.joinAbort=abort;this.online=true;this.profile={name:sanitizePlayerName(name),faction,spectator};this.lobbyId=lobbyId??'';this.reconnectAttempt=0;this.onStatus('Connecting…');const generation=this.generation;
   this.managed=byLocation||!!(lobbyId&&this.directory.get(lobbyId)?.managed);this.joinRequest=globalThis.crypto.randomUUID();
   this.lobbyLocation=byLocation?lobbyId!.slice(4):this.directory.get(lobbyId??'')?.location??(this.managed?undefined:'or');
-  try{await this.authenticate();if(!this.online||generation!==this.generation)return;if(this.managed)await this.reserveGame(generation);if(!this.online||generation!==this.generation)return;await this.openSocket();}catch(error){if(generation!==this.generation)return;this.disconnect();throw error;}
+  try{await this.authenticate(abort.signal);if(!this.online||generation!==this.generation)return;if(this.managed)await this.reserveGame(generation);if(!this.online||generation!==this.generation)return;await this.openSocket();}catch(error){if(generation!==this.generation)return;this.disconnect();throw error;}
  }
  private async reserveGame(generation:number){
-  const abort=new AbortController();this.joinAbort=abort;const deadline=this.now()+600000;
+  const abort=this.joinAbort??new AbortController();this.joinAbort=abort;const started=this.now(),deadline=new AbortController(),timer=setTimeout(()=>deadline.abort(),600000),signal=AbortSignal.any([abort.signal,deadline.signal]);
+  try{
   while(this.online&&generation===this.generation){
-   const response=await this.fetcher(this.endpoint('/api/join'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:this.token,lobbyId:this.lobbyId,requestId:this.joinRequest}),signal:AbortSignal.any([abort.signal,AbortSignal.timeout(12000)])});
+   signal.throwIfAborted();
+   const response=await this.fetcher(this.endpoint('/api/join'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:this.token,lobbyId:this.lobbyId,requestId:this.joinRequest}),signal:AbortSignal.any([signal,AbortSignal.timeout(12000)])});
    const result=await response.json().catch(()=>({}));if(generation!==this.generation)return;
-   if(response.status===202){this.onStatus('Starting server…');if(this.now()>=deadline)throw new Error('Server startup timed out. Please try again.');await new Promise<void>((resolve,reject)=>{const cancel=()=>{clearTimeout(timer);reject(new Error('Connection cancelled.'));};const timer=setTimeout(()=>{abort.signal.removeEventListener('abort',cancel);resolve();},2000);abort.signal.addEventListener('abort',cancel,{once:true});});continue;}
+   signal.throwIfAborted();
+   if(response.status===202){const seconds=Math.max(0,Math.floor((this.now()-started)/1000)),city=locationLabel(this.lobbyLocation)?.name;this.onStatus(`Starting ${city?`${city} `:''}server…${seconds?` ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} elapsed`:''}`);await new Promise<void>((resolve,reject)=>{const cancel=()=>{clearTimeout(retry);reject(new Error('Connection cancelled.'));};const retry=setTimeout(()=>{signal.removeEventListener('abort',cancel);resolve();},2000);if(signal.aborted)cancel();else signal.addEventListener('abort',cancel,{once:true});});continue;}
    if(response.status===401){this.token='';try{this.storage?.removeItem(TOKEN_KEY);}catch{}}
    if(!response.ok)throw new Error(typeof result.message==='string'?result.message:'Unable to join this game.');
    if(typeof result.websocketUrl!=='string'||typeof result.ticket!=='string'||result.ticket.length<32||result.ticket.length>2048||typeof result.lobbyId!=='string')throw new Error('Invalid game reservation.');
    const url=gameEndpoint(result.websocketUrl,this.origin);if(url.protocol!=='wss:'&&url.protocol!=='ws:')throw new Error('Invalid game reservation.');
    this.gameUrl=url.href;this.admission=result.ticket;this.lobbyId=result.lobbyId;this.onStatus('Connecting…');return;
   }
+  }catch(error){if(deadline.signal.aborted)throw new Error('Server startup timed out. Please try again.');throw error;}finally{clearTimeout(timer);}
  }
  private openSocket():Promise<void>{
   const previous=this.socket;if(previous){previous.onclose=null;previous.onmessage=null;previous.onerror=null;previous.onopen=null;previous.close();}
@@ -141,9 +145,9 @@ export class NetworkClient {
   this.connectionPromise=new Promise((resolve,reject)=>{
    let joined=false,settled=false;const timeout=setTimeout(()=>{if(settled)return;settled=true;reject(new Error('Connection timed out.'));socket.close();},10000);
    const fail=(message:string)=>{if(!settled){settled=true;clearTimeout(timeout);reject(new Error(message));}};this.cancelOpening=()=>fail('Connection cancelled.');
-   socket.onopen=()=>{if(generation===this.generation){this.openedAt=this.now();this.send({type:'hello',version:PROTOCOL_VERSION,token:this.managed?this.admission:this.token});}};
+   socket.onopen=()=>{if(generation===this.generation&&!settled){this.openedAt=this.now();this.send({type:'hello',version:PROTOCOL_VERSION,token:this.managed?this.admission:this.token});}};
    socket.onmessage=event=>{
-    if(generation!==this.generation)return;let message:any;try{message=decodeMessage(event.data);}catch{return;}if(!message||typeof message!=='object'||Array.isArray(message))return;
+    if(generation!==this.generation||settled&&!joined)return;let message:any;try{message=decodeMessage(event.data);}catch{return;}if(!message||typeof message!=='object'||Array.isArray(message))return;
     this.lastMessageAt=this.now();
     if(message.type==='welcome'){if(message.version!==PROTOCOL_VERSION){fail('Incompatible server version. Reload Bolts to update.');socket.close();return;}this.roundTrip=Math.max(0,this.now()-this.openedAt);this.send({type:'join',...(this.lobbyId?{lobbyId:this.lobbyId}:{}),name:this.profile.name,faction:this.profile.faction,...(this.profile.spectator?{spectator:true}:{})});return;}
     if(message.type==='joined'){

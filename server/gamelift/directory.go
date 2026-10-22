@@ -31,6 +31,7 @@ type gameAPI interface {
 	DescribeGameSessions(context.Context, *gamelift.DescribeGameSessionsInput, ...func(*gamelift.Options)) (*gamelift.DescribeGameSessionsOutput, error)
 	DescribePlayerSessions(context.Context, *gamelift.DescribePlayerSessionsInput, ...func(*gamelift.Options)) (*gamelift.DescribePlayerSessionsOutput, error)
 	CreatePlayerSession(context.Context, *gamelift.CreatePlayerSessionInput, ...func(*gamelift.Options)) (*gamelift.CreatePlayerSessionOutput, error)
+	DescribeGameSessionQueues(context.Context, *gamelift.DescribeGameSessionQueuesInput, ...func(*gamelift.Options)) (*gamelift.DescribeGameSessionQueuesOutput, error)
 	DescribeGameSessionPlacement(context.Context, *gamelift.DescribeGameSessionPlacementInput, ...func(*gamelift.Options)) (*gamelift.DescribeGameSessionPlacementOutput, error)
 	StartGameSessionPlacement(context.Context, *gamelift.StartGameSessionPlacementInput, ...func(*gamelift.Options)) (*gamelift.StartGameSessionPlacementOutput, error)
 }
@@ -136,47 +137,67 @@ func (d *directory) catalog(ctx context.Context, force bool) ([]lobby, error) {
 		row.PingURL = strings.Replace(strings.TrimRight(d.r.cfg.API, "/"), "https:", "wss:", 1) + "/api/ping"
 		rows = append(rows, row)
 	}
-	// Every viewer receives the same full directory; latency lives in the browser.
+	// Query locations independently: a slow API call must not consume the
+	// browser's request budget before the other locations can even be queried.
+	type regionalCatalog struct {
+		rows    []lobby
+		games   map[string]types.GameSession
+		healthy bool
+	}
+	locations := d.r.cfg.Locations
+	if !d.r.cfg.ExtraLobbiesEnabled {
+		locations = nil
+	}
+	regions := make([]regionalCatalog, len(locations))
+	var refresh sync.WaitGroup
+	for i, loc := range locations {
+		refresh.Add(1)
+		go func() {
+			defer refresh.Done()
+			region := &regions[i]
+			region.games = map[string]types.GameSession{}
+			regionCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+			defer cancel()
+			var next *string
+			for {
+				response, err := d.api.DescribeGameSessions(regionCtx, &gamelift.DescribeGameSessionsInput{FleetId: &d.r.cfg.Fleet, Location: &loc.AWS, NextToken: next, Limit: aws.Int32(100)})
+				if err != nil {
+					log.Printf("directory location %s unavailable: %v", loc.ID, err)
+					return
+				}
+				for _, g := range response.GameSessions {
+					if g.Status != types.GameSessionStatusActive && g.Status != types.GameSessionStatusActivating {
+						continue
+					}
+					phase := "playing"
+					if g.Status == types.GameSessionStatusActivating {
+						phase = "starting"
+					}
+					ping, _ := endpoint(aws.ToString(g.DnsName), aws.ToInt32(g.Port), "/api/ping")
+					id := aws.ToString(g.GameSessionId)
+					region.games[id] = g
+					region.rows = append(region.rows, lobby{ID: id, Name: aws.ToString(g.Name), Location: loc.ID, Players: aws.ToInt32(g.CurrentPlayerSessionCount), Capacity: 6, Phase: phase, PingURL: ping, Managed: true})
+				}
+				next = response.NextToken
+				if next == nil || *next == "" {
+					region.healthy = true
+					return
+				}
+			}
+		}()
+	}
+	refresh.Wait()
+	// A disconnected browser must not replace shared discovery with the empty
+	// results of its cancelled requests, then cache them for other players.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	available := []string{}
-	for _, loc := range d.r.cfg.Locations {
-		if !d.r.cfg.ExtraLobbiesEnabled {
-			break
-		}
-		regionalRows := []lobby{}
-		regionalGames := map[string]types.GameSession{}
-		regionCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-		healthy := true
-		var next *string
-		for {
-			response, err := d.api.DescribeGameSessions(regionCtx, &gamelift.DescribeGameSessionsInput{FleetId: &d.r.cfg.Fleet, Location: &loc.AWS, NextToken: next, Limit: aws.Int32(100)})
-			if err != nil {
-				log.Printf("directory location %s unavailable: %v", loc.ID, err)
-				healthy = false
-				break
-			}
-			for _, g := range response.GameSessions {
-				if g.Status != types.GameSessionStatusActive && g.Status != types.GameSessionStatusActivating {
-					continue
-				}
-				phase := "playing"
-				if g.Status == types.GameSessionStatusActivating {
-					phase = "starting"
-				}
-				ping, _ := endpoint(aws.ToString(g.DnsName), aws.ToInt32(g.Port), "/api/ping")
-				id := aws.ToString(g.GameSessionId)
-				regionalGames[id] = g
-				regionalRows = append(regionalRows, lobby{ID: id, Name: aws.ToString(g.Name), Location: loc.ID, Players: aws.ToInt32(g.CurrentPlayerSessionCount), Capacity: 6, Phase: phase, PingURL: ping, Managed: true})
-			}
-			next = response.NextToken
-			if next == nil || *next == "" {
-				break
-			}
-		}
-		cancel()
-		if healthy {
-			available = append(available, loc.ID)
-			rows = append(rows, regionalRows...)
-			for id, game := range regionalGames {
+	for i, region := range regions {
+		if region.healthy {
+			available = append(available, locations[i].ID)
+			rows = append(rows, region.rows...)
+			for id, game := range region.games {
 				games[id] = game
 			}
 		}
@@ -200,13 +221,47 @@ func (d *directory) list(w http.ResponseWriter, q *http.Request) {
 		problem(w, 503, "Unable to load servers.")
 		return
 	}
-	// Healthy locations remain selectable without a current game. A failed
-	// refresh removes that location's stale rooms and its placement option.
-	d.mu.Lock()
-	locations := append([]string{}, d.available...)
-	d.mu.Unlock()
+	// Configuration controls the picker. A transient discovery error hides
+	// unverified rooms, not whole cities; admission still checks their health.
+	locations := []string{}
+	if d.r.cfg.ExtraLobbiesEnabled {
+		for _, loc := range d.r.cfg.Locations {
+			locations = append(locations, loc.ID)
+		}
+	}
 	respond(w, 200, map[string]any{"version": 2, "lobbies": rows, "locations": locations})
 }
+
+func (d *directory) placementReady(ctx context.Context, loc location) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	response, err := d.api.DescribeGameSessionQueues(ctx, &gamelift.DescribeGameSessionQueuesInput{Names: []string{loc.Queue}})
+	if err != nil {
+		return false, err
+	}
+	for _, queue := range response.GameSessionQueues {
+		if aws.ToString(queue.Name) != loc.Queue && aws.ToString(queue.GameSessionQueueArn) != loc.Queue {
+			continue
+		}
+		if filter := queue.FilterConfiguration; filter != nil && len(filter.AllowedLocations) > 0 {
+			allowed := false
+			for _, region := range filter.AllowedLocations {
+				allowed = allowed || region == loc.AWS
+			}
+			if !allowed {
+				return false, nil
+			}
+		}
+		for _, destination := range queue.Destinations {
+			arn := aws.ToString(destination.DestinationArn)
+			if arn == d.r.cfg.Fleet || strings.HasSuffix(arn, ":fleet/"+d.r.cfg.Fleet) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 func (d *directory) playerSession(ctx context.Context, id, player string) (*types.PlayerSession, error) {
 	var next *string
 	for {
@@ -371,6 +426,19 @@ func (d *directory) join(w http.ResponseWriter, q *http.Request) {
 			}
 		}
 		if strings.HasPrefix(id, "new:") {
+			// Empty queues accept placements that can never succeed, leaving the
+			// client polling until the queue's ten-minute timeout. Check before
+			// creating a placement or continuing one after hosting is disabled.
+			ready, err := d.placementReady(q.Context(), *loc)
+			if err != nil {
+				log.Printf("directory location %s queue unavailable: %v", locID, err)
+				problem(w, 503, "Unable to check regional server availability. Please try again.")
+				return
+			}
+			if !ready {
+				problem(w, 503, "Servers in this location are currently offline. Please choose another location.")
+				return
+			}
 			placementID := d.pending[locID]
 			if placementID == "" {
 				placementID = "bolts-" + randomToken()[:32]

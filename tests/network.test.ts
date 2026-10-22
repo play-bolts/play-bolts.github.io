@@ -177,6 +177,31 @@ test('leaving closes transport, cancels reconnect and local AI mode stays local'
 test('session replacement is terminal instead of reconnecting and fighting another tab',async()=>{
  const {client,socket}=await fixture();let failure='';client.onFailure=message=>{failure=message;};socket.onclose?.({code:4001});assert.equal(failure,'Connected in another tab.');assert.equal(client.online,false);assert.equal(socket.closed,true);
 });
+test('a timed-out socket cannot deliver a late joined event before the join rejection is handled',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const socket=new MockSocket();let joined=0;
+ const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async()=>new Response(JSON.stringify({token:'a'.repeat(64)})),socket:()=>socket});
+ client.onJoined=()=>joined++;const joining=client.join(undefined,'Alice','british'),failed=assert.rejects(joining,/Connection timed out/);
+ await new Promise(r=>setImmediate(r));t.mock.timers.tick(10000);
+ socket.open();socket.receive({type:'welcome',version:3});socket.receive({type:'joined',cueSeq:0,lobbyId:'late-room',lobbyName:'Late room',actorId:42,snapshot:snapshot()});
+ await failed;assert.equal(joined,0);assert.equal(socket.messages.filter(message=>message.type!=='leave').length,0);assert.equal(client.connected,false);assert.equal(client.online,false);
+});
+test('a cancelled authentication returning 401 cannot erase a newer joined session or retry authentication',async()=>{
+ const freshToken='fresh-session-token-'.repeat(4),sockets:MockSocket[]=[],requests:RequestInit[]=[],removed:string[]=[];
+ let stored:string|null='expired-session-token-'.repeat(4),finishOld:(response:Response)=>void=()=>{},joined=0;
+ const client=new NetworkClient(new Game(),{origin:'https://api.example.com',storage:{getItem:()=>stored,setItem:(_key,value)=>{stored=value;},removeItem:key=>{removed.push(key);stored=null;}},fetch:async(_url,options)=>{
+  requests.push(options!);if(requests.length===1)return new Promise(resolve=>{finishOld=resolve;});
+  return new Response(JSON.stringify({token:freshToken}));
+ },socket:()=>{const socket=new MockSocket();sockets.push(socket);return socket;}});
+ client.onJoined=()=>joined++;
+ try{
+  const oldJoin=client.join(undefined,'Alice','british');await new Promise(r=>setImmediate(r));client.disconnect();
+  const newJoin=client.join(undefined,'Alice','british');await new Promise(r=>setImmediate(r));const socket=sockets[0];socket.open();socket.receive({type:'welcome',version:3});socket.receive({type:'joined',cueSeq:0,lobbyId:'current-room',lobbyName:'Current room',actorId:42,snapshot:snapshot()});await newJoin;
+  assert.equal(client.connected,true);assert.equal(stored,freshToken);assert.equal(requests[0].signal?.aborted,true);
+  finishOld(new Response('{}',{status:401}));await oldJoin;
+  assert.equal(client.connected,true);assert.equal(client.lobbyId,'current-room');assert.equal(client['token'],freshToken);assert.equal(stored,freshToken);assert.equal(joined,1);
+  assert.equal(requests.length,2,'the cancelled 401 must not trigger a fresh identity request');assert.equal(sockets.length,1);assert.deepEqual(removed,[]);assert.equal(socket.messages[0].token,freshToken);
+ }finally{client.disconnect();}
+});
 test('jump standing intent and ADS remain continuous through crouch transitions',async()=>{
  const {client,game,socket,setNow}=await fixture();
  try{

@@ -257,7 +257,9 @@ export class UI {
   hudText(this.el['touch-sensitivity-value'],this.prefs.touchSensitivity.toFixed(1));hudText(this.el['touch-size-value'],`${Math.round(this.prefs.touchSize*100)}%`);
   hudStyle(document.documentElement,'--touch-scale',String(this.prefs.touchSize));
  }
- showLobbies(rows:LobbyRow[],status='',locations:readonly LobbyLocation[]=[]){
+ // Loading/error screens retain known locations; only a directory response
+ // with an explicit location list can replace or remove them.
+ showLobbies(rows:LobbyRow[],status='',locations:readonly LobbyLocation[]=this.lobbyLocations){
   const focusedLobby=document.activeElement?.closest<HTMLTableRowElement>('[data-lobby]')?.dataset.lobby;
   this.lobbyRows=rows.map(row=>({...row}));
   this.el['lobby-location-controls'].classList.toggle('hidden',!locations.length);

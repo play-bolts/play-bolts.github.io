@@ -95,6 +95,22 @@ The directory phase discovers the existing backend role, instance and private re
 
 CloudFormation validation and local integration tests do not exercise AWS capacity allocation, TLS issuance or real cross-region latency; the regional smoke tests are required for rollout. New builds replace fleets. Drain active sessions before switching the directory's fleet ID. Old fleets are retained by the template so a stack update cannot silently terminate active games; after draining, explicitly remove retired fleets to avoid retained-resource costs. Generated fleet certificates expire after 13 months, so replace fleets before then. [AWS fleet reference](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-gamelift-fleet.html).
 
+### Missing locations or stalled regional joins
+
+Check the deployed browser's `extraLobbies` flag, the directory's `extraLobbiesEnabled`, and actual fleet capacity together. A version-2 directory can advertise configured cities while their queues have no destinations or their fleets have zero capacity. An `ACTIVE` fleet status does not establish that a game process is running. The October 17 shutdown deliberately removed destinations and set all regional capacity bounds to zero; restoring hosting also restores its recurring cost.
+
+The directory keeps configured city choices visible through transient discovery failures, queries regional APIs concurrently, and removes unverified game rows. A cancelled browser request cannot overwrite the shared cache. Admission still rejects a failed region and checks the queue's destination before starting or polling placement. Empty queues return an offline error immediately; queue configuration alone does not prove positive fleet capacity. The directory role requires **`gamelift:DescribeGameSessionQueues`** in addition to its existing permissions; install that read permission before rolling out the gateway. The generated template includes it. Do not apply a whole fleet stack merely to add this permission: capacity may intentionally differ from the template.
+
+The browser retains its last location choices during loading and error screens; an explicit directory update can remove them. Connection cancellation aborts authentication and placement requests, startup displays the city and elapsed wait, and the ten-minute startup deadline also covers an in-flight request. Expired socket handshakes cannot accept a late join.
+
+Run the production spectator check explicitly after deployment:
+
+```sh
+node --import tsx scripts/test-lobby-localities.ts --remote-qa --timeout-ms=630000
+```
+
+It attempts Oregon, London, Singapore and São Paulo independently, verifies the completed lobby handshake, subsequent authoritative snapshots and directory locality, disconnects its sockets, and writes a credential-free report under `temp/multiplayer-qa/`. It creates normal QA identities and participation records. A missing locality or timeout fails the check. This uses the real networking adapter and Node transport; browser CORS and rendering still require the browser smoke tests above. For diagnosis while the browser release flag is disabled, add `--probe-disabled-regions`; that override is recorded in the report and does not enable hosting. A short `--timeout-ms=15000` reproduces a stalled join but is not sufficient to rule out a legitimate cold start. Verify capacity and queue destinations separately.
+
 ### Persistence and recovery
 
 Workers use private, per-process SQLite files under `/local/game/sessionlogs/`. Every five seconds, outside the simulation tick, they send signed batches to `/api/cluster/replicate`. The directory validates the signature and timestamp and imports in a transaction. Event UUIDs, combat-role keys and per-session cursors make retries idempotent. Human account credentials and private feedback never enter a batch. Shared leaderboard totals are incremented from new combat events, preserving existing scores and launch seeds. Regional membership grace periods may overlap during a server change; the database uniqueness constraint is per player and lobby, while each local Hub still owns a single membership per identity.

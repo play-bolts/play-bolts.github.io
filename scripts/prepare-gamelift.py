@@ -85,7 +85,8 @@ def template(enabled=None):
         'PolicyDocument': {'Version': '2012-10-17', 'Statement': [
             {'Effect': 'Allow', 'Action': 'ssm:GetParameter', 'Resource': secret_arn},
             {'Effect': 'Allow', 'Action': ['gamelift:DescribeGameSessions', 'gamelift:DescribePlayerSessions',
-                'gamelift:CreatePlayerSession', 'gamelift:DescribeGameSessionPlacement'], 'Resource': '*'},
+                'gamelift:CreatePlayerSession', 'gamelift:DescribeGameSessionPlacement',
+                'gamelift:DescribeGameSessionQueues'], 'Resource': '*'},
             {'Effect': 'Allow', 'Action': 'gamelift:StartGameSessionPlacement',
                 'Resource': [{'Fn::GetAtt': ['Queue' + key.title(), 'Arn']} for key in LOCATIONS]},
         ]}}}

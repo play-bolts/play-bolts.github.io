@@ -73,9 +73,9 @@ def prepare(source_dir):
         movement = name.startswith("movement-")
         report = "-report-" in name
         gain = movement_gain if movement else 10 ** (WEAPON_GAIN_DB / 20)
-        # Leave the first 600 ms of each report intact, then ease its full tail
+        # Leave the first 500 ms of each report intact, then ease its full tail
         # to zero with flat envelope slopes at both ends of the release.
-        attack, release = (.002, .400) if report else (.004, .015 if movement else .012)
+        attack, release = (.002, .300) if report else (.004, .015 if movement else .012)
         attack_frames, release_frames = round(attack * rate), round(release * rate)
         samples[:attack_frames] *= np.linspace(0, 1, attack_frames)
         if report:
@@ -126,12 +126,12 @@ def prepare(source_dir):
         "format": "48 kHz mono PCM16 WAV",
         "preparation_script": "scripts/prepare-game-audio.py",
         "source_manifest_sha256": digest(manifest_blob),
-        "method": "Selected local raw gameplay excerpts, stereo averaged to mono, fixed gain and a short attack fade, then PCM16 quantization. Reports use a 400 ms raised-cosine release; other clips retain short linear releases. Duration and pitch retained.",
+        "method": "Selected local raw gameplay excerpts, stereo averaged to mono, fixed gain and a short attack fade, then PCM16 quantization. Reports use a 300 ms raised-cosine release; other clips retain short linear releases. Duration and pitch retained.",
         "weapon_gain_db": WEAPON_GAIN_DB,
         "movement_pair_peak_target_dbfs": MOVEMENT_PEAK_DBFS,
         "limitations": [
             "These are excerpts from the final recorded game mix, not isolated original game assets. Ambience and overlapping sounds remain.",
-            "Reports retain 1.0 second including pre-roll, decay and some early bolt handling; the final 400 ms fades smoothly. These excerpts do not include a complete bolt cycle.",
+            "Reports retain 800 ms including pre-roll, decay and some early bolt handling; the final 300 ms fades smoothly. These excerpts do not include a complete bolt cycle.",
             "Bolt subdivisions are approximate mixed handling phases, especially for the Enfield. Reload loading bursts combine insertion, cartridge push and clip removal.",
             "Movement clips are unconfirmed footstep candidates. The source does not establish foot contact, side, gait, surface, or stance, and an off-screen sound cannot be excluded.",
         ],

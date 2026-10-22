@@ -4,19 +4,23 @@ The game now uses 27 excerpts prepared from the supplied `temp/game-audio/`
 package: nine rifle reports (three per faction), six bolt phases, ten reload
 phases and two movement candidates. `shared/game-audio.json` maps their IDs to
 the static WAVs in `public/assets/audio/game/`. The [asset README](../public/assets/audio/game/README.md)
-and [provenance](../public/assets/audio/game/provenance.json) record source URLs,
+and [provenance](../public/assets/audio/game/provenance.json) record clip details,
 timestamps, input/output hashes, processing settings and limitations.
 
 The recordings are 48 kHz mono PCM16 WAVs. Preparation averages stereo channels,
 applies one −2.3 dB gain to weapon clips, and gives both movement candidates a
-shared gain targeting −12 dBFS peak. Brief boundary fades prevent clicks; reports
-use a 40 ms release to soften their early cut. Duration and natural pitch remain
+shared gain targeting −12 dBFS peak. Boundary fades prevent clicks; reports
+use a 500 ms squared raised-cosine release for stronger early attenuation and
+a smooth ending.
+Duration and natural pitch remain
 unchanged. These assets do not receive the older procedural duration compression.
 Reproduce or verify them with `.tools/audio-analysis/bin/python scripts/prepare-game-audio.py`
 or the same command with `--check`; the original extraction files remain unchanged.
 
-The reports preserve 10 ms pre-roll and the first 350 ms of each shot. Later
-decay is absent because it overlaps bolt handling in the recorded mix. Bolt
+The reports now preserve 10 ms pre-roll and 790 ms after each shot onset,
+for 800 ms total. This retains the decay and some early bolt handling while
+ending before the next gunshot. Raw analysis WAVs remain unprocessed; both the
+listening copies and game versions fade from 0.3 to 0.8 seconds. Bolt
 subdivisions retain report decay and overlapping mechanical sounds, especially
 for the Enfield. Reload loading bursts combine insertion, cartridge push and
 clip removal. The Mosin source shows a partial refill from one to five rounds,

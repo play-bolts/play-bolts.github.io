@@ -15,7 +15,7 @@ import wave
 
 import numpy as np
 
-from audio_processing import read_wav, wav_bytes
+from audio_processing import cosine_release, read_wav, wav_bytes
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,12 +73,15 @@ def prepare(source_dir):
         movement = name.startswith("movement-")
         report = "-report-" in name
         gain = movement_gain if movement else 10 ** (WEAPON_GAIN_DB / 20)
-        # Report excerpts have 10 ms pre-roll and substantial cut-off decay.
-        # The short attack preserves the crack; the release softens that cut.
-        attack, release = (.002, .040) if report else (.004, .015 if movement else .012)
+        # Preserve the first 300 ms, then attenuate the report more strongly
+        # with a squared cosine curve that still reaches zero smoothly.
+        attack, release = (.002, .500) if report else (.004, .015 if movement else .012)
         attack_frames, release_frames = round(attack * rate), round(release * rate)
         samples[:attack_frames] *= np.linspace(0, 1, attack_frames)
-        samples[-release_frames:] *= np.linspace(1, 0, release_frames)
+        if report:
+            samples = cosine_release(samples, rate, release, power=2)
+        else:
+            samples[-release_frames:] *= np.linspace(1, 0, release_frames)
         samples *= gain
         if np.max(np.abs(samples)) >= 1:
             raise ValueError(f"Output would clip: {name}")
@@ -99,7 +102,6 @@ def prepare(source_dir):
             "duration_seconds": len(samples) / rate,
             "frames": len(samples),
             "source_id": clip["source"],
-            "source_url": clip["source_url"],
             "source_audio_sha256": source["audio_sha256"],
             "source_clip": f"temp/game-audio/{clip['raw_file']}",
             "source_clip_sha256": clip["raw_sha256"],
@@ -112,7 +114,8 @@ def prepare(source_dir):
                 "channel_mix": "arithmetic mean of stereo channels",
                 "gain_db": level(gain),
                 "linear_attack_seconds": attack,
-                "linear_release_seconds": release,
+                "release_seconds": release,
+                "release_curve": "squared raised cosine" if report else "linear",
                 "timing": "original sample count and pitch preserved",
             },
             "output_sha256": digest(blob),
@@ -123,12 +126,12 @@ def prepare(source_dir):
         "format": "48 kHz mono PCM16 WAV",
         "preparation_script": "scripts/prepare-game-audio.py",
         "source_manifest_sha256": digest(manifest_blob),
-        "method": "Selected local raw gameplay excerpts, stereo averaged to mono, fixed gain and short linear boundary fades, then PCM16 quantization. Original duration and pitch retained.",
+        "method": "Selected local raw gameplay excerpts, stereo averaged to mono, fixed gain and a short attack fade, then PCM16 quantization. Reports use a 500 ms squared raised-cosine release beginning at 300 ms; other clips retain short linear releases. Duration and pitch retained.",
         "weapon_gain_db": WEAPON_GAIN_DB,
         "movement_pair_peak_target_dbfs": MOVEMENT_PEAK_DBFS,
         "limitations": [
             "These are excerpts from the final recorded game mix, not isolated original game assets. Ambience and overlapping sounds remain.",
-            "Reports contain the first 350 ms plus 10 ms pre-roll; later decay overlaps bolt handling and is absent from these excerpts.",
+            "Reports retain 800 ms including pre-roll, decay and some early bolt handling; the final 500 ms fades with stronger early attenuation. These excerpts do not include a complete bolt cycle.",
             "Bolt subdivisions are approximate mixed handling phases, especially for the Enfield. Reload loading bursts combine insertion, cartridge push and clip removal.",
             "Movement clips are unconfirmed footstep candidates. The source does not establish foot contact, side, gait, surface, or stance, and an off-screen sound cannot be excluded.",
         ],

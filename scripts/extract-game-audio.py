@@ -22,6 +22,7 @@ import wave
 import zipfile
 
 import numpy as np
+from audio_processing import cosine_release
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,9 +43,11 @@ def float_wav(samples, rate):
     return b'RIFF' + struct.pack('<I', len(body)) + body
 
 
-def listening_wav(samples, rate):
+def listening_wav(samples, rate, release_seconds=0):
     peak = float(np.abs(samples).max())
     gain = 10 ** (-6 / 20) / peak if peak else 1
+    if release_seconds:
+        samples = cosine_release(samples, rate, release_seconds, power=2)
     buffer = io.BytesIO()
     with wave.open(buffer, 'wb') as handle:
         handle.setnchannels(samples.shape[1])
@@ -81,23 +84,23 @@ def make_report(records, manifest, out):
         preview = base64.b64encode((out / item['listen_file']).read_bytes()).decode()
         cards.append(f'''<article data-category="{escape(item['category'])}">
 <div class="tag">{escape(item['category'])} · {escape(item['isolation'])}</div>
-<h2>{escape(item['label'])}</h2><p class="time">{item['start_seconds']:.3f}–{item['end_seconds']:.3f} s · {item['duration_seconds']:.3f} s · original peak {item['peak_dbfs']:.1f} dBFS</p>
+<h2>{escape(item['label'])}</h2><p class="time">{item['start_seconds']:.3f}–{item['end_seconds']:.3f} s · {item['duration_seconds']:.3f} s · unprocessed peak {item['peak_dbfs']:.1f} dBFS</p>
 {item.pop('_waveform')}<audio controls preload="none" src="data:audio/wav;base64,{preview}"></audio>
-<p>{escape(item['notes'])}</p><p class="links"><a href="{escape(item['raw_file'])}" download>Original float WAV</a><a href="{escape(item['listen_file'])}" download>Listening WAV (−6 dBFS peak)</a><a href="{escape(item['source_url'])}&amp;t={int(item['start_seconds'])}s" target="_blank" rel="noreferrer">Source video</a></p>
+<p>{escape(item['notes'])}</p><p class="links"><a href="{escape(item['raw_file'])}" download>Unprocessed float WAV</a><a href="{escape(item['listen_file'])}" download>Listening WAV (−6 dBFS peak)</a></p>
 <details><summary>Action evidence &amp; video context</summary><p>{escape(item['evidence'])}</p><video controls preload="none" src="{escape(item['context_file'])}"></video><p>Context includes neighboring sounds and uses peak-normalized AAC audio for audition. Extract starts {item['context_offset_seconds']:.3f} s into this context; video alignment is limited by the source frame rate.</p></details></article>''')
     missing = ''.join(f'<li><b>{escape(row["action"])}:</b> {escape(row["reason"])}</li>' for row in manifest['unavailable'])
     categories = sorted(set(row['category'] for row in records))
     options = ''.join(f'<option>{escape(category)}</option>' for category in categories)
-    document = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Original game action sounds</title>
+    document = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Game action sounds</title>
 <style>:root{font:16px/1.5 system-ui;color:#24312f;background:#f4f2eb}body{max-width:1120px;margin:40px auto;padding:0 20px}h1{font-size:38px;line-height:1.1;margin:10px 0}h2{font-size:20px;margin:8px 0}p{margin:10px 0}.intro{max-width:900px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:18px;margin:20px 0}article{background:white;border:1px solid #ddd9cd;border-radius:12px;padding:20px;min-width:0}.tag,.time{font-size:13px;color:#5c6961}svg,audio,video{width:100%}svg{height:100px}audio{height:42px}.links{display:flex;gap:12px;flex-wrap:wrap;font-size:13px}a{color:#126b73}details{font-size:14px;margin-top:12px}summary{cursor:pointer}button,select{font:inherit;border:1px solid #a8b2aa;background:white;border-radius:6px;padding:8px 12px;margin:12px 10px 0 0}article[hidden]{display:none}.notice{padding:16px 20px;border-left:4px solid #b88734;background:#fff9e8}footer{margin:32px 0}</style>
-<div class="intro"><div class="tag">BOLTS · ORIGINAL GAMEPLAY REFERENCES · 21 OCTOBER 2026</div><h1>Individual action sounds</h1>
-<p>Recorded game audio extracted from the project's saved Call of Duty reference videos. Listen to each event separately and use the original WAVs for measurement.</p>
-<p class="notice"><b>Temporal isolation, not recovered source assets.</b> These are cuts from the final game mix. Ambience and any overlapping effects remain. Short report excerpts deliberately exclude later bolt sounds; full action sequences retain overlapping components. No AI replacement, denoising, EQ, time stretching, or fades have been applied.</p>
-<p><b>Analysis files:</b> 48 kHz stereo, 32-bit float WAV, original decoded samples and levels. Float preserves codec peaks above 0 dBFS without introducing clipping. <b>Players:</b> separate 16-bit copies, each peak-normalized to −6 dBFS for audition. Do not use listening copies to compare original loudness. Waveforms are scaled independently.</p>
+<div class="intro"><div class="tag">BOLTS · ACTION SOUND LIBRARY · 21 OCTOBER 2026</div><h1>Individual action sounds</h1>
+<p>Listen to each action separately and use the unprocessed WAVs for measurement.</p>
+<p class="notice"><b>Audio excerpts.</b> Rifle clips retain 800 ms of the shot and following audio, including decay and some early bolt handling. Ambience and overlapping effects remain. No AI replacement, denoising, EQ, time stretching, or fades have been applied to the analysis WAVs.</p>
+<p><b>Analysis files:</b> 48 kHz stereo, 32-bit float WAV, original decoded samples and levels. Float preserves codec peaks above 0 dBFS without introducing clipping. <b>Players:</b> separate 16-bit copies, each peak-normalized to −6 dBFS for audition; gunshots have a stronger fade from 300 to 800 ms. Do not use listening copies to compare original loudness. Waveforms are scaled independently.</p>
 <p>Playback previews are embedded in this HTML; WAV downloads and context videos work alongside the extracted package. <a href="manifest.json">Manifest</a> · <a href="measurements.csv">Measurements CSV</a></p></div>
 <label>Category <select id="filter"><option value="">All actions</option>''' + options + '''</select></label><button id="stop">Stop playback</button><span id="count"></span><main class="grid">''' + ''.join(cards) + '''</main>
 <section><h2>Coverage gaps</h2><p>No sample has been substituted for an action that the inspected footage cannot establish.</p><ul>''' + missing + '''</ul></section>
-<footer>Sources and exact sample boundaries are in manifest.json. Clips remain local analysis material. Original media is retained in artifacts/audio-reference; generated output is under temp/game-audio.</footer>
+<footer>Clip measurements and exact sample boundaries are in manifest.json. Files are under temp/game-audio.</footer>
 <script>const media=[...document.querySelectorAll('audio,video')];function stop(except){for(const m of media)if(m!==except){m.pause();m.currentTime=0;}}for(const m of media)m.addEventListener('play',()=>stop(m));document.querySelector('#stop').onclick=()=>stop();const cards=[...document.querySelectorAll('article')];function filter(){stop();const category=document.querySelector('#filter').value;for(const c of cards)c.hidden=!!category&&c.dataset.category!==category;document.querySelector('#count').textContent=cards.filter(c=>!c.hidden).length+' clips';}document.querySelector('#filter').onchange=filter;filter();</script></html>'''
     (out / 'index.html').write_text(document)
 
@@ -132,7 +135,7 @@ def run(args):
         samples = np.frombuffer(result.stdout, dtype='<f4').reshape(-1, channels)
         if not np.isfinite(samples).all():
             raise ValueError('Source contains non-finite decoded samples')
-        sources[source_id] = {**source, 'audio_sha256': digest(source_path), 'video_sha256': digest(video_path), 'decoded_frames': len(samples), 'duration_seconds': len(samples) / rate}
+        sources[source_id] = {'sample_rate': rate, 'channels': channels, 'audio_sha256': digest(source_path), 'video_sha256': digest(video_path), 'decoded_frames': len(samples), 'duration_seconds': len(samples) / rate}
         for segment in selected:
             start, end = round(segment['start'] * rate), round(segment['end'] * rate)
             if not 0 <= start < end <= len(samples):
@@ -142,7 +145,8 @@ def run(args):
             # Readback proves exact preservation of every decoded float sample.
             if not np.array_equal(np.frombuffer(raw[56:], dtype='<f4').reshape(-1, channels), clip):
                 raise ValueError('Raw WAV did not preserve source samples')
-            preview, gain = listening_wav(clip, rate)
+            release_seconds = .5 if segment['category'] == 'Rifle reports' else 0
+            preview, gain = listening_wav(clip, rate, release_seconds)
             name = segment['id']
             raw_path, listen_path, context_path = f'raw/{name}.wav', f'listen/{name}.wav', f'context/{name}.mp4'
             (out / raw_path).write_bytes(raw)
@@ -153,13 +157,15 @@ def run(args):
             # Context is an audition proxy; only raw WAVs are measurement data.
             context_audio, context_gain = listening_wav(samples[round(context_start * rate):round(context_end * rate)], rate)
             subprocess.run([ffmpeg, '-v', 'error', '-y', '-ss', str(context_start), '-i', str(video_path), '-f', 'wav', '-i', 'pipe:0', '-map', '0:v:0', '-map', '1:a:0', '-t', str(context_end - context_start), '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', str(out / context_path)], input=context_audio, check=True)
-            item = {**segment, 'source_url': source['url'], 'start_sample': start, 'end_sample_exclusive': end, 'start_seconds': start / rate, 'end_seconds': end / rate, 'sample_rate': rate, 'channels': channels, 'frames': end - start, 'duration_seconds': (end - start) / rate, 'raw_format': 'IEEE float32 WAV', 'peak_dbfs': level(np.abs(clip).max()), 'rms_dbfs': level(np.sqrt(np.mean(clip.astype(float) ** 2))), 'samples_above_full_scale': int(np.sum(np.abs(clip) > 1)), 'listen_gain_db': level(gain), 'raw_file': raw_path, 'listen_file': listen_path, 'context_file': context_path, 'context_start_seconds': context_start, 'context_offset_seconds': segment['start'] - context_start, 'raw_sha256': hashlib.sha256(raw).hexdigest(), 'sample_preservation_verified': True, '_waveform': waveform(clip)}
+            item = {**segment, 'start_sample': start, 'end_sample_exclusive': end, 'start_seconds': start / rate, 'end_seconds': end / rate, 'sample_rate': rate, 'channels': channels, 'frames': end - start, 'duration_seconds': (end - start) / rate, 'raw_format': 'IEEE float32 WAV', 'peak_dbfs': level(np.abs(clip).max()), 'rms_dbfs': level(np.sqrt(np.mean(clip.astype(float) ** 2))), 'samples_above_full_scale': int(np.sum(np.abs(clip) > 1)), 'listen_gain_db': level(gain), 'raw_file': raw_path, 'listen_file': listen_path, 'context_file': context_path, 'context_start_seconds': context_start, 'context_offset_seconds': segment['start'] - context_start, 'raw_sha256': hashlib.sha256(raw).hexdigest(), 'sample_preservation_verified': True, '_waveform': waveform(clip)}
             records.append(item)
             item['context_gain_db'] = level(context_gain)
+            item['listen_release_seconds'] = release_seconds
+            item['listen_release_curve'] = 'squared raised cosine' if release_seconds else 'none'
             print(f'  {name}: {item["duration_seconds"]:.3f} s', flush=True)
         del samples, result
     make_report(records, manifest, out)
-    report = {'method': 'Sample-accurate temporal cuts of original decoded game-video stereo mix. No source separation, denoising, EQ, fading, resampling or time compression. Listening copies use a single fixed per-clip gain and PCM16 quantization.', 'raw_sample_format': 'IEEE float32, 48 kHz, stereo', 'ffmpeg_version': subprocess.check_output([ffmpeg, '-version'], text=True).splitlines()[0], 'annotation_sha256': digest(args.manifest), 'sources': sources, 'clips': records, 'unavailable': manifest['unavailable']}
+    report = {'method': 'Sample-accurate temporal cuts of decoded game-video stereo mix. Analysis WAVs have no source separation, denoising, EQ, fading, resampling or time compression. Listening copies use a fixed per-clip gain and PCM16 quantization; gunshots have a 500 ms squared raised-cosine release beginning at 300 ms.', 'raw_sample_format': 'IEEE float32, 48 kHz, stereo', 'ffmpeg_version': subprocess.check_output([ffmpeg, '-version'], text=True).splitlines()[0], 'annotation_sha256': digest(args.manifest), 'sources': sources, 'clips': records, 'unavailable': manifest['unavailable']}
     (out / 'manifest.json').write_text(json.dumps(report, indent=2) + '\n')
     columns = ['id', 'category', 'label', 'source', 'start_seconds', 'end_seconds', 'duration_seconds', 'frames', 'peak_dbfs', 'rms_dbfs', 'samples_above_full_scale', 'listen_gain_db', 'isolation', 'raw_file', 'notes']
     with (out / 'measurements.csv').open('w', newline='') as handle:

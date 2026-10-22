@@ -2,47 +2,47 @@
   {
     "id": "enfield-report-1",
     "file": "/assets/audio/game/enfield-report-1.wav",
-    "duration": 0.36
+    "duration": 0.8
   },
   {
     "id": "enfield-report-2",
     "file": "/assets/audio/game/enfield-report-2.wav",
-    "duration": 0.36
+    "duration": 0.8
   },
   {
     "id": "enfield-report-3",
     "file": "/assets/audio/game/enfield-report-3.wav",
-    "duration": 0.36
+    "duration": 0.8
   },
   {
     "id": "mosin-report-1",
     "file": "/assets/audio/game/mosin-report-1.wav",
-    "duration": 0.36
+    "duration": 0.8
   },
   {
     "id": "mosin-report-2",
     "file": "/assets/audio/game/mosin-report-2.wav",
-    "duration": 0.36
+    "duration": 0.8
   },
   {
     "id": "mosin-report-3",
     "file": "/assets/audio/game/mosin-report-3.wav",
-    "duration": 0.36
+    "duration": 0.8
   },
   {
     "id": "kar98k-report-1",
     "file": "/assets/audio/game/kar98k-report-1.wav",
-    "duration": 0.36
+    "duration": 0.8
   },
   {
     "id": "kar98k-report-2",
     "file": "/assets/audio/game/kar98k-report-2.wav",
-    "duration": 0.36
+    "duration": 0.8
   },
   {
     "id": "kar98k-report-3",
     "file": "/assets/audio/game/kar98k-report-3.wav",
-    "duration": 0.36
+    "duration": 0.8
   },
   {
     "id": "enfield-open-eject",

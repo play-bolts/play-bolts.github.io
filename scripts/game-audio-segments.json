@@ -27,100 +27,100 @@
       "id": "enfield-report-1",
       "source": "firing",
       "start": 327.306,
-      "end": 327.666,
-      "label": "Lee\u2013Enfield \u00b7 report 1 (early 350 ms)",
+      "end": 328.106,
+      "label": "Lee\u2013Enfield \u00b7 report 1",
       "category": "Rifle reports",
-      "isolation": "early-report excerpt",
-      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
-      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "enfield-report-2",
       "source": "firing",
       "start": 329.033,
-      "end": 329.393,
-      "label": "Lee\u2013Enfield \u00b7 report 2 (early 350 ms)",
+      "end": 329.833,
+      "label": "Lee\u2013Enfield \u00b7 report 2",
       "category": "Rifle reports",
-      "isolation": "early-report excerpt",
-      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
-      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "enfield-report-3",
       "source": "firing",
       "start": 332.375,
-      "end": 332.735,
-      "label": "Lee\u2013Enfield \u00b7 report 3 (early 350 ms)",
+      "end": 333.175,
+      "label": "Lee\u2013Enfield \u00b7 report 3",
       "category": "Rifle reports",
-      "isolation": "early-report excerpt",
-      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
-      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "mosin-report-1",
       "source": "firing",
       "start": 235.255,
-      "end": 235.615,
-      "label": "Mosin\u2013Nagant \u00b7 report 1 (early 350 ms)",
+      "end": 236.055,
+      "label": "Mosin\u2013Nagant \u00b7 report 1",
       "category": "Rifle reports",
-      "isolation": "early-report excerpt",
-      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
-      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "mosin-report-2",
       "source": "firing",
       "start": 237.056,
-      "end": 237.416,
-      "label": "Mosin\u2013Nagant \u00b7 report 2 (early 350 ms)",
+      "end": 237.856,
+      "label": "Mosin\u2013Nagant \u00b7 report 2",
       "category": "Rifle reports",
-      "isolation": "early-report excerpt",
-      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
-      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "mosin-report-3",
       "source": "firing",
       "start": 242.039,
-      "end": 242.399,
-      "label": "Mosin\u2013Nagant \u00b7 report 3 (early 350 ms)",
+      "end": 242.839,
+      "label": "Mosin\u2013Nagant \u00b7 report 3",
       "category": "Rifle reports",
-      "isolation": "early-report excerpt",
-      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
-      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "kar98k-report-1",
       "source": "firing",
       "start": 252.431,
-      "end": 252.791,
-      "label": "Kar98k \u00b7 report 1 (early 350 ms)",
+      "end": 253.231,
+      "label": "Kar98k \u00b7 report 1",
       "category": "Rifle reports",
-      "isolation": "early-report excerpt",
-      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
-      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "kar98k-report-2",
       "source": "firing",
       "start": 253.86,
-      "end": 254.22,
-      "label": "Kar98k \u00b7 report 2 (early 350 ms)",
+      "end": 254.66,
+      "label": "Kar98k \u00b7 report 2",
       "category": "Rifle reports",
-      "isolation": "early-report excerpt",
-      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
-      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "kar98k-report-3",
       "source": "firing",
       "start": 258.219,
-      "end": 258.579,
-      "label": "Kar98k \u00b7 report 3 (early 350 ms)",
+      "end": 259.019,
+      "label": "Kar98k \u00b7 report 3",
       "category": "Rifle reports",
-      "isolation": "early-report excerpt",
-      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
-      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+      "isolation": "report with decay and partial handling",
+      "notes": "Includes 10 ms pre-roll and 790 ms after the shot onset, retaining the decay and some early bolt handling. The next gunshot is excluded. Analysis WAVs remain unprocessed; listening copies fade more strongly from 0.3 to 0.8 seconds with a squared raised-cosine curve.",
+      "evidence": "Rifle identity and shot onset checked against visible labeling, muzzle flash and recoil. Waveform and video inspection establish early bolt handling within the extended tail; the endpoint precedes the next gunshot."
     },
     {
       "id": "enfield-whole-bolt-cycle",
@@ -423,7 +423,7 @@
   "unavailable": [
     {
       "action": "Clean complete rifle report",
-      "reason": "The later gunshot decay overlaps bolt handling. Early report excerpts and combined full sequences are provided."
+      "reason": "The extended reports retain the decay together with overlapping bolt handling; the final recorded mix does not provide a separate clean report stem."
     },
     {
       "action": "Separate clip insertion / cartridge push / clip removal",

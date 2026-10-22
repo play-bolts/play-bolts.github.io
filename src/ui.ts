@@ -131,17 +131,21 @@ export class UI {
    </section>
    <section id="tab-credits" class="hidden asset-credits" aria-labelledby="credits-title">
     <h2 id="credits-title">Credits</h2>
-    <p>Weapon models · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
-    <ul><li><a href="https://sketchfab.com/3d-models/lee-enfield-mkiii-f6a2160daf134071a84e3cae5f831875" target="_blank" rel="noopener">Lee Enfield MKIII</a> — Moony_State</li><li><a href="https://sketchfab.com/3d-models/mosin-nagant-m91-92ede39f23bd40c7982c727dfd7c4be0" target="_blank" rel="noopener">Mosin Nagant M91</a> — MaX3Dd</li><li><a href="https://sketchfab.com/3d-models/kar98k-96b7387fe49b4dd491cc8277f765527a" target="_blank" rel="noopener">Kar98k</a> — Ecler</li><li><a href="https://sketchfab.com/3d-models/stielhandgranate-german-grenade-c49ce26939d64641afac1175a8d62338" target="_blank" rel="noopener">Stielhandgranate</a> — Janovich</li></ul>
-    <p>Adapted for Bolts: scale, moving parts, hand contacts and texture optimization. Rifle notification silhouettes are simplified drawings of the same licensed models.</p>
-    <p>Full-body soldier models · CC BY 4.0</p>
-    <ul><li><a href="https://sketchfab.com/3d-models/wwii-british-soldier-9af571fa416546f08dfc2ba95e604083" target="_blank" rel="noopener">WWII British Soldier</a> — patromes</li><li><a href="https://sketchfab.com/3d-models/ww2-panzergrenadier-fbx-tpose-cc0-99ae9a9deb2c46c5956342b3bf9de7a2" target="_blank" rel="noopener">WW2 Panzergrenadier</a> — britdawgmasterfunk</li><li><a href="https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99" target="_blank" rel="noopener">WW2 Soviet Uniform</a> — tnnv</li></ul>
-    <p>Adapted with continuous body skinning, neutral bind poses, material response and optimized textures.</p>
-    <p>Kill voice lines are AI-generated character voices. Rifle and movement sounds are original procedural audio.</p>
-    <p>CC0: Mesh2Motion / Quaternius motion; para / MakeHuman hands; MakeHuman head; ambientCG and Poly Haven materials.</p>
-    <p>Title font: <a href="https://github.com/google/fonts/tree/main/ofl/alfaslabone" target="_blank" rel="noopener">Alfa Slab One</a> — JM Solé · <a href="./assets/fonts/alfa-slab-one/OFL.txt" target="_blank" rel="noopener">SIL OFL 1.1</a></p>
-    <p>Mobile action icons: <a href="https://lucide.dev/" target="_blank" rel="noopener">Lucide</a> — Lucide contributors / Cole Bemis · <a href="./THIRD_PARTY_LICENSES.txt" target="_blank" rel="noopener">ISC / MIT</a></p>
-    <p>Visit counts use a random browser ID. <a href="https://github.com/play-bolts/play-bolts.github.io/blob/main/research/user-analytics.md" target="_blank" rel="noopener">Privacy and analytics</a></p>
+    <ul>
+     <li>Moony_State — <a href="https://sketchfab.com/3d-models/lee-enfield-mkiii-f6a2160daf134071a84e3cae5f831875" target="_blank" rel="noopener">Lee Enfield MKIII</a></li>
+     <li>MaX3Dd — <a href="https://sketchfab.com/3d-models/mosin-nagant-m91-92ede39f23bd40c7982c727dfd7c4be0" target="_blank" rel="noopener">Mosin Nagant M91</a></li>
+     <li>Ecler — <a href="https://sketchfab.com/3d-models/kar98k-96b7387fe49b4dd491cc8277f765527a" target="_blank" rel="noopener">Kar98k</a></li>
+     <li>Janovich — <a href="https://sketchfab.com/3d-models/stielhandgranate-german-grenade-c49ce26939d64641afac1175a8d62338" target="_blank" rel="noopener">Stielhandgranate</a></li>
+     <li>patromes — <a href="https://sketchfab.com/3d-models/wwii-british-soldier-9af571fa416546f08dfc2ba95e604083" target="_blank" rel="noopener">WWII British Soldier</a></li>
+     <li>britdawgmasterfunk — <a href="https://sketchfab.com/3d-models/ww2-panzergrenadier-fbx-tpose-cc0-99ae9a9deb2c46c5956342b3bf9de7a2" target="_blank" rel="noopener">WW2 Panzergrenadier</a></li>
+     <li>tnnv — <a href="https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99" target="_blank" rel="noopener">WW2 Soviet Uniform</a></li>
+     <li>Mesh2Motion / Quaternius — Character animations</li>
+     <li>para / MakeHuman — Hands</li>
+     <li>MakeHuman — Head</li>
+     <li>ambientCG / Poly Haven — Materials</li>
+     <li>JM Solé — <a href="https://github.com/google/fonts/tree/main/ofl/alfaslabone" target="_blank" rel="noopener">Alfa Slab One</a></li>
+     <li>Lucide contributors / Cole Bemis — <a href="https://lucide.dev/" target="_blank" rel="noopener">Lucide mobile action icons</a></li>
+    </ul>
    </section>
    <div id="tab-controls" class="hidden"><div class="touch-controls-help"><h2>Touch controls</h2><p>Play in landscape. Use the left joystick to move; release it to stop. Tap the left joystick to jump.</p><p>Swipe the right side of the screen to look. Press Fire for one shot; drag from the Fire button to adjust your aim. Release and press again for another shot.</p><p>Crouch and Prone are above the left joystick. Aim toggles iron sights, beside Reload above Fire.</p><p>Change sensitivity and control size in Options. Returning from an interruption clears held inputs; tap Resume to continue.</p><p>Best experienced on a PC.</p></div><div class="controls-grid keyboard-controls">${controls.map(([key,label])=>`<div><kbd>${key}</kbd><span>${label}</span></div>`).join('')}</div></div>
    <div id="tab-settings">

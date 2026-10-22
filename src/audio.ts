@@ -3,6 +3,7 @@ import {listenerBasis} from './audioSpatial';
 import {synthesizeRifle,synthesizeCombat,SOUND_DURATION_SCALE,type CombatSound} from './audioSynthesis';
 import {AudioEnvironmentCache} from './audioEnvironmentCache';
 import {synthesizeFootstep,FootstepSequence,FOOTSTEP_SEQUENCE_SEED,footstepLevel,type FootSide} from './movementAudio';
+import {GameAudioBank,rifleReportId,movementClipId,boltAudioCues,reloadAudioCues,type GameAudioCue} from './gameAudio';
 
 export interface SoundEmitter {actor:number;position:Vec;local:boolean;faction?:Faction}
 type Voice={source:AudioScheduledSourceNode;nodes:AudioNode[];filter:BiquadFilterNode;gain:GainNode;panner:PannerNode;actor:number|null;emitter?:SoundEmitter;local:boolean};
@@ -24,6 +25,10 @@ export class Sound {
  private updatingScene=false;
  private rifleWarmup:Worker|null=null;
 
+ constructor(private samples=new GameAudioBank()){}
+ preload(){return this.samples.preload();}
+ loadSamples(){return this.ctx?this.samples.load(this.ctx):Promise.resolve();}
+
  init(){
   if(this.ctx){void this.ctx.resume().catch(()=>{});return;}
   const c=this.ctx=new AudioContext();this.master=c.createGain();this.master.gain.value=this.volume;
@@ -32,6 +37,7 @@ export class Sound {
   this.noise=c.createBuffer(1,c.sampleRate*2,c.sampleRate);
   const a=this.noise.getChannelData(0);for(let i=0;i<a.length;i++)a[i]=Math.random()*2-1;
   this.updateListener(this.listener.position,this.listener.yaw,this.listener.pitch);
+  void this.loadSamples();
   this.warmRifles();
  }
  private saveRifleBuffer(faction:Faction,variant:number,samples:Float32Array){
@@ -105,13 +111,25 @@ export class Sound {
   while(this.voices.size>=MAX_VOICES)this.stop(this.voices.keys().next().value!);
   this.voices.set(source,voice);source.onended=()=>this.release(source);this.syncVoice(voice,true);return source;
  }
- /** Decoded voices and review-selected PCM share the same positional routing,
-  * limiter and actor/scene cancellation as every runtime sound. */
- playBuffer(buffer:AudioBuffer,emitter:SoundEmitter=LOCAL,gain=1):AudioBufferSourceNode|undefined{
+ /** Recorded gameplay sounds and voices share positional routing, the limiter,
+  * and actor/scene cancellation, including cues scheduled later in a reload. */
+ playBuffer(buffer:AudioBuffer,emitter:SoundEmitter=LOCAL,gain=1,delay=0,offset=0):AudioBufferSourceNode|undefined{
   if(!this.ctx||!this.master)return;
+  if(offset>=buffer.duration)return;
   const c=this.ctx,source=c.createBufferSource();source.buffer=buffer;
   const level=c.createGain();level.gain.value=Number.isFinite(gain)?clamp(gain,0,2):1;
-  source.connect(level);this.route(source,level,[source,level],emitter);source.start();source.stop(c.currentTime+buffer.duration);return source;
+  const start=c.currentTime+delay;
+  source.connect(level);this.route(source,level,[source,level],emitter);source.start(start,offset);source.stop(start+buffer.duration-offset);return source;
+ }
+ private sampledCues(cues:readonly GameAudioCue[],emitter:SoundEmitter,elapsed=0):AudioBufferSourceNode[]|undefined{
+  const buffers=cues.map(cue=>this.samples.get(cue.id));
+  // Keep each action coherent if a download failed; never mix missing mechanical
+  // phases with an incomplete recorded reload or start them after loading.
+  if(buffers.some(buffer=>!buffer))return;
+  return cues.flatMap((cue,index)=>{
+   const offset=Math.max(0,elapsed-cue.delay),delay=Math.max(0,cue.delay-elapsed);
+   const source=this.playBuffer(buffers[index]!,emitter,1,delay,offset);return source?[source]:[];
+  });
  }
  noiseBurst(volume:number,duration:number,freq:number,delay=0,_pan=0,emitter?:SoundEmitter){
   if(!this.ctx||!this.master||!this.noise)return;
@@ -130,6 +148,8 @@ export class Sound {
  shot(emitter:SoundEmitter){
   if(!this.ctx||!this.master)return;
   const c=this.ctx,faction=emitter.faction??'british',variant=this.nextVariant(faction),key=`${faction}:${variant}`;
+  const recorded=this.samples.get(rifleReportId(faction,variant));
+  if(recorded){this.playBuffer(recorded,emitter);return;}
   let buffer=this.rifleBuffers.get(key);
   if(!buffer){this.saveRifleBuffer(faction,variant,synthesizeRifle(faction,c.sampleRate,0x51f15e+variant*7919));buffer=this.rifleBuffers.get(key)!;}
   const s=c.createBufferSource();s.buffer=buffer;this.route(s,s,[s],emitter);s.start();s.stop(c.currentTime+buffer.duration);
@@ -147,13 +167,18 @@ export class Sound {
   const source=c.createBufferSource();source.buffer=buffer;
   this.route(source,source,[source],emitter);source.start();source.stop(c.currentTime+buffer.duration);
  }
- bolt(emitter:SoundEmitter=LOCAL){this.noiseBurst(.14,.06,4300,0,0,emitter);this.tone(800,.035,.06,0,emitter);this.noiseBurst(.12,.09,2800,.17,0,emitter);}
+ bolt(emitter:SoundEmitter=LOCAL){
+  if(this.sampledCues(boltAudioCues(emitter.faction??'british'),emitter))return;
+  this.noiseBurst(.14,.06,4300,0,0,emitter);this.tone(800,.035,.06,0,emitter);this.noiseBurst(.12,.09,2800,.17,0,emitter);
+ }
  cancelReload(actor?:number){
   const keys=actor===undefined?[...this.reloadSounds.keys()]:[actor];
   for(const key of keys){const sources=this.reloadSounds.get(key);this.reloadSounds.delete(key);if(sources)for(const source of [...sources])this.stop(source);}
  }
- reload(emitter:SoundEmitter=LOCAL){
+ reload(emitter:SoundEmitter=LOCAL,duration?:number,elapsed=0){
   this.cancelReload(emitter.actor);
+  const recorded=this.sampledCues(reloadAudioCues(emitter.faction??'british',duration),emitter,elapsed);
+  if(recorded){if(recorded.length)this.reloadSounds.set(emitter.actor,recorded);return;}
   const sounds=[this.noiseBurst(.14,.06,4300,0,0,emitter),this.tone(800,.035,.06,0,emitter),this.noiseBurst(.12,.09,2800,.17,0,emitter)];
   for(let i=0;i<3;i++)sounds.push(this.noiseBurst(.1,.1,3200,.7+i*.43,0,emitter));
   this.reloadSounds.set(emitter.actor,sounds.filter((source):source is AudioBufferSourceNode|OscillatorNode=>!!source));
@@ -164,6 +189,8 @@ export class Sound {
   let sequence=this.footsteps.get(emitter.actor);
   if(!sequence){sequence=new FootstepSequence(FOOTSTEP_SEQUENCE_SEED^Math.imul(emitter.actor,0x9e3779b9));this.footsteps.set(emitter.actor,sequence);}
   const {variant,side}=sequence.next(stance),key=`${stance}:${side}:${variant}`;
+  const recorded=this.samples.get(movementClipId(side));
+  if(recorded){this.playBuffer(recorded,emitter,gain);return;}
   let buffer=this.footstepBuffers.get(key);
   if(!buffer){this.saveFootstepBuffer(stance,side,variant,synthesizeFootstep(stance,this.ctx.sampleRate,variant,side));buffer=this.footstepBuffers.get(key)!;}
   this.playBuffer(buffer,emitter,gain);

@@ -5,6 +5,7 @@ import {UI} from './ui';
 import {Game,createActor,type Input} from './engine';
 import {View} from './renderer';
 import {Sound} from './audio';
+import {reloadAudioTiming} from './gameAudio';
 import {KillVoices,KILL_VOICES_ENABLED} from './killVoices';
 import {playCombatSound,playImpactSound} from './combatAudio';
 import {RULES,SPAWNS,clamp} from './config';
@@ -40,7 +41,7 @@ let graphics:WebGLRenderer;
 try{graphics=new WebGLRenderer({antialias:true,powerPreference:'high-performance'});}catch(error){ui.hideLoading();ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].textContent='WebGL 2 required';throw error;}
 try{
  setInitialAssetTier(assetTierForQuality(ui.prefs.quality));
- const resources=[loadHandAssets(),preloadSoldierModels(),preloadSurfaceAssets(graphics,{includeLegacy:false}),preloadImportedWeapons(),preloadWorldModelLods()];let completed=0;
+ const resources=[loadHandAssets(),preloadSoldierModels(),preloadSurfaceAssets(graphics,{includeLegacy:false}),preloadImportedWeapons(),preloadWorldModelLods(),sound.preload()];let completed=0;
  await Promise.all(resources.map(resource=>resource.then(()=>ui.setLoadingProgress(.45*++completed/resources.length))));
 }catch(error){ui.hideLoading();ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].innerHTML='<div class="dialog"><h2>Unable to load models</h2><button onclick="location.reload()">Retry</button></div>';throw error;}finally{DefaultLoadingManager.onProgress=()=>{};}
 let view:View;
@@ -268,7 +269,9 @@ function processEvents(){
   if(game.state!=='killcam'){
    if(event.type==='kill'&&game.state==='playing'&&!ui.modalOpen&&!ui.selectionOpen)killVoices.consider(event,a,emitter,performance.now(),ui.prefs.killVoiceChance);
    if(event.type==='shot'&&event.shot){ui.showHit(event.shot);view.effect(event.shot,emitter.local,0,false,network.online?game.time:event.shot.time);playCombatSound(sound,event.shot,game.actors,viewed?.id);}
-   if(event.type==='bolt')sound.bolt(emitter);if(event.type==='reload')sound.reload(emitter);if(event.type==='step')sound.step(event.value??3,emitter,a.stance);
+   if(event.type==='bolt')sound.bolt(emitter);
+   if(event.type==='reload'){const {duration,elapsed}=reloadAudioTiming(a);sound.reload(emitter,duration,elapsed);}
+   if(event.type==='step')sound.step(event.value??3,emitter,a.stance);
    if(event.type==='switch')sound.switch(emitter);
   }
   if(event.type==='hurt'&&event.actor===0&&!game.player.spectator)ui.showDamage(event.lethal??!game.player.alive);

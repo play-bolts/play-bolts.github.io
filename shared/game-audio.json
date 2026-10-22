@@ -1,0 +1,137 @@
+[
+  {
+    "id": "enfield-report-1",
+    "file": "/assets/audio/game/enfield-report-1.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "enfield-report-2",
+    "file": "/assets/audio/game/enfield-report-2.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "enfield-report-3",
+    "file": "/assets/audio/game/enfield-report-3.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "mosin-report-1",
+    "file": "/assets/audio/game/mosin-report-1.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "mosin-report-2",
+    "file": "/assets/audio/game/mosin-report-2.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "mosin-report-3",
+    "file": "/assets/audio/game/mosin-report-3.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "kar98k-report-1",
+    "file": "/assets/audio/game/kar98k-report-1.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "kar98k-report-2",
+    "file": "/assets/audio/game/kar98k-report-2.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "kar98k-report-3",
+    "file": "/assets/audio/game/kar98k-report-3.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "enfield-open-eject",
+    "file": "/assets/audio/game/enfield-open-eject.wav",
+    "duration": 0.16
+  },
+  {
+    "id": "enfield-close-lock",
+    "file": "/assets/audio/game/enfield-close-lock.wav",
+    "duration": 0.42
+  },
+  {
+    "id": "mosin-open-eject",
+    "file": "/assets/audio/game/mosin-open-eject.wav",
+    "duration": 0.13
+  },
+  {
+    "id": "mosin-close-lock",
+    "file": "/assets/audio/game/mosin-close-lock.wav",
+    "duration": 0.3
+  },
+  {
+    "id": "kar98k-open-eject",
+    "file": "/assets/audio/game/kar98k-open-eject.wav",
+    "duration": 0.13
+  },
+  {
+    "id": "kar98k-close-lock",
+    "file": "/assets/audio/game/kar98k-close-lock.wav",
+    "duration": 0.285
+  },
+  {
+    "id": "enfield-reload-bolt-open",
+    "file": "/assets/audio/game/enfield-reload-bolt-open.wav",
+    "duration": 0.4
+  },
+  {
+    "id": "enfield-reload-clip-1-load",
+    "file": "/assets/audio/game/enfield-reload-clip-1-load.wav",
+    "duration": 0.28
+  },
+  {
+    "id": "enfield-reload-clip-2-load",
+    "file": "/assets/audio/game/enfield-reload-clip-2-load.wav",
+    "duration": 0.3
+  },
+  {
+    "id": "enfield-reload-bolt-close",
+    "file": "/assets/audio/game/enfield-reload-bolt-close.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "mosin-reload-bolt-open",
+    "file": "/assets/audio/game/mosin-reload-bolt-open.wav",
+    "duration": 0.36
+  },
+  {
+    "id": "mosin-reload-clip-load",
+    "file": "/assets/audio/game/mosin-reload-clip-load.wav",
+    "duration": 0.3
+  },
+  {
+    "id": "mosin-reload-bolt-close",
+    "file": "/assets/audio/game/mosin-reload-bolt-close.wav",
+    "duration": 0.29
+  },
+  {
+    "id": "kar98k-reload-bolt-open",
+    "file": "/assets/audio/game/kar98k-reload-bolt-open.wav",
+    "duration": 0.42
+  },
+  {
+    "id": "kar98k-reload-clip-load",
+    "file": "/assets/audio/game/kar98k-reload-clip-load.wav",
+    "duration": 0.4
+  },
+  {
+    "id": "kar98k-reload-bolt-close",
+    "file": "/assets/audio/game/kar98k-reload-bolt-close.wav",
+    "duration": 0.38
+  },
+  {
+    "id": "movement-footstep-candidate-1",
+    "file": "/assets/audio/game/movement-footstep-candidate-1.wav",
+    "duration": 0.325
+  },
+  {
+    "id": "movement-footstep-candidate-2",
+    "file": "/assets/audio/game/movement-footstep-candidate-2.wav",
+    "duration": 0.245
+  }
+]

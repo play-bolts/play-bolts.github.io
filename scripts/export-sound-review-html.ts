@@ -18,7 +18,7 @@ function publicAsset(file:string){
 const embeddedAssets:Plugin={
  name:'embedded-review-assets',
  setup(bundler){
-  bundler.onLoad({filter:/[/\\]shared[/\\](?:audio-candidates|kill-voices)\.json$/},async({path})=>{
+  bundler.onLoad({filter:/[/\\]shared[/\\](?:audio-candidates|kill-voices|game-audio)\.json$/},async({path})=>{
    const entries:({id:string;file:string}&Record<string,unknown>)[]=JSON.parse(await readFile(path,'utf8'));
    if(new Set(entries.map(entry=>entry.id)).size!==entries.length)throw new Error(`Duplicate sound IDs in ${path}`);
    const embedded=await Promise.all(entries.map(async entry=>{
@@ -52,7 +52,7 @@ if(Object.values(result.metafile!.outputs).some(item=>item.imports.some(dependen
 const javascript=result.outputFiles.find(file=>file.path.endsWith('.js'))?.text;
 const css=result.outputFiles.find(file=>file.path.endsWith('.css'))?.text;
 if(!javascript||!css||result.outputFiles.length!==2)throw new Error('Expected one inline script and stylesheet');
-if(counts.size!==2)throw new Error('Both audio manifests must be embedded');
+if(counts.size!==3)throw new Error('All three audio manifests must be embedded');
 const template=await readFile(join(root,'sound-review.html'),'utf8');
 const entry='<script type="module" src="/src/soundReviewPage.ts"></script>';
 if(!template.includes(entry))throw new Error('Review page entry changed; update the portable exporter');
@@ -61,5 +61,5 @@ const html=template
  .replace(entry,()=>`<script>${javascript.replace(/<\/script/gi,'<\\/script')}</script>`);
 await mkdir(dirname(output),{recursive:true});
 await writeFile(output,html);
-const candidates=counts.get(join(root,'shared','audio-candidates.json'))!,voices=counts.get(join(root,'shared','kill-voices.json'))!;
-console.log(`Exported ${output}: ${candidates} AI candidates, ${voices} current voices, and procedural previews (${(Buffer.byteLength(html)/1024/1024).toFixed(1)} MiB). Open this file directly in a browser.`);
+const candidates=counts.get(join(root,'shared','audio-candidates.json'))!,voices=counts.get(join(root,'shared','kill-voices.json'))!,game=counts.get(join(root,'shared','game-audio.json'))!;
+console.log(`Exported ${output}: ${game} current gameplay clips, ${candidates} AI candidates, ${voices} current voices, and procedural combat/DSP previews (${(Buffer.byteLength(html)/1024/1024).toFixed(1)} MiB). Open this file directly in a browser.`);

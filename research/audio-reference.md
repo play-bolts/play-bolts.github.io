@@ -1,4 +1,53 @@
-# Shorter audio and standalone AI auditions — 19 October 2026
+# Recorded gameplay defaults — 21 October 2026
+
+The game now uses 27 excerpts prepared from the supplied `temp/game-audio/`
+package: nine rifle reports (three per faction), six bolt phases, ten reload
+phases and two movement candidates. `shared/game-audio.json` maps their IDs to
+the static WAVs in `public/assets/audio/game/`. The [asset README](../public/assets/audio/game/README.md)
+and [provenance](../public/assets/audio/game/provenance.json) record source URLs,
+timestamps, input/output hashes, processing settings and limitations.
+
+The recordings are 48 kHz mono PCM16 WAVs. Preparation averages stereo channels,
+applies one −2.3 dB gain to weapon clips, and gives both movement candidates a
+shared gain targeting −12 dBFS peak. Brief boundary fades prevent clicks; reports
+use a 40 ms release to soften their early cut. Duration and natural pitch remain
+unchanged. These assets do not receive the older procedural duration compression.
+Reproduce or verify them with `.tools/audio-analysis/bin/python scripts/prepare-game-audio.py`
+or the same command with `--check`; the original extraction files remain unchanged.
+
+The reports preserve 10 ms pre-roll and the first 350 ms of each shot. Later
+decay is absent because it overlaps bolt handling in the recorded mix. Bolt
+subdivisions retain report decay and overlapping mechanical sounds, especially
+for the Enfield. Reload loading bursts combine insertion, cartridge push and
+clip removal. The Mosin source shows a partial refill from one to five rounds,
+so its handling excerpts do not establish a distinct empty-magazine reload.
+The two movement clips are unconfirmed footstep candidates: gait, stance, foot
+side and surface cannot be established, and off-screen sounds cannot be excluded.
+
+Runtime selects a nonrepeating report variant, schedules separate bolt/reload
+phases at the animation's action boundaries, and alternates the two movement
+clips using existing stance gain and cadence. A partial Enfield reload schedules
+one loading burst with its shorter action duration; a full reload schedules two.
+Late reload cues skip finished phases or seek into the active clip. Sources retain
+positional routing and actor/scene cancellation. Audio bytes preload with other
+assets and decode after audio initialization; missing clips use immediate
+procedural fallbacks without replaying old events when a download finishes.
+Combat impacts, melee, switching and UI audio remain procedural, and spoken kill
+lines remain disabled by the existing feature flag.
+
+The standalone review page auditions all three current reports, assembled bolt
+and reload sequences, the Enfield partial reload, and both movement clips at
+each stance's gain/cadence. Its older procedural DSP comparison and AI candidates
+remain separate review options. The portable HTML exporter embeds the 27 new
+WAVs alongside the existing candidate and voice banks. Automated checks cover
+asset hashes, PCM format/duration, source selection, cue timing, cancellation,
+fallbacks and delayed loading; they do not establish subjective listening quality.
+
+The dated sections below are historical release notes. Their references to
+procedural defaults, compressed report durations, original-only audio and older
+review layouts describe those releases, not the current recorded defaults.
+
+# Historical: Shorter audio and standalone AI auditions — 19 October 2026
 
 Sound review is now a separate page at `/sound-review.html`; the main app has no
 review tab or button. The page provides the current game sounds, the existing
@@ -44,7 +93,7 @@ approved replacements. Perceived quality and pronunciation remain review decisio
 Official references: [Stability API](https://platform.stability.ai/docs/api-reference),
 [audio-to-audio guidance](https://kb.stability.ai/knowledge-base/tips-for-using-the-audio-to-audio-api).
 
-# Sound review, movement and character voices — 19 October 2026
+# Historical: Sound review, movement and character voices — 19 October 2026
 
 The main-menu Sound review panel is available in production builds. Its isolated
 preview player stops the previous source before selecting another and invalidates
@@ -78,7 +127,7 @@ or unclear first takes; they are 1.42–2.53 seconds, 24 kHz mono, peak -6 dBFS.
 Automated measurements verify technical behavior, not native-listener approval.
 The review panel is the audition surface for final delivery and timbre preference.
 
-# Kar98k timing revision — 17 October 2026
+# Historical: Kar98k timing revision — 17 October 2026
 
 The Kar98k report is now 20% shorter: 656 ms instead of 820 ms. Its attack,
 body, decay and reflection timings use a 0.8 scale. Resonant frequencies remain
@@ -87,7 +136,7 @@ Mosin reports retain their original timing. Phase-spectrum checks use equivalent
 compressed Kar98k windows and still meet the existing timbre bounds at 48 kHz;
 44.1 kHz synthesis and worker/fallback parity also pass.
 
-# Combat audio richness revision — 16 October 2026
+# Historical: Combat audio richness revision — 16 October 2026
 
 The gunshot recipes now layer a short bipolar muzzle-pressure pulse, independent
 high-frequency crack fragments, a falling low-body resonance with audible
@@ -108,9 +157,9 @@ have the same distance, cover and HRTF treatment as other world sounds.
 
 ## Technique and provenance
 
-These are original procedural sound designs; no external recordings, sampled
-game audio, spectral templates, or downloadable sound-pack assets are shipped.
-The previous reference recordings remain local analysis material.
+At this revision, all effects were original procedural sound designs; no external
+recordings, sampled game audio, spectral templates, or downloadable sound-pack
+assets shipped. The reference recordings were local analysis material.
 
 [Google's game-audio guide](https://web.dev/articles/webaudio-games) describes
 using varied sample pools, spatial routing, and a final compressor to keep dense
@@ -141,14 +190,14 @@ of accumulating live synthesizers or reverb graphs on every shot.
 
 ---
 
-# Rifle audio: multi-shot spectrogram revision — 14 October 2026
+# Historical: Rifle audio: multi-shot spectrogram revision — 14 October 2026
 
 This revision supersedes the previous single-shot, whole-spectrum EQ comparison.
 That approach left all three rifles sharing nearly the same noise texture and
 decay. The current recipes change the spectrum **over time**, with separate
 resonant-noise bands, transient/body/tail balances and decay shapes for each rifle.
-Only original synthesized noise/resonances are shipped; reference recordings
-remain ignored local analysis material.
+At this revision only original synthesized noise/resonances shipped; reference
+recordings remained ignored local analysis material.
 
 ## Sources and clean windows
 

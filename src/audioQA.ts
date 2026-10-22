@@ -1,13 +1,16 @@
 import {Sound,type SoundEmitter} from './audio';
 import {BOXES,type Faction,type Vec} from './config';
+import {GameAudioBank,GAME_AUDIO_CLIPS} from './gameAudio';
 
 /** Development-only, actual browser Web Audio rendering of the shared production path. */
 if(import.meta.env.DEV){
  const output=document.querySelector<HTMLPreElement>('#result')!,run=document.querySelector<HTMLButtonElement>('#run')!;
  const energy=(values:Float32Array)=>values.reduce((sum,v)=>sum+v*v,0);
  async function sample(position:Vec,origin:Vec,yaw=0,local=false){
-  const ctx=new OfflineAudioContext(2,48000,48000),sound=new Sound();
+  const ctx=new OfflineAudioContext(2,48000,48000),clips=new GameAudioBank(),sound=new Sound(clips);
   sound.ctx=ctx as unknown as AudioContext;sound.master=ctx.createGain();sound.master.connect(ctx.destination);
+  await sound.loadSamples();
+  if(GAME_AUDIO_CLIPS.some(clip=>!clips.get(clip.id)))throw new Error('A recorded gameplay clip failed to load or decode');
   sound.updateListener(position,yaw);sound.shot({actor:1,position:origin,local,faction:'russian'});
   const rendered=await ctx.startRendering(),left=energy(rendered.getChannelData(0)),right=energy(rendered.getChannelData(1));
   return{left,right,balanceDb:10*Math.log10((right+1e-15)/(left+1e-15)),levelDb:10*Math.log10((left+right)/rendered.length)};
@@ -24,9 +27,9 @@ if(import.meta.env.DEV){
    output.textContent=JSON.stringify({pass,checks,cases},(_key,value)=>typeof value==='number'?Math.round(value*100)/100:value,2);
   }catch(error){output.textContent=String(error);}finally{run.disabled=false;}
  };
- const live=new Sound();let review:HTMLAudioElement|null=null,stopReview:number|undefined;
- const stop=()=>{live.resetScene();review?.pause();clearTimeout(stopReview);};
- for(const button of document.querySelectorAll<HTMLButtonElement>('[data-rifle]'))button.onclick=()=>{stop();live.init();live.shot({actor:0,position:{x:0,y:0,z:0},local:true,faction:button.dataset.rifle as Faction} satisfies SoundEmitter);};
+ const live=new Sound();let review:HTMLAudioElement|null=null,stopReview:number|undefined,reviewGeneration=0;
+ const stop=()=>{reviewGeneration++;live.resetScene();review?.pause();clearTimeout(stopReview);};
+ for(const button of document.querySelectorAll<HTMLButtonElement>('[data-rifle]'))button.onclick=async()=>{stop();const generation=reviewGeneration;live.init();await live.loadSamples();if(generation===reviewGeneration)live.shot({actor:0,position:{x:0,y:0,z:0},local:true,faction:button.dataset.rifle as Faction} satisfies SoundEmitter);};
  for(const button of document.querySelectorAll<HTMLButtonElement>('[data-combat]'))button.onclick=()=>{
   stop();live.init();const emitter={actor:0,position:{x:0,y:0,z:0},local:true};
   if(button.dataset.combat==='swing')live.melee(emitter);else live.impact(emitter,button.dataset.combat==='melee-impact'?'melee':'shot');

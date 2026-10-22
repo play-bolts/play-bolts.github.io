@@ -1,3 +1,4 @@
+v1.0.34 - Replaces rifle reports, bolt actions, reloads and movement audio with supplied recordings, with timed reload cues, cached loading and matching sound previews.
 v1.0.33 - Removes reference labels from audio package and tool filenames and updates generated links.
 v1.0.32 - Adds reproducible gameplay-reference sound extraction with original float WAVs, labeled action windows, video context and a local listening report.
 v1.0.31 - Disables spoken kill lines and voice downloads regardless of saved chance while retaining manual sound review.

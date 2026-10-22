@@ -1,0 +1,445 @@
+{
+  "sources": {
+    "firing": {
+      "audio": "artifacts/audio-reference/firing.webm",
+      "video": "artifacts/audio-reference/firing-video.mp4",
+      "url": "https://www.youtube.com/watch?v=sK4UBZtE6o0",
+      "sample_rate": 48000,
+      "channels": 2
+    },
+    "showcase": {
+      "audio": "artifacts/audio-reference/showcase.webm",
+      "video": "artifacts/audio-reference/showcase-video.webm",
+      "url": "https://www.youtube.com/watch?v=OUmvpEm7FII",
+      "sample_rate": 48000,
+      "channels": 2
+    },
+    "multiplayer": {
+      "audio": "artifacts/audio-reference/multiplayer.webm",
+      "video": "artifacts/audio-reference/multiplayer-video.mp4",
+      "url": "https://www.youtube.com/watch?v=-0FQ5HX209g",
+      "sample_rate": 48000,
+      "channels": 2
+    }
+  },
+  "segments": [
+    {
+      "id": "enfield-report-1",
+      "source": "firing",
+      "start": 327.306,
+      "end": 327.666,
+      "label": "Lee\u2013Enfield \u00b7 report 1 (early 350 ms)",
+      "category": "Rifle reports",
+      "isolation": "early-report excerpt",
+      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
+      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+    },
+    {
+      "id": "enfield-report-2",
+      "source": "firing",
+      "start": 329.033,
+      "end": 329.393,
+      "label": "Lee\u2013Enfield \u00b7 report 2 (early 350 ms)",
+      "category": "Rifle reports",
+      "isolation": "early-report excerpt",
+      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
+      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+    },
+    {
+      "id": "enfield-report-3",
+      "source": "firing",
+      "start": 332.375,
+      "end": 332.735,
+      "label": "Lee\u2013Enfield \u00b7 report 3 (early 350 ms)",
+      "category": "Rifle reports",
+      "isolation": "early-report excerpt",
+      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
+      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+    },
+    {
+      "id": "mosin-report-1",
+      "source": "firing",
+      "start": 235.255,
+      "end": 235.615,
+      "label": "Mosin\u2013Nagant \u00b7 report 1 (early 350 ms)",
+      "category": "Rifle reports",
+      "isolation": "early-report excerpt",
+      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
+      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+    },
+    {
+      "id": "mosin-report-2",
+      "source": "firing",
+      "start": 237.056,
+      "end": 237.416,
+      "label": "Mosin\u2013Nagant \u00b7 report 2 (early 350 ms)",
+      "category": "Rifle reports",
+      "isolation": "early-report excerpt",
+      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
+      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+    },
+    {
+      "id": "mosin-report-3",
+      "source": "firing",
+      "start": 242.039,
+      "end": 242.399,
+      "label": "Mosin\u2013Nagant \u00b7 report 3 (early 350 ms)",
+      "category": "Rifle reports",
+      "isolation": "early-report excerpt",
+      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
+      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+    },
+    {
+      "id": "kar98k-report-1",
+      "source": "firing",
+      "start": 252.431,
+      "end": 252.791,
+      "label": "Kar98k \u00b7 report 1 (early 350 ms)",
+      "category": "Rifle reports",
+      "isolation": "early-report excerpt",
+      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
+      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+    },
+    {
+      "id": "kar98k-report-2",
+      "source": "firing",
+      "start": 253.86,
+      "end": 254.22,
+      "label": "Kar98k \u00b7 report 2 (early 350 ms)",
+      "category": "Rifle reports",
+      "isolation": "early-report excerpt",
+      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
+      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+    },
+    {
+      "id": "kar98k-report-3",
+      "source": "firing",
+      "start": 258.219,
+      "end": 258.579,
+      "label": "Kar98k \u00b7 report 3 (early 350 ms)",
+      "category": "Rifle reports",
+      "isolation": "early-report excerpt",
+      "notes": "Includes 10 ms pre-roll and 350 ms of report. The later decay is deliberately excluded before obvious bolt handling; ambience remains. This is not a complete shot sound.",
+      "evidence": "Labeled rifle chapter, muzzle flash/recoil verified in research/audio-reference.md and artifacts/audio-reference firing contact sheets."
+    },
+    {
+      "id": "enfield-whole-bolt-cycle",
+      "source": "firing",
+      "start": 327.866,
+      "end": 328.666,
+      "label": "Lee\u2013Enfield \u00b7 bolt cycle",
+      "category": "Bolt handling",
+      "isolation": "mixed handling excerpt",
+      "notes": "Residual gunshot tail and overlapping handling layers remain. Small opening/ejection activity around 328.03\u2013328.10 followed by a broad strong handling burst 328.15\u2013328.43. The subdivision is less clean than Mosin/Kar.",
+      "evidence": "Right hand approaches by about 327.866, grips at 327.966, casing visible at 328.066 and 328.116, hand advances at 328.316 and returns by 328.516."
+    },
+    {
+      "id": "enfield-open-eject",
+      "source": "firing",
+      "start": 327.976,
+      "end": 328.136,
+      "label": "Lee\u2013Enfield \u00b7 bolt open / eject",
+      "category": "Bolt handling",
+      "isolation": "mixed handling excerpt",
+      "notes": "Residual gunshot tail and overlapping handling layers remain. Small opening/ejection activity around 328.03\u2013328.10 followed by a broad strong handling burst 328.15\u2013328.43. The subdivision is less clean than Mosin/Kar.",
+      "evidence": "Right hand approaches by about 327.866, grips at 327.966, casing visible at 328.066 and 328.116, hand advances at 328.316 and returns by 328.516."
+    },
+    {
+      "id": "enfield-close-lock",
+      "source": "firing",
+      "start": 328.146,
+      "end": 328.566,
+      "label": "Lee\u2013Enfield \u00b7 bolt close / lock",
+      "category": "Bolt handling",
+      "isolation": "mixed handling excerpt",
+      "notes": "Residual gunshot tail and overlapping handling layers remain. Small opening/ejection activity around 328.03\u2013328.10 followed by a broad strong handling burst 328.15\u2013328.43. The subdivision is less clean than Mosin/Kar.",
+      "evidence": "Right hand approaches by about 327.866, grips at 327.966, casing visible at 328.066 and 328.116, hand advances at 328.316 and returns by 328.516."
+    },
+    {
+      "id": "enfield-shot-and-cycle",
+      "source": "firing",
+      "start": 327.286,
+      "end": 328.666,
+      "label": "Lee\u2013Enfield \u00b7 complete shot + bolt sequence",
+      "category": "Full sequences",
+      "isolation": "combined actions",
+      "notes": "Retains the shot and bolt timing together, including overlapping decay. Use report/handling excerpts to inspect the separate phases.",
+      "evidence": "Right hand approaches by about 327.866, grips at 327.966, casing visible at 328.066 and 328.116, hand advances at 328.316 and returns by 328.516."
+    },
+    {
+      "id": "mosin-whole-bolt-cycle",
+      "source": "firing",
+      "start": 235.715,
+      "end": 236.615,
+      "label": "Mosin\u2013Nagant \u00b7 bolt cycle",
+      "category": "Bolt handling",
+      "isolation": "mixed handling excerpt",
+      "notes": "Residual gunshot tail and overlapping handling layers remain. Distinct transient near 236.00, a valley around 236.20, and close/handling activity 236.27\u2013236.53.",
+      "evidence": "Right hand appears by about 235.715, grips around 235.865\u2013235.965, casing ejects at 236.015, bolt is back at 236.165 and hand returns around 236.265\u2013236.365."
+    },
+    {
+      "id": "mosin-open-eject",
+      "source": "firing",
+      "start": 235.965,
+      "end": 236.095,
+      "label": "Mosin\u2013Nagant \u00b7 bolt open / eject",
+      "category": "Bolt handling",
+      "isolation": "mixed handling excerpt",
+      "notes": "Residual gunshot tail and overlapping handling layers remain. Distinct transient near 236.00, a valley around 236.20, and close/handling activity 236.27\u2013236.53.",
+      "evidence": "Right hand appears by about 235.715, grips around 235.865\u2013235.965, casing ejects at 236.015, bolt is back at 236.165 and hand returns around 236.265\u2013236.365."
+    },
+    {
+      "id": "mosin-close-lock",
+      "source": "firing",
+      "start": 236.255,
+      "end": 236.555,
+      "label": "Mosin\u2013Nagant \u00b7 bolt close / lock",
+      "category": "Bolt handling",
+      "isolation": "mixed handling excerpt",
+      "notes": "Residual gunshot tail and overlapping handling layers remain. Distinct transient near 236.00, a valley around 236.20, and close/handling activity 236.27\u2013236.53.",
+      "evidence": "Right hand appears by about 235.715, grips around 235.865\u2013235.965, casing ejects at 236.015, bolt is back at 236.165 and hand returns around 236.265\u2013236.365."
+    },
+    {
+      "id": "mosin-shot-and-cycle",
+      "source": "firing",
+      "start": 235.235,
+      "end": 236.615,
+      "label": "Mosin\u2013Nagant \u00b7 complete shot + bolt sequence",
+      "category": "Full sequences",
+      "isolation": "combined actions",
+      "notes": "Retains the shot and bolt timing together, including overlapping decay. Use report/handling excerpts to inspect the separate phases.",
+      "evidence": "Right hand appears by about 235.715, grips around 235.865\u2013235.965, casing ejects at 236.015, bolt is back at 236.165 and hand returns around 236.265\u2013236.365."
+    },
+    {
+      "id": "kar98k-whole-bolt-cycle",
+      "source": "firing",
+      "start": 252.991,
+      "end": 253.791,
+      "label": "Kar98k \u00b7 bolt cycle",
+      "category": "Bolt handling",
+      "isolation": "mixed handling excerpt",
+      "notes": "Residual gunshot tail and overlapping handling layers remain. Distinct opening/ejection transient 253.20\u2013253.24, valley around 253.43, then closing/handling activity 253.48\u2013253.74. Next shot starts 253.870, so whole-cycle endpoint avoids it.",
+      "evidence": "Right hand approaches by 252.991, grips around 253.091\u2013253.141, casing ejects at 253.191, bolt is back at 253.341 and hand advances/returns at 253.441\u2013253.641."
+    },
+    {
+      "id": "kar98k-open-eject",
+      "source": "firing",
+      "start": 253.166,
+      "end": 253.296,
+      "label": "Kar98k \u00b7 bolt open / eject",
+      "category": "Bolt handling",
+      "isolation": "mixed handling excerpt",
+      "notes": "Residual gunshot tail and overlapping handling layers remain. Distinct opening/ejection transient 253.20\u2013253.24, valley around 253.43, then closing/handling activity 253.48\u2013253.74. Next shot starts 253.870, so whole-cycle endpoint avoids it.",
+      "evidence": "Right hand approaches by 252.991, grips around 253.091\u2013253.141, casing ejects at 253.191, bolt is back at 253.341 and hand advances/returns at 253.441\u2013253.641."
+    },
+    {
+      "id": "kar98k-close-lock",
+      "source": "firing",
+      "start": 253.466,
+      "end": 253.751,
+      "label": "Kar98k \u00b7 bolt close / lock",
+      "category": "Bolt handling",
+      "isolation": "mixed handling excerpt",
+      "notes": "Residual gunshot tail and overlapping handling layers remain. Distinct opening/ejection transient 253.20\u2013253.24, valley around 253.43, then closing/handling activity 253.48\u2013253.74. Next shot starts 253.870, so whole-cycle endpoint avoids it.",
+      "evidence": "Right hand approaches by 252.991, grips around 253.091\u2013253.141, casing ejects at 253.191, bolt is back at 253.341 and hand advances/returns at 253.441\u2013253.641."
+    },
+    {
+      "id": "kar98k-shot-and-cycle",
+      "source": "firing",
+      "start": 252.411,
+      "end": 253.791,
+      "label": "Kar98k \u00b7 complete shot + bolt sequence",
+      "category": "Full sequences",
+      "isolation": "combined actions",
+      "notes": "Retains the shot and bolt timing together, including overlapping decay. Use report/handling excerpts to inspect the separate phases.",
+      "evidence": "Right hand approaches by 252.991, grips around 253.091\u2013253.141, casing ejects at 253.191, bolt is back at 253.341 and hand advances/returns at 253.441\u2013253.641."
+    },
+    {
+      "id": "enfield-reload-bolt-open",
+      "source": "showcase",
+      "start": 76.24,
+      "end": 76.64,
+      "label": "Lee\u2013Enfield \u00b7 reload bolt open",
+      "category": "Reload components",
+      "isolation": "transient window",
+      "notes": "Includes source ambience and mechanical layers. Loading combines insertion, cartridge push and removal where they overlap. Bounds select the dominant burst, not the full animation. ",
+      "evidence": "Right hand operates bolt at 76.10\u201376.30; receiver open by 76.40."
+    },
+    {
+      "id": "enfield-reload-clip-1-load",
+      "source": "showcase",
+      "start": 77.12,
+      "end": 77.4,
+      "label": "Lee\u2013Enfield \u00b7 first clip loading",
+      "category": "Reload components",
+      "isolation": "transient window",
+      "notes": "Includes source ambience and mechanical layers. Loading combines insertion, cartridge push and removal where they overlap. Bounds select the dominant burst, not the full animation. ",
+      "evidence": "First five-round clip visible 77.00\u201377.10, pushing at 77.20; ammo 0 to 5 by 77.30."
+    },
+    {
+      "id": "enfield-reload-clip-2-load",
+      "source": "showcase",
+      "start": 77.86,
+      "end": 78.16,
+      "label": "Lee\u2013Enfield \u00b7 second clip loading",
+      "category": "Reload components",
+      "isolation": "transient window",
+      "notes": "Includes source ambience and mechanical layers. Loading combines insertion, cartridge push and removal where they overlap. Bounds select the dominant burst, not the full animation. ",
+      "evidence": "Second five-round clip visible 77.40\u201377.80; ammo 5 to 10 at 77.90."
+    },
+    {
+      "id": "enfield-reload-bolt-close",
+      "source": "showcase",
+      "start": 78.32,
+      "end": 78.68,
+      "label": "Lee\u2013Enfield \u00b7 reload bolt close",
+      "category": "Reload components",
+      "isolation": "transient window",
+      "notes": "Includes source ambience and mechanical layers. Loading combines insertion, cartridge push and removal where they overlap. Bounds select the dominant burst, not the full animation. ",
+      "evidence": "Hand returns to bolt at 78.20\u201378.40, then rifle settles 78.50\u201378.60."
+    },
+    {
+      "id": "kar98k-reload-bolt-open",
+      "source": "showcase",
+      "start": 85.4,
+      "end": 85.82,
+      "label": "Kar98k \u00b7 reload bolt open",
+      "category": "Reload components",
+      "isolation": "transient window",
+      "notes": "Includes source ambience and mechanical layers. Loading combines insertion, cartridge push and removal where they overlap. Bounds select the dominant burst, not the full animation. ",
+      "evidence": "Right hand opens bolt at 85.20\u201385.40; receiver open 85.50 onward."
+    },
+    {
+      "id": "kar98k-reload-clip-load",
+      "source": "showcase",
+      "start": 86.5,
+      "end": 86.9,
+      "label": "Kar98k \u00b7 clip loading",
+      "category": "Reload components",
+      "isolation": "transient window",
+      "notes": "Includes source ambience and mechanical layers. Loading combines insertion, cartridge push and removal where they overlap. Bounds select the dominant burst, not the full animation. ",
+      "evidence": "Clip visible 86.10\u201386.30; ammo 0 to 5 by 86.50."
+    },
+    {
+      "id": "kar98k-reload-bolt-close",
+      "source": "showcase",
+      "start": 87.1,
+      "end": 87.48,
+      "label": "Kar98k \u00b7 reload bolt close",
+      "category": "Reload components",
+      "isolation": "transient window",
+      "notes": "Includes source ambience and mechanical layers. Loading combines insertion, cartridge push and removal where they overlap. Bounds select the dominant burst, not the full animation. ",
+      "evidence": "Hand returns to bolt 86.90\u201387.00, rifle settles 87.10\u201387.40."
+    },
+    {
+      "id": "mosin-reload-bolt-open",
+      "source": "showcase",
+      "start": 108.78,
+      "end": 109.14,
+      "label": "Mosin\u2013Nagant \u00b7 reload bolt open",
+      "category": "Reload components",
+      "isolation": "transient window",
+      "notes": "Includes source ambience and mechanical layers. Loading combines insertion, cartridge push and removal where they overlap. Bounds select the dominant burst, not the full animation. This is a partial refill (1 to 5 rounds).",
+      "evidence": "Right hand opens bolt 108.50\u2013108.80; bolt handle visibly rearward 108.90\u2013109.20."
+    },
+    {
+      "id": "mosin-reload-clip-load",
+      "source": "showcase",
+      "start": 109.87,
+      "end": 110.17,
+      "label": "Mosin\u2013Nagant \u00b7 clip loading",
+      "category": "Reload components",
+      "isolation": "transient window",
+      "notes": "Includes source ambience and mechanical layers. Loading combines insertion, cartridge push and removal where they overlap. Bounds select the dominant burst, not the full animation. This is a partial refill (1 to 5 rounds).",
+      "evidence": "Clip visible 109.40\u2013109.70; cartridges pushed at 109.80, ammo 1 to 5 at 109.90."
+    },
+    {
+      "id": "mosin-reload-bolt-close",
+      "source": "showcase",
+      "start": 110.49,
+      "end": 110.78,
+      "label": "Mosin\u2013Nagant \u00b7 reload bolt close",
+      "category": "Reload components",
+      "isolation": "transient window",
+      "notes": "Includes source ambience and mechanical layers. Loading combines insertion, cartridge push and removal where they overlap. Bounds select the dominant burst, not the full animation. This is a partial refill (1 to 5 rounds).",
+      "evidence": "Right hand moves bolt at 110.20\u2013110.30, rifle returns to ready by 110.40; late associated audio transient at 110.535\u2013110.680."
+    },
+    {
+      "id": "enfield-full-reload",
+      "source": "showcase",
+      "start": 75.96,
+      "end": 78.8,
+      "label": "Lee\u2013Enfield \u00b7 full reload sequence",
+      "category": "Full sequences",
+      "isolation": "combined actions",
+      "notes": "All reload handling phases preserved together with ambience. Two five-round clips, 0 to 10 rounds.",
+      "evidence": "Reload animation and ammo counter inspected at 0.1 s intervals; details in reload component clips."
+    },
+    {
+      "id": "kar98k-full-reload",
+      "source": "showcase",
+      "start": 85.15,
+      "end": 87.6,
+      "label": "Kar98k \u00b7 full reload sequence",
+      "category": "Full sequences",
+      "isolation": "combined actions",
+      "notes": "All reload handling phases preserved together with ambience. One five-round clip, 0 to 5 rounds.",
+      "evidence": "Reload animation and ammo counter inspected at 0.1 s intervals; details in reload component clips."
+    },
+    {
+      "id": "mosin-full-reload",
+      "source": "showcase",
+      "start": 108.48,
+      "end": 110.85,
+      "label": "Mosin\u2013Nagant \u00b7 full reload sequence",
+      "category": "Full sequences",
+      "isolation": "combined actions",
+      "notes": "All reload handling phases preserved together with ambience. Partial refill, 1 to 5 rounds.",
+      "evidence": "Reload animation and ammo counter inspected at 0.1 s intervals; details in reload component clips."
+    },
+    {
+      "id": "movement-footstep-candidate-1",
+      "source": "multiplayer",
+      "start": 84.735,
+      "end": 85.06,
+      "label": "Movement / footstep candidate 1",
+      "category": "Unconfirmed movement",
+      "isolation": "unconfirmed candidate",
+      "notes": "Not a verified footstep. Ambient bed remains; off-screen events cannot be excluded. Gait and stance are unknown. Included for your listening review.",
+      "evidence": "First-person camera moves across snow-covered courtyard; no visible player firing, reload, or melee animation, ammo remains unchanged. Narrow transient during visible movement, with a short decay before next separate transient. Visual and waveform inspection only."
+    },
+    {
+      "id": "movement-footstep-candidate-2",
+      "source": "multiplayer",
+      "start": 85.36,
+      "end": 85.605,
+      "label": "Movement / footstep candidate 2",
+      "category": "Unconfirmed movement",
+      "isolation": "unconfirmed candidate",
+      "notes": "Not a verified footstep. Ambient bed remains; off-screen events cannot be excluded. Gait and stance are unknown. Included for your listening review.",
+      "evidence": "First-person camera moves across snow-covered courtyard; no visible player firing, reload, or melee animation, ammo remains unchanged. Narrow transient during visible movement, with a short decay before next separate transient. Visual and waveform inspection only."
+    }
+  ],
+  "unavailable": [
+    {
+      "action": "Clean complete rifle report",
+      "reason": "The later gunshot decay overlaps bolt handling. Early report excerpts and combined full sequences are provided."
+    },
+    {
+      "action": "Separate clip insertion / cartridge push / clip removal",
+      "reason": "The loading events overlap in the final mix; retained as combined loading bursts."
+    },
+    {
+      "action": "Confirmed stand / crouch / prone footsteps",
+      "reason": "The inspected multiplayer footage does not establish clean gait-specific foot contacts."
+    },
+    {
+      "action": "Melee swing, bullet impact, melee impact",
+      "reason": "No unambiguous isolated instances established in the inspected intervals; combat mixes contain other sounds."
+    },
+    {
+      "action": "Weapon switch, UI click, spoken kill lines",
+      "reason": "Not established as separate clean events in the inspected reference clips."
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+v1.0.41 - Removes disabled overseas locations from the live lobby directory while preserving Oregon and zero regional capacity.
 v1.0.40 - Retains regional lobby choices through errors, rejects offline placement queues, bounds and cancels joins, and adds checks for every locality.
 v1.0.39 - Fades gunshots more strongly from 300 to 800 ms while preserving their duration and filenames.
 v1.0.38 - Sets all nine gunshots to 800 ms with a smooth fade from 500 to 800 ms, preserving filenames and updating listening previews.

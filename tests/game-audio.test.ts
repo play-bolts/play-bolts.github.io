@@ -85,6 +85,12 @@ test('runtime WAV files match their provenance, declared durations and spatial-a
   assert.equal(format.readUInt16LE(2),1,'mono recordings can be positioned with the game panner');assert.equal(format.readUInt32LE(4),48000);assert.equal(format.readUInt16LE(14),16);
   assert.equal(pcm.length/2,record.frames);assert.equal(pcm.readInt16LE(0),0);assert.equal(pcm.readInt16LE(pcm.length-2),0);
   near(pcm.length/format.readUInt32LE(8),clip.duration);
+  if(clip.id.includes('-report-')){
+   assert.ok(clip.duration>=.65,`${clip.id}: retain decay beyond the former 360 ms cut`);
+   let energy=0;const start=19200,end=28800; // 400–600 ms, after the old endpoint.
+   for(let frame=start;frame<end;frame++)energy+=pcm.readInt16LE(frame*2)**2;
+   assert.ok(Math.sqrt(energy/(end-start))>64,`${clip.id}: extended tail contains audio, not silence padding`);
+  }
  }
  assert.equal(ids.size,27,'nine reports, six bolt phases, ten reload phases and two movement contacts');
  assert.ok([...ids].every(id=>!id.includes('whole-')&&!id.includes('shot-and-cycle')&&!id.includes('full-reload')),'combined references do not duplicate live action cues');
@@ -168,6 +174,7 @@ test('sampled reports and movement preserve actor routing, stance gain and buffe
    sound.shot({...remote,faction});const source=ctx.sources.at(-1)!;
    assert.ok([0,1,2].some(variant=>source.buffer===buffers.get(rifleReportId(faction,variant))));
    assert.notEqual(source.buffer,previous,'consecutive shots avoid repeating one report');previous=source.buffer;
+   assert.equal(source.starts[0].offset,0);near(source.stops[0],ctx.currentTime+source.buffer!.duration);
    assert.ok(ctx.panners.at(-1)!.connections.includes(master));assert.equal(ctx.panners.at(-1)!.positionZ.value,8);
   }
  }

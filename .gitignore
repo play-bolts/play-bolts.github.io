@@ -13,3 +13,6 @@ infra/.state/
 
 # Private backend operator API key (never a VITE_ variable).
 .env
+
+# Local campaign drafts, assets and aggregate measurements await owner review.
+growth/

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://play-bolts.github.io/sitemap.xml

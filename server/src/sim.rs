@@ -1256,10 +1256,10 @@ impl Simulation {
             a.grounded = true;
         }
         for b in &self.boxes {
-            if a.x > b.x - b.w / 2.0 - 0.18
-                && a.x < b.x + b.w / 2.0 + 0.18
-                && a.z > b.z - b.d / 2.0 - 0.18
-                && a.z < b.z + b.d / 2.0 + 0.18
+            if a.x > b.x - b.w / 2.0 - RADIUS
+                && a.x < b.x + b.w / 2.0 + RADIUS
+                && a.z > b.z - b.d / 2.0 - RADIUS
+                && a.z < b.z + b.d / 2.0 + RADIUS
                 && old_y >= b.h - 0.08
                 && a.y <= b.h
                 && a.vy <= 0.0
@@ -1292,8 +1292,8 @@ impl Simulation {
         if a.y > 0.0
             && !self.boxes.iter().any(|b| {
                 (a.y - b.h).abs() < 0.1
-                    && (a.x - b.x).abs() < b.w / 2.0 + 0.18
-                    && (a.z - b.z).abs() < b.d / 2.0 + 0.18
+                    && (a.x - b.x).abs() < b.w / 2.0 + RADIUS
+                    && (a.z - b.z).abs() < b.d / 2.0 + RADIUS
             })
         {
             a.grounded = false;
@@ -2129,6 +2129,25 @@ mod tests {
             },
         );
         sim.tick(TICK_SECONDS);
+    }
+
+    #[test]
+    fn crate_edge_and_corner_landings_can_walk_off_without_jumping() {
+        for (sx, sz) in [(1.0,0.0),(-1.0,0.0),(0.0,1.0),(0.0,-1.0),(1.0,1.0),(-1.0,1.0),(1.0,-1.0),(-1.0,-1.0)] {
+            let mut sim = arena(1);
+            let b = sim.boxes.iter().find(|b| b.h < 3.0).unwrap().clone();
+            let (x,z) = (b.x + sx*(b.w/2.0+RADIUS-0.015), b.z + sz*(b.d/2.0+RADIUS-0.015));
+            let a = sim.actor_mut(1).unwrap(); a.x=x; a.z=z; a.y=b.h+0.15; a.vy=-2.0; a.grounded=false;
+            for _ in 0..30 { sim.move_actor(0,&InputFrame::default(),false,TICK_SECONDS); }
+            let a=sim.actor(1).unwrap();assert_eq!(a.y,b.h);assert!(a.grounded);assert!(!blocked(&sim.boxes,a.x,a.z,a.y));
+            sim.move_actor(0,&InputFrame{yaw:0.0,right:sx*0.5,forward:-sz*0.5,..Default::default()},false,TICK_SECONDS);
+            let a=sim.actor(1).unwrap();assert!((a.x-x).hypot(a.z-z)>0.01);
+            for _ in 0..40 {
+                sim.move_actor(0,&InputFrame{right:-sx*0.5,forward:sz*0.5,..Default::default()},false,TICK_SECONDS);
+                let a=sim.actor(1).unwrap();assert!(!blocked(&sim.boxes,a.x,a.z,a.y));
+            }
+            let a=sim.actor(1).unwrap();assert_eq!(a.y,0.0);assert!((a.x-x).hypot(a.z-z)>1.0);
+        }
     }
 
     #[test]

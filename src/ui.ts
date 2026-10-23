@@ -94,7 +94,7 @@ export class UI {
   <div id="hud" class="screen hidden">
    <div id="match-clock">05:00</div><div id="match-lobby" class="hidden"></div><button id="hud-menu" aria-label="Pause and open menu">Esc · Menu</button><div id="killfeed"></div><div id="network-status" class="hidden" role="status"></div>
    <button id="mouse-capture" class="hidden">Click to enable mouse look<span id="mouse-capture-help" class="hidden">You can also hold the left mouse button and drag to look.</span></button>
-   <div id="chat" class="chat hidden"><div id="chat-log" role="log" aria-label="Game chat" aria-live="polite" aria-relevant="additions"></div><form id="chat-form" class="hidden" autocomplete="off"><label for="chat-input">Say:</label><input id="chat-input" type="text" maxlength="512" autocomplete="off" spellcheck="false" aria-label="Chat message"></form></div>
+   <div id="chat" class="chat hidden"><div id="chat-log" role="log" aria-label="Game chat history" aria-live="polite" aria-relevant="additions" tabindex="0"></div><form id="chat-form" class="hidden" autocomplete="off"><label for="chat-input">Say:</label><input id="chat-input" type="text" maxlength="512" autocomplete="off" spellcheck="false" aria-label="Chat message" aria-describedby="chat-help"></form><div id="chat-help" class="chat-help">T to chat · Scroll or Page Up/Down for history · Ctrl+Home for start</div></div>
    <div id="crosshair" style="--tick-length:${6*CROSSHAIR_DISPLAY_SCALE}px"><i></i><i></i><i></i><i></i></div><div id="damage-flash"></div><svg id="hit-confirm" class="hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3 3 5 5m8 0 5-5M3 21l5-5m8 0 5 5"/></svg><div id="spawn-protection" class="hidden">Spawn protection</div>
    <div class="compass-wrap"><div class="compass"><div id="compass-rose"><span class="north">N</span><span class="east">E</span><span class="south">S</span><span class="west">W</span><i class="needle"></i></div><i class="compass-pointer"></i></div></div>
    <div id="spectator-status" class="hidden" role="status"></div><div id="spectator-help" class="hidden"></div><div id="status-message"></div><div id="kill-message" class="hidden" role="status"></div>
@@ -290,8 +290,8 @@ export class UI {
  }
  setNetworkStatus(text:string){this.el['network-status'].textContent=text;this.el['network-status'].classList.toggle('hidden',!text);}
  setMouseCapture(visible:boolean,fallback=false){hudClass(this.el['mouse-capture'],'hidden',!visible);hudClass(this.el['mouse-capture-help'],'hidden',!fallback);}
- openChat(){if(!this.online||!this.inGame||this.chatOpen)return;this.chatOpen=true;this.scoreHeld=false;this.el['chat-form'].classList.remove('hidden');this.el.chat.classList.add('typing');this.chatOpened();this.updateChat(performance.now());(this.el['chat-input'] as HTMLInputElement).focus();}
- closeChat(){if(!this.chatOpen)return;this.chatOpen=false;this.el['chat-form'].classList.add('hidden');this.el.chat.classList.remove('typing');const input=this.el['chat-input'] as HTMLInputElement;input.value='';input.blur();this.updateChat(performance.now());this.chatClosed();}
+ openChat(){if(!this.online||!this.inGame||this.chatOpen)return;this.chatOpen=true;this.scoreHeld=false;this.el['chat-form'].classList.remove('hidden');this.el.chat.classList.add('typing');this.chatOpened();(this.el['chat-input'] as HTMLInputElement).focus();}
+ closeChat(){if(!this.chatOpen)return;this.chatOpen=false;this.el['chat-form'].classList.add('hidden');this.el.chat.classList.remove('typing');const input=this.el['chat-input'] as HTMLInputElement;input.value='';input.blur();this.chatClosed();}
  private submitChat(){const text=Array.from((this.el['chat-input'] as HTMLInputElement).value.replace(/[\u0000-\u001f\u007f-\u009f]/gu,' ').trim()).slice(0,256).join('');if(text)this.chatSend(text);this.closeChat();}
  releaseChatKey(code:string){this.chatKeys.delete(code);}
  handleChatKey(event:KeyboardEvent){
@@ -299,17 +299,26 @@ export class UI {
   // closes (especially a repeating Escape opening the pause menu).
   if(!this.chatOpen&&event.repeat&&this.chatKeys.has(event.code)){event.preventDefault();event.stopPropagation();return true;}
   if(!event.repeat)this.chatKeys.delete(event.code);
-  if(this.chatOpen){this.chatKeys.add(event.code);if(!event.isComposing&&(event.code==='Escape'||event.code==='Enter'||event.code==='NumpadEnter')){event.preventDefault();if(event.code==='Escape')this.closeChat();else if(!event.repeat)this.submitChat();}event.stopPropagation();return true;}
+  if(this.chatOpen){
+   this.chatKeys.add(event.code);
+   if(!event.isComposing){
+    const log=this.el['chat-log'];
+    if(event.code==='PageUp'||event.code==='PageDown'){event.preventDefault();log.scrollTop+=log.clientHeight*(event.code==='PageUp'?-.85:.85);}
+    else if(event.ctrlKey&&(event.code==='Home'||event.code==='End')){event.preventDefault();log.scrollTop=event.code==='Home'?0:log.scrollHeight;}
+    else if(event.code==='Escape'||event.code==='Enter'||event.code==='NumpadEnter'){event.preventDefault();if(event.code==='Escape')this.closeChat();else if(!event.repeat)this.submitChat();}
+   }
+   event.stopPropagation();return true;
+  }
   if(!this.online||!this.inGame||this.modalOpen||this.selectionOpen||this.lobbyOpen||!this.el.pause.classList.contains('hidden')||event.repeat||event.ctrlKey||event.altKey||event.metaKey||event.isComposing)return false;
   if(event.code==='KeyT'||event.code==='Enter'||event.code==='NumpadEnter'){this.chatKeys.add(event.code);event.preventDefault();event.stopPropagation();this.openChat();return true;}return false;
  }
  addChat(line:ChatLine){
-  if(line.id&&this.chatIds.has(line.id))return;if(line.id){this.chatIds.add(line.id);if(this.chatIds.size>100)this.chatIds.delete(this.chatIds.values().next().value!);}
-  const item=document.createElement('div');item.className=line.system?'chat-line chat-system':'chat-line';item.dataset.until=String(performance.now()+12000);
+  if(line.id&&this.chatIds.has(line.id))return;if(line.id)this.chatIds.add(line.id);
+  const log=this.el['chat-log'],follow=log.scrollHeight-log.clientHeight-log.scrollTop<=4;
+  const item=document.createElement('div');item.className=line.system?'chat-line chat-system':'chat-line';
   if(line.name){const name=document.createElement('span');name.className='chat-name';name.innerHTML=playerNameHTML(line.name);item.append(name,document.createTextNode(': '));}
-  item.append(document.createTextNode(Array.from(line.message).slice(0,256).join('')));this.el['chat-log'].append(item);while(this.el['chat-log'].children.length>8)this.el['chat-log'].firstElementChild?.remove();this.updateChat(performance.now());
+  item.append(document.createTextNode(Array.from(line.message).slice(0,256).join('')));log.append(item);if(follow)log.scrollTop=log.scrollHeight;
  }
- private updateChat(now:number){for(const line of this.el['chat-log'].children)hudClass(line,'hidden',!this.chatOpen&&now>Number((line as HTMLElement).dataset.until));}
  refreshSelection(){document.querySelectorAll<HTMLElement>('[data-faction]').forEach(b=>{const active=!this.spectatorSelection&&b.dataset.faction===this.prefs.faction;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));});
   this.el['choose-spectator'].classList.toggle('selected',this.spectatorSelection);this.el['choose-spectator'].setAttribute('aria-pressed',String(this.spectatorSelection));
  }
@@ -426,7 +435,7 @@ export class UI {
   hudClass(this.el['spawn-protection'],'hidden',spectating||p.spawnSafe<=0||game.state!=='playing');
   hudStyle(this.el['compass-rose'],'transform',`rotate(${(spectating&&!followed?game.spectator.yaw:p.yaw)*180/Math.PI}deg)`);
   hudText(this.el['status-message'],spectating?'':p.selectedWeapon==='grenade'||p.reload>0?'':p.ammo===0&&p.reserve===0?'Out of ammunition':p.cooldown>.3?'':p.ammo<=2?(this.touchEnabled?'Tap Reload':'R · Reload'):'');
-  if(now-this.lastHud<100)return;this.lastHud=now;this.updateChat(now);
+  if(now-this.lastHud<100)return;this.lastHud=now;
   const clock=`${Math.floor(game.remaining/60).toString().padStart(2,'0')}:${Math.floor(game.remaining%60).toString().padStart(2,'0')}`;
   hudText(this.el['match-clock'],clock);hudText(this.el['score-time'],clock);hudText(this.el.ammo,String(p.ammo));hudText(this.el.reserve,p.selectedWeapon==='grenade'?'':String(p.reserve));if(this.el.ammo.parentElement)hudClass(this.el.ammo.parentElement,'hidden',p.selectedWeapon==='grenade');hudText(this.el.health,String(p.hp));hudStyle(this.el['health-fill'],'width',p.hp+'%');hudStyle(this.el['health-fill'],'background',p.hp<35?'rgb(179, 76, 60)':'rgb(147, 168, 114)');
   const rounds=this.el['round-icons'],capacity=WEAPONS[p.faction].capacity;

@@ -10,3 +10,6 @@ server/data/
 .env.local
 .env.production.local
 infra/.state/
+
+# Private backend operator API key (never a VITE_ variable).
+.env

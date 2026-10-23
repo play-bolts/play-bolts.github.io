@@ -64,7 +64,8 @@ pub fn router(state: Shared) -> Router {
                 .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
                 .allow_headers([axum::http::header::CONTENT_TYPE]),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        .merge(crate::admin::router(state))
 }
 async fn health(State(state): State<Shared>) -> Response {
     let h = state.lock().await;

@@ -1,3 +1,4 @@
+v1.0.43 - Clarifies that AI fill applies to Deathmatch and dedicated 1v1 rooms have no bots.
 v1.0.42 - Fixes browser multiplayer joins and hosts Deathmatch plus three dedicated bot-free 1v1 lobbies on the existing server.
 v1.0.40 - Deploys all nine 800 ms gunshot recordings with the latest 300–800 ms fades and revalidates cached audio on load.
 v1.0.36 - Integrates the audio and credits updates with published lobby and hosting fixes for release.

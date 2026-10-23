@@ -4,6 +4,15 @@ import {gameEndpoint,locationLabel,LOBBY_LOCATIONS,probeLobby,lobbyBrowserRows,s
 import {NetworkClient,type SocketLike} from '../src/network.ts';
 import {Game} from '../src/engine.ts';
 
+test('directory preserves duel capacities and rejects malformed seat counts',async()=>{
+ const rows=[{id:'dm',name:'Deathmatch',players:0,capacity:6,phase:'playing'},...['Alpha','Beta','Delta'].map(name=>({id:name,name:`1v1 ${name}`,players:2,capacity:2,phase:'playing'}))];
+ const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async()=>new Response(JSON.stringify({version:2,locations:[],lobbies:[...rows,
+  {...rows[0],id:'overfull',capacity:2,players:3},{...rows[0],id:'unsupported',capacity:3},{...rows[0],id:'fractional',players:1.5}
+ ]}))});
+ const listed=await client.lobbies();
+ assert.deepEqual(listed.map(({name,capacity,players})=>({name,capacity,players})),rows.map(({name,capacity,players})=>({name,capacity,players})));
+});
+
 test('location labels map to the requested physical GameLift locations',()=>{
  assert.deepEqual(Object.values(LOBBY_LOCATIONS).map(v=>`${v.flag} ${v.abbreviation}`),['🇺🇸 OR','🇬🇧 LON','🇸🇬 SG','🇧🇷 SP']);
  assert.deepEqual(Object.values(LOBBY_LOCATIONS).map(v=>[v.name,v.aws]),[

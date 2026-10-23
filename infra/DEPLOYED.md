@@ -1,5 +1,15 @@
 # Deployed backend
 
+## Dedicated local lobbies and browser joins — 2026-10-22
+
+Application release `4e8df188f76a6f4a1892766536a62e6aea3c69f75c5ec2ef9701d8fc24e50223` runs **Deathmatch** (six seats), **1v1 Alpha**, **1v1 Beta**, and **1v1 Delta** (two seats each) on the existing Oregon instance and Rust process. Duel rooms have no bots. All four rooms retain their IDs while idle, and full rooms do not allocate additional hosts. Spectators and reconnect reservations count toward capacity.
+
+The join failure was duplicate `Access-Control-Allow-Origin` response headers from the Go gateway and Rust server. The gateway now removes upstream CORS response headers while preserving the request Origin for Rust validation. This fixes browser authentication and other proxied HTTP requests. The frontend accepts both two-seat and six-seat directory entries; already-open clients need a refresh to display the duels.
+
+The guarded S3/SSM cutover verified empty human seats, backed up before and after installation, and checked the expected previous release. Postrelease checks confirmed all four rooms, matching binary checksums, SQLite integrity `ok`, zero foreign-key errors, and unchanged credentials for all 55 existing human identities. Hosting configuration and infrastructure remain unchanged. Reproducible deployment and verification are in [deploy-dedicated-lobbies.py](../scripts/deploy-dedicated-lobbies.py) and [test-dedicated-lobbies.ts](../scripts/test-dedicated-lobbies.ts); local evidence is under `temp/dedicated-lobbies/`.
+
+Backend binaries were built and tested from workspace commit `a6126b0`; the frontend release integrates this task onto published main while preserving its later hosting and audio changes. Live checks joined every room, confirmed advancing snapshots and two humans without bots in each duel, and rejected every third-seat attempt.
+
 ## Regional shutdown — 2026-10-17
 
 London (`eu-west-2`), Singapore (`ap-southeast-1`) and São Paulo (`sa-east-1`) were disabled on the existing GameLift fleet `fleet-84aaebc2-b484-4822-83c1-3efefb720c06`. The guarded shutdown verified zero active or reserved human seats, removed the three regional queues' destinations, stopped each location's `AUTO_SCALING`, and set minimum, desired and maximum capacity to **0** with `ZeroCapacityStrategy=MANUAL`. At **20:35 PDT**, verification confirmed **0 active, pending and terminating instances in all three locations**, with the home location also at zero. Regional compute is stopped; retained storage/logs and the existing Oregon service retain any applicable baseline charges. No fleet, build, database or session resource was deleted.

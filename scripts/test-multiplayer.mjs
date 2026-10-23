@@ -102,8 +102,8 @@ try {
  for(let i=0;i<6;i++){const result=await clients[i].join(empty.id);assert.equal(result.type,'joined',`player ${i+1} joins first room`);assert.equal(result.lobbyId,empty.id);}
  await eventually(()=>clients[0].snapshot?.actors.length===6,5000,'six-player snapshot');
  const full=await clients[6].join(empty.id);check('explicit join rejects seventh player',()=>{assert.equal(full.type,'error');assert.equal(full.code,'lobby_full');});
- const overflow=await clients[6].join();check('quick join allocates another lobby at capacity',()=>{assert.equal(overflow.type,'joined');assert.notEqual(overflow.lobbyId,empty.id);assert.match(overflow.lobbyName,/^\p{L}+ \p{L}+(?: \d+)?$/u);});
- const populated=await lobbies();check('all lobbies enforce six human slots',()=>{assert.ok(populated.every(lobby=>lobby.capacity===6&&lobby.players<=6));assert.equal(populated.find(l=>l.id===empty.id)?.players,6);assert.equal(populated.find(l=>l.id===overflow.lobbyId)?.players,1);});
+ const overflow=await clients[6].join();check('quick join uses an available dedicated duel lobby',()=>{assert.equal(overflow.type,'joined');assert.notEqual(overflow.lobbyId,empty.id);assert.match(overflow.lobbyName,/^1v1 (Alpha|Beta|Delta)$/);});
+ const populated=await lobbies();check('all lobbies enforce their advertised capacity',()=>{assert.ok(populated.every(lobby=>[2,6].includes(lobby.capacity)&&lobby.players<=lobby.capacity));assert.equal(populated.find(l=>l.id===empty.id)?.players,6);assert.equal(populated.find(l=>l.id===overflow.lobbyId)?.players,1);});
  check('snapshots reveal no persistent UUIDs or session credentials',()=>{for(const client of clients){const wire=JSON.stringify(client.snapshot);for(const session of sessions){assert.ok(!wire.includes(session.playerId));assert.ok(!wire.includes(session.token));}}});
 
  const literal='<img src=x onerror=alert(1)> ^1literal chat',roomAMarks=clients.map(client=>client.messages.length);
@@ -124,8 +124,7 @@ try {
  const disconnected=clients[5];disconnected.close();await eventually(async()=>((await lobbies()).find(l=>l.id===empty.id)?.players??0)===5,external?36000:5000,'disconnected seat released',external?650:150);disconnected.joined=false;
  const rejoin=await clients[4].join(empty.id);check('disconnect timeout frees a seat',()=>assert.equal(rejoin.type,'joined'));
  await Promise.all(clients.map(client=>client.leave()));for(const client of clients)client.close();
- if(!external){await eventually(async()=>{const rows=await lobbies();return !rows.some(row=>row.id===empty.id||row.id===overflow.lobbyId);},7000,'empty lobbies expire',150);check('inactive lobbies shut down after idle timeout',()=>assert.ok(true));}
- else console.log('SKIP short idle expiry (deployment retains its configured five-minute TTL)');
+ if(!external){await delay(2200);const idle=await lobbies();check('dedicated lobbies stay available after the idle timeout',()=>{assert.deepEqual(idle.map(l=>l.id).sort(),firstList.map(l=>l.id).sort());assert.ok(idle.every(l=>l.players===0));});}
 
  if(!external){
   await delay(150);const db=new DatabaseSync(dbPath,{readOnly:true});
@@ -135,7 +134,7 @@ try {
    check('chat records link to typed events and preserve the literal body',()=>{const rows=db.prepare("SELECT c.body,e.event_type,c.player_id,e.actor_player_id FROM chat_messages c JOIN events e ON e.id=c.id").all();assert.equal(rows.length,2);assert.ok(rows.some(row=>row.body===literal));assert.ok(rows.every(row=>row.event_type==='chat'&&row.player_id===row.actor_player_id));});
    check('each membership has exactly one enter and leave event',()=>{const rows=db.prepare("SELECT m.id,m.left_at,(SELECT count(*) FROM events e WHERE e.event_type='player_enter' AND json_extract(e.data,'$.membershipId')=m.id) AS enters,(SELECT count(*) FROM events e WHERE e.event_type='player_leave' AND json_extract(e.data,'$.membershipId')=m.id) AS leaves FROM memberships m").all();assert.ok(rows.length>=9);assert.ok(rows.every(row=>row.left_at!==null&&row.enters===1&&row.leaves===1));});
    check('kill and death events form one durable linked combat record',()=>{const rows=db.prepare("SELECT c.*,k.event_type AS kill_type,d.event_type AS death_type,k.actor_player_id AS killer,d.actor_player_id AS victim FROM combat_events c JOIN events k ON k.id=c.kill_event_id JOIN events d ON d.id=c.death_event_id").all();assert.ok(rows.some(row=>row.killer===sessions[0].playerId&&row.victim===sessions[1].playerId&&row.kill_type==='player_kill'&&row.death_type==='player_death'&&row.headshot===1));});
-   check('reconnection and idle-room closure are durable',()=>{assert.ok(db.prepare("SELECT count(*) AS n FROM events WHERE event_type='player_reconnect'").get().n>=1);assert.ok(db.prepare('SELECT count(*) AS n FROM lobbies WHERE closed_at IS NOT NULL').get().n>=2);});
+   check('reconnection and dedicated room identities are durable',()=>{assert.ok(db.prepare("SELECT count(*) AS n FROM events WHERE event_type='player_reconnect'").get().n>=1);assert.equal(db.prepare('SELECT count(*) AS n FROM lobbies WHERE closed_at IS NULL').get().n,4);});
   }finally{db.close();}
  }
  console.log(`Multiplayer integration: ${assertions} checks passed (${external?'deployed server':'isolated local server'}).`);

@@ -129,7 +129,7 @@ func (d *directory) catalog(ctx context.Context, force bool) ([]lobby, error) {
 		return nil, errors.New("invalid Oregon lobby list")
 	}
 	for _, row := range local.Lobbies {
-		if row.ID == "" || strings.HasPrefix(row.ID, "new:") || row.Capacity != 6 || row.Players < 0 || row.Players > row.Capacity {
+		if row.ID == "" || strings.HasPrefix(row.ID, "new:") || (row.Capacity != 6 && row.Capacity != 2) || row.Players < 0 || row.Players > row.Capacity {
 			return nil, errors.New("invalid Oregon lobby")
 		}
 		row.Location, row.Managed = "or", false
@@ -184,6 +184,9 @@ func (d *directory) catalog(ctx context.Context, force bool) ([]lobby, error) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].Location != rows[j].Location {
 			return rows[i].Location < rows[j].Location
+		}
+		if rows[i].Capacity != rows[j].Capacity {
+			return rows[i].Capacity > rows[j].Capacity
 		}
 		return rows[i].Name < rows[j].Name
 	})

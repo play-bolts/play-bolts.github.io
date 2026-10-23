@@ -197,12 +197,12 @@ export class Game {
   if(!a.grounded||a.y>0){a.vy-=RULES.gravity*dt;a.y+=a.vy*dt;}
   const impactSpeed=Math.max(0,-a.vy);
   if(a.y<=0){a.y=0;a.vy=0;a.grounded=true;}
-  for(const b of BOXES)if(a.x>b.x-b.w/2-.18&&a.x<b.x+b.w/2+.18&&a.z>b.z-b.d/2-.18&&a.z<b.z+b.d/2+.18&&oldY>=b.h-.08&&a.y<=b.h&&a.vy<=0){a.y=b.h;a.vy=0;a.grounded=true;}
+  for(const b of BOXES)if(a.x>b.x-b.w/2-RULES.radius&&a.x<b.x+b.w/2+RULES.radius&&a.z>b.z-b.d/2-RULES.radius&&a.z<b.z+b.d/2+RULES.radius&&oldY>=b.h-.08&&a.y<=b.h&&a.vy<=0){a.y=b.h;a.vy=0;a.grounded=true;}
   if(!a.grounded)a.ads=false;
   const speed=RULES.speed*stanceSpeedFactor(a.eyeHeight)*(a.ads?.58:1)*(a.selectedWeapon==='grenade'&&!this.isSwitching(a)?GRENADE.speedMultiplier:1);
   const movement=resolveActorMovement<CollisionActor>(a,colliders??this.actors.filter(other=>!other.spectator),dx*speed*dt,dz*speed*dt,{height:other=>(other.eyeHeight??HEIGHTS[other.stance??'stand'])+.18});
   a.x=movement.x;a.z=movement.z;
-  if(a.y>0&&!BOXES.some(b=>Math.abs(a.y-b.h)<.1&&Math.abs(a.x-b.x)<b.w/2+.18&&Math.abs(a.z-b.z)<b.d/2+.18))a.grounded=false;
+  if(a.y>0&&!BOXES.some(b=>Math.abs(a.y-b.h)<.1&&Math.abs(a.x-b.x)<b.w/2+RULES.radius&&Math.abs(a.z-b.z)<b.d/2+RULES.radius))a.grounded=false;
   if(!a.grounded)a.ads=false;
   if(wasGrounded&&!a.grounded)a.leftGroundAt=this.time;
   if(airborne&&a.grounded){a.landedAt=this.time;a.landingSpeed=impactSpeed;}

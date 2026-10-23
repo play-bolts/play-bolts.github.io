@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Game} from '../src/engine.ts';
-import {ARENA,BOXES,RULES} from '../src/config.ts';
+import {ARENA,BOXES,RULES,blocked} from '../src/config.ts';
 
 const idle={forward:0,right:0,jump:false,walk:false,lean:0};
 function solo(){
@@ -81,4 +81,19 @@ test('a landing immediately followed by another jump has separate replay snapsho
  game.replay=game.history;game.replayTime=(landing+takeoff)/2;
  let frame=game.replayFrame()!.actors[0];assert.equal(frame.grounded,true);assert.equal(frame.y,0);assert.equal(frame.vy,0);
  game.replayTime=takeoff+.005;frame=game.replayFrame()!.actors[0];assert.equal(frame.grounded,false);assert.ok(frame.vy>0);assert.ok(frame.y>0);
+});
+
+test('landing on the collision footprint at crate faces and corners never embeds the player',()=>{
+ const crate=BOXES.find(box=>box.kind!=='wall')!;
+ for(const [sx,sz] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]]){
+  const game=solo(),a=game.player;
+  const x=crate.x+sx*(crate.w/2+RULES.radius-.015),z=crate.z+sz*(crate.d/2+RULES.radius-.015);
+  Object.assign(a,{x,z,y:crate.h+.15,vy:-2,grounded:false});
+  for(let i=0;i<30;i++)game.move(a,0,0,1/60);
+  assert.equal(a.y,crate.h);assert.equal(a.grounded,true);assert.equal(blocked(a.x,a.z,a.y),false);
+  // Both moving back onto the box and walking off it remain possible.
+  game.move(a,-sx*.5,-sz*.5,1/60);assert.ok(Math.hypot(a.x-x,a.z-z)>.01);
+  for(let i=0;i<40;i++){game.move(a,sx*.5,sz*.5,1/60);assert.equal(blocked(a.x,a.z,a.y),false);}
+  assert.equal(a.y,0);assert.ok(Math.hypot(a.x-x,a.z-z)>1);
+ }
 });

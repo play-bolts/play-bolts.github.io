@@ -16,6 +16,13 @@ use std::{
 };
 use tokio::sync::watch;
 
+const LOCAL_LOBBIES: [(&str, usize); 4] = [
+    ("Deathmatch", sim::MAX_PLAYERS),
+    ("1v1 Alpha", 2),
+    ("1v1 Beta", 2),
+    ("1v1 Delta", 2),
+];
+
 pub struct Config {
     pub bind: String,
     pub database: PathBuf,
@@ -121,6 +128,7 @@ struct Member {
 struct Room {
     id: String,
     name: String,
+    capacity: usize,
     game: String,
     sim: Simulation,
     members: HashMap<String, Member>,
@@ -191,7 +199,6 @@ pub struct Hub {
     pub failed: bool,
     pub shutting_down: bool,
     rate: HashMap<String, VecDeque<Instant>>,
-    name_index: usize,
     pub internal_token: Option<String>,
     pub managed_lobby: Option<String>,
 }
@@ -207,7 +214,6 @@ impl Hub {
             failed: false,
             shutting_down: false,
             rate: HashMap::new(),
-            name_index: 0,
             internal_token: None,
             managed_lobby: None,
         })
@@ -327,39 +333,14 @@ impl Hub {
         if self.managed_lobby.is_some() || self.rooms.len() >= self.config.max_rooms {
             return Err("server_busy".into());
         }
-        const GENERALS: [&str; 6] = [
-            "Rommel",
-            "Guderian",
-            "Moltke",
-            "Blücher",
-            "Scharnhorst",
-            "Clausewitz",
-        ];
-        const GREEK: [&str; 24] = [
-            "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta", "Iota", "Kappa",
-            "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi", "Rho", "Sigma", "Tau", "Upsilon", "Phi",
-            "Chi", "Psi", "Omega",
-        ];
-        let name = loop {
-            let n = self.name_index;
-            self.name_index += 1;
-            let name = format!(
-                "{} {}{}",
-                GENERALS[(n / 24) % 6],
-                GREEK[n % 24],
-                if n >= 144 {
-                    format!(" {}", n / 144 + 1)
-                } else {
-                    String::new()
-                }
-            );
-            if self.rooms.values().all(|r| r.name != name) {
-                break name;
-            }
-        };
-        self.create_named_room(db::id(), name)
+        let &(name, capacity) = LOCAL_LOBBIES
+            .iter()
+            .take(self.config.max_rooms)
+            .find(|(name, _)| self.rooms.values().all(|r| r.name != *name))
+            .ok_or("server_busy")?;
+        self.create_named_room(db::id(), name.into(), capacity)
     }
-    fn create_named_room(&mut self, id: String, name: String) -> HResult<String> {
+    fn create_named_room(&mut self, id: String, name: String, capacity: usize) -> HResult<String> {
         let game = db::id();
         let seed = u32::from_le_bytes(uuid::Uuid::new_v4().as_bytes()[..4].try_into().unwrap());
         let sim = Simulation::new(seed);
@@ -371,6 +352,7 @@ impl Hub {
             Room {
                 id: id.clone(),
                 name,
+                capacity,
                 game,
                 sim,
                 members: HashMap::new(),
@@ -400,7 +382,7 @@ impl Hub {
         {
             return Err("invalid managed session".into());
         }
-        self.create_named_room(id.to_owned(), sanitize_name(name))?;
+        self.create_named_room(id.to_owned(), sanitize_name(name), sim::MAX_PLAYERS)?;
         self.managed_lobby = Some(id.to_owned());
         self.config.max_rooms = 1;
         Ok(())
@@ -410,16 +392,15 @@ impl Hub {
     }
     pub fn lobbies(&mut self) -> HResult<Value> {
         if self.shutting_down { return Err("server_busy".into()); }
-        if !self
-            .rooms
-            .values()
-            .any(|r| r.human_seats() < sim::MAX_PLAYERS)
-            && self.rooms.len() < self.config.max_rooms
-        {
-            self.create_room()?;
+        if self.managed_lobby.is_some() {
+            if self.rooms.is_empty() { return Err("server_busy".into()); }
+        } else {
+            while self.rooms.len() < LOCAL_LOBBIES.len().min(self.config.max_rooms) {
+                self.create_room()?;
+            }
         }
-        let mut list:Vec<_>=self.rooms.values().map(|r|json!({"id":r.id,"name":r.name,"players":r.human_seats(),"bots":r.members.len()-r.human_seats(),"capacity":sim::MAX_PLAYERS,"phase":if r.sim.ended{"ended"}else{"playing"}})).collect();
-        list.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+        let mut list:Vec<_>=self.rooms.values().map(|r|json!({"id":r.id,"name":r.name,"players":r.human_seats(),"bots":r.members.len()-r.human_seats(),"capacity":r.capacity,"phase":if r.sim.ended{"ended"}else{"playing"}})).collect();
+        list.sort_by(|a, b| b["capacity"].as_u64().cmp(&a["capacity"].as_u64()).then_with(|| a["name"].as_str().cmp(&b["name"].as_str())));
         Ok(json!({"version":1,"lobbies":list}))
     }
     pub fn online_count(&self) -> usize {
@@ -476,14 +457,14 @@ impl Hub {
         // Validate the destination before giving up an existing seat.
         let roomid = if let Some(lobby) = lobby {
             let r = self.rooms.get(lobby).ok_or("lobby_missing")?;
-            if r.human_seats() >= sim::MAX_PLAYERS {
+            if r.human_seats() >= r.capacity {
                 return Err("lobby_full".into());
             }
             lobby.to_owned()
         } else if let Some(r) = self
             .rooms
             .values()
-            .filter(|r| r.human_seats() < sim::MAX_PLAYERS)
+            .filter(|r| r.human_seats() < r.capacity)
             .max_by_key(|r| r.human_seats())
         {
             r.id.clone()
@@ -494,7 +475,7 @@ impl Hub {
         let room = self.rooms.get_mut(&roomid).unwrap();
         // A human may always take a seat held by a bot. Retained human seats
         // during reconnect grace have priority over temporary AI as well.
-        while room.members.len() >= sim::MAX_PLAYERS {
+        while room.members.len() >= room.capacity {
             remove_one_bot(&mut self.db, room, "human_priority")?;
         }
         let actor = room.next_actor;
@@ -738,7 +719,7 @@ impl Hub {
                 chats.push((room.id.clone(), room.durable_chat.pop_front().unwrap().1));
             }
             if room.members.is_empty() {
-                if room
+                if self.managed_lobby.is_some() && room
                     .empty_since
                     .is_some_and(|t| t.elapsed().as_secs_f64() > self.config.empty_seconds)
                 {
@@ -901,8 +882,8 @@ fn reconcile_bots(
     connections: &HashMap<String, Endpoint>,
 ) -> HResult<()> {
     let online = room.online_humans(connections);
-    let wanted = if (1..3).contains(&online) {
-        2.min(sim::MAX_PLAYERS.saturating_sub(room.human_seats()))
+    let wanted = if room.capacity == sim::MAX_PLAYERS && (1..3).contains(&online) {
+        2.min(room.capacity.saturating_sub(room.human_seats()))
     } else {
         0
     };

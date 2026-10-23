@@ -1,5 +1,13 @@
 # Deployed backend
 
+## Dedicated local lobbies and browser joins — 2026-10-22
+
+Application release `4e8df188f76a6f4a1892766536a62e6aea3c69f75c5ec2ef9701d8fc24e50223` runs **Deathmatch** (six seats), **1v1 Alpha**, **1v1 Beta**, and **1v1 Delta** (two seats each) on the existing Oregon instance and Rust process. Duel rooms have no bots. All four rooms retain their IDs while idle, and full rooms do not allocate additional hosts. Spectators and reconnect reservations count toward capacity.
+
+The join failure was duplicate `Access-Control-Allow-Origin` response headers from the Go gateway and Rust server. The gateway now removes upstream CORS response headers while preserving the request Origin for Rust validation. This fixes browser authentication and other proxied HTTP requests. The frontend accepts both two-seat and six-seat directory entries; already-open clients need a refresh to display the duels.
+
+The guarded S3/SSM cutover verified empty human seats, backed up before and after installation, and checked the expected previous release. Postrelease checks confirmed all four rooms, matching binary checksums, SQLite integrity `ok`, zero foreign-key errors, and unchanged credentials for all 55 existing human identities. Hosting configuration and infrastructure remain unchanged. Reproducible deployment and verification are in [deploy-dedicated-lobbies.py](../scripts/deploy-dedicated-lobbies.py) and [test-dedicated-lobbies.ts](../scripts/test-dedicated-lobbies.ts); local evidence is under `temp/dedicated-lobbies/`.
+
 ## Disabled regions removed from discovery — 2026-10-21
 
 Directory release `e3c3a4c105618faa13d89843566de75ae1f1a399364066f235349bde60bd6ae4` installs the tested gateway from `25ba13f` with `extraLobbiesEnabled=false`. The public `/api/lobbies` response now has `locations: []` and only Oregon rooms, removing London, Singapore and São Paulo from older clients as well as the current frontend. The already-published frontend also has `extraLobbies=false`. Direct joins to each disabled city return HTTP 503 immediately.

@@ -120,6 +120,75 @@ fn bot_count(joined: &Value) -> usize {
 }
 
 #[test]
+fn dedicated_duels_enforce_two_seats_without_bots_and_keep_reconnect_reservations() {
+    let mut fixture = Fixture::new(32);
+    let hub = &mut fixture.hub;
+    let list = hub.lobbies().unwrap();
+    let rows = list["lobbies"].as_array().unwrap();
+    assert_eq!(rows.len(), 4);
+    for (row, name) in rows.iter().zip(["Deathmatch", "1v1 Alpha", "1v1 Beta", "1v1 Delta"]) {
+        assert_eq!(row["name"], name);
+    }
+    let deathmatch = rows[0]["id"].as_str().unwrap();
+    let mut waiting = Peer::fresh(hub);
+    let dm = waiting.join(hub, Some(deathmatch));
+    let mut dm_actor = dm["actorId"].clone();
+    assert_eq!(bot_count(&dm), 2);
+    for row in &rows[1..] {
+        assert_eq!(row["capacity"], 2);
+        let id = row["id"].as_str().unwrap();
+        let mut first = Peer::fresh(hub);
+        let joined = first.join(hub, Some(id));
+        let first_actor = joined["actorId"].clone();
+        assert_eq!(bot_count(&joined), 0);
+        assert_eq!(joined["snapshot"]["actors"].as_array().unwrap().len(), 1);
+        let mut second = Peer::fresh(hub);
+        let joined = second.join(hub, Some(id));
+        assert_eq!(bot_count(&joined), 0);
+        assert_eq!(joined["snapshot"]["actors"].as_array().unwrap().len(), 2);
+        hub.disconnected(&first.player, &first.connection).unwrap();
+        for spectator in [false, true] {
+            let error = hub.join(&waiting.player, &waiting.connection, Some(id), "Third", Faction::British, spectator).unwrap_err();
+            assert_eq!(error.to_string(), "lobby_full");
+        }
+        // Failed switches preserve the caller's Deathmatch seat.
+        assert_eq!(waiting.join(hub, Some(deathmatch))["actorId"], dm_actor);
+        let mut reconnect = Peer::connect(hub, first.player.clone());
+        assert_eq!(reconnect.join(hub, Some(id))["actorId"], first_actor);
+        hub.leave(&reconnect.player, "left", false).unwrap();
+        let joined = waiting.join(hub, Some(id));
+        assert_eq!(joined["snapshot"]["actors"].as_array().unwrap().len(), 2);
+        assert_eq!(bot_count(&joined), 0);
+        hub.leave(&waiting.player, "left", false).unwrap();
+        hub.leave(&second.player, "left", false).unwrap();
+        dm_actor = waiting.join(hub, Some(deathmatch))["actorId"].clone();
+    }
+    hub.leave(&waiting.player, "left", false).unwrap();
+    hub.config.empty_seconds = 0.0;
+    hub.tick().unwrap();
+    assert_eq!(hub.lobbies().unwrap(), list, "idle rooms retain names, IDs and capacities");
+}
+
+#[test]
+fn full_dedicated_inventory_never_creates_a_fifth_room() {
+    let mut fixture = Fixture::new(32);
+    let hub = &mut fixture.hub;
+    let list = hub.lobbies().unwrap();
+    let mut peers = Vec::new();
+    for row in list["lobbies"].as_array().unwrap() {
+        for _ in 0..row["capacity"].as_u64().unwrap() {
+            let mut peer = Peer::fresh(hub);
+            peer.join(hub, row["id"].as_str());
+            peers.push(peer);
+        }
+    }
+    let denied = Peer::fresh(hub);
+    assert_eq!(hub.join(&denied.player, &denied.connection, None, "Full", Faction::British, false).unwrap_err().to_string(), "server_busy");
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(), 4);
+    assert_eq!(hub.online_count(), 12);
+}
+
+#[test]
 fn bots_follow_connected_human_threshold_and_persist_without_socket_identities() {
     let mut fixture = Fixture::new(1);
     let hub = &mut fixture.hub;
@@ -607,13 +676,13 @@ fn leaving_and_rejoining_preserves_cumulative_match_statistics() {
 }
 
 #[test]
-fn six_player_room_cap_and_global_room_cap_never_evict_an_existing_seat() {
+fn per_room_capacity_and_global_room_cap_never_evict_an_existing_seat() {
     let mut fixture = Fixture::new(2);
     let hub = &mut fixture.hub;
     let mut peers = Vec::new();
     let mut first_lobby = String::new();
     let mut second_lobby = String::new();
-    for i in 0..12 {
+    for i in 0..8 {
         let mut peer = Peer::fresh(hub);
         let joined = peer.join(hub, None);
         let lobby = joined["lobbyId"].as_str().unwrap();
@@ -630,8 +699,7 @@ fn six_player_room_cap_and_global_room_cap_never_evict_an_existing_seat() {
     let list = hub.lobbies().unwrap();
     assert_eq!(list["lobbies"].as_array().unwrap().len(), 2);
     for row in list["lobbies"].as_array().unwrap() {
-        assert_eq!(row["players"], 6);
-        assert_eq!(row["capacity"], 6);
+        assert_eq!(row["players"], row["capacity"]);
     }
     let denied = Peer::fresh(hub);
     let full = hub
@@ -685,14 +753,14 @@ fn six_player_room_cap_and_global_room_cap_never_evict_an_existing_seat() {
             hub,
             "SELECT count(*) FROM memberships WHERE left_at IS NULL AND player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
-        12
+        8
     );
     assert_eq!(
         count(
             hub,
             "SELECT count(*) FROM events WHERE event_type='player_enter' AND actor_player_id IN (SELECT id FROM players WHERE is_bot=0)"
         ),
-        12
+        8
     );
     assert_eq!(
         count(
@@ -768,7 +836,7 @@ fn reconnect_before_grace_keeps_actor_but_timeout_releases_the_seat_once() {
 }
 
 #[test]
-fn empty_cleanup_closes_match_and_releases_the_global_room_slot() {
+fn dedicated_room_survives_idle_timeout_without_changing_identity() {
     let mut fixture = Fixture::new(1);
     let hub = &mut fixture.hub;
     let mut player = Peer::fresh(hub);
@@ -791,18 +859,18 @@ fn empty_cleanup_closes_match_and_releases_the_global_room_slot() {
             hub,
             "SELECT count(*) FROM lobbies WHERE close_reason='inactive' AND closed_at IS NOT NULL"
         ),
-        1
+        0
     );
     assert_eq!(
         count(
             hub,
             "SELECT count(*) FROM matches WHERE end_reason='inactive' AND ended_at IS NOT NULL"
         ),
-        1
+        0
     );
     let next = hub.lobbies().unwrap();
     assert_eq!(next["lobbies"].as_array().unwrap().len(), 1);
-    assert_ne!(next["lobbies"][0]["id"], lobby);
+    assert_eq!(next["lobbies"][0]["id"], lobby);
     assert_eq!(next["lobbies"][0]["players"], 0);
     // Polling the lobby browser should reuse the new standby room.
     assert_eq!(hub.lobbies().unwrap(), next);

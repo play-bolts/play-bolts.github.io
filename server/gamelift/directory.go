@@ -130,7 +130,7 @@ func (d *directory) catalog(ctx context.Context, force bool) ([]lobby, error) {
 		return nil, errors.New("invalid Oregon lobby list")
 	}
 	for _, row := range local.Lobbies {
-		if row.ID == "" || strings.HasPrefix(row.ID, "new:") || row.Capacity != 6 || row.Players < 0 || row.Players > row.Capacity {
+		if row.ID == "" || strings.HasPrefix(row.ID, "new:") || (row.Capacity != 6 && row.Capacity != 2) || row.Players < 0 || row.Players > row.Capacity {
 			return nil, errors.New("invalid Oregon lobby")
 		}
 		row.Location, row.Managed = "or", false
@@ -205,6 +205,9 @@ func (d *directory) catalog(ctx context.Context, force bool) ([]lobby, error) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].Location != rows[j].Location {
 			return rows[i].Location < rows[j].Location
+		}
+		if rows[i].Capacity != rows[j].Capacity {
+			return rows[i].Capacity > rows[j].Capacity
 		}
 		return rows[i].Name < rows[j].Name
 	})
@@ -631,6 +634,17 @@ func (d *directory) handler() http.Handler {
 	proxy := &httputil.ReverseProxy{Rewrite: func(p *httputil.ProxyRequest) {
 		p.SetURL(local)
 		p.Out.Header.Set("X-Forwarded-For", clientIP(p.In, true))
+	}, ModifyResponse: func(response *http.Response) error {
+		// The public gateway owns CORS. Rust also emits CORS headers, and
+		// ReverseProxy appends them to ours, which browsers reject even when
+		// both Allow-Origin values are identical. Keep Origin on the upstream
+		// request so Rust still validates HTTP and WebSocket callers.
+		for key := range response.Header {
+			if strings.HasPrefix(strings.ToLower(key), "access-control-") {
+				response.Header.Del(key)
+			}
+		}
+		return nil
 	}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/lobbies", d.list)

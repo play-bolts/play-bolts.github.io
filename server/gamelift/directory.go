@@ -621,7 +621,7 @@ func (d *directory) handler() http.Handler {
 	mux.HandleFunc("POST /api/join", d.join)
 	mux.HandleFunc("POST /api/cluster/replicate", r.ingest)
 	mux.Handle("GET /api/health", d.limitRead(proxy))
-	for _, route := range []string{"POST /api/session", "GET /api/leaderboard", "POST /api/feedback", "POST /api/visits", "GET /api/ws", "GET /api/ping"} {
+	for _, route := range []string{"POST /api/session", "GET /api/leaderboard", "POST /api/feedback", "POST /api/visits", "GET /api/admin/status", "POST /api/admin/query", "GET /api/ws", "GET /api/ping"} {
 		mux.Handle(route, proxy)
 	}
 	return r.cors(mux)

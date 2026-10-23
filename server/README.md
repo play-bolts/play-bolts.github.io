@@ -312,6 +312,37 @@ The backup parent must already exist. Apply validates the migrated schema, takes
 
 Run `python3 -m unittest discover -s tests -p 'test_*.py'` for analytics, seed transaction/backup and origin-configuration checks.
 
+## Private read-only admin API
+
+The operator API uses `BOLTS_ADMIN_API_KEY`, a 32–128 character printable ASCII secret. A random key has been created in the repository's ignored, mode-0600 `.env` for local use. Start the backend from the repository root to read that file automatically, or set the environment variable. An explicitly empty environment variable disables the API even if `.env` exists; an absent or invalid key leaves both routes disabled (404). Never use a `VITE_` prefix for this secret.
+
+For production, install the key in the backend service's private `EnvironmentFile` (`/etc/bolts.env` on the existing host) and restart with the new binary. The local key has not been installed on the VM, and this change has not been deployed. The directory forwards these routes to its home backend; activity and SQL cover that backend's database, not all regional processes.
+
+From the repository root, use the local key without printing it:
+
+```sh
+. ./.env
+ADMIN_URL=http://127.0.0.1:8080
+curl --fail-with-body --silent --show-error \
+  -H "Authorization: Bearer $BOLTS_ADMIN_API_KEY" \
+  "$ADMIN_URL/api/admin/status?minutes=60"
+curl --fail-with-body --silent --show-error \
+  -H "Authorization: Bearer $BOLTS_ADMIN_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"sql":"SELECT count(*) AS users FROM players WHERE is_bot = ?","parameters":[0],"maxRows":100}' \
+  "$ADMIN_URL/api/admin/query"
+```
+
+`GET /api/admin/status?minutes=N` accepts 1–10,080 minutes (default 60) and returns `asOf` in Unix milliseconds, `minutes`, and these separate counts:
+
+- `activeNow`: currently connected human lobby members, including spectators. Excludes AI, unseated sockets and disconnected reservations.
+- `activePastMinutes`: distinct human player IDs whose actual connection and lobby-membership intervals overlap within the requested window. Reconnects deduplicate; recent asynchronous persistence may briefly lag current membership.
+- `browsersLast90Seconds` and `browsersPastMinutes`: anonymous browser visitor IDs observed by visit tracking, including menus and solo play. These are not verified people or gameplay starts; minute buckets approximate the historical window boundaries. Privacy opt-outs and failed tracking requests are absent.
+
+`POST /api/admin/query` accepts one read-only SQLite statement, optional positional scalar `parameters`, and `maxRows` (default 100, range 1–500). Results contain `columns`, array-valued `rows`, and `truncated`; blobs use `{"hex":"..."}`. Use placeholders for values. Writes, schema changes, transactions, PRAGMAs, attached databases, extension loading and filesystem functions are rejected. Queries run on dedicated read-only connections outside the game's Hub lock and storage writer.
+
+Limits are 8 KiB SQL, 64 parameters/columns, a 16 KiB request body, 64 KiB per SQLite value, 256 KiB serialized row data, two simultaneous reads, and approximately 250,000 VM operations or 250 ms per query. SQLite busy waits are capped at 100 ms. Status and SQL have separate per-key quotas of 120 and 30 requests per minute. Execution-budget exhaustion returns 408; quotas/concurrency return 429; invalid queries return 400. A valid Bearer header is required before body parsing, URL keys are ignored, browser origins must be allowed, and responses carry `Cache-Control: no-store`. Keep this privileged key private: read-only queries can still read account and event data.
+
 ## Configuration
 
 | Variable | Default / purpose |
@@ -320,6 +351,7 @@ Run `python3 -m unittest discover -s tests -p 'test_*.py'` for analytics, seed t
 | `BOLTS_DB` | `data/bolts.sqlite`, relative to the process working directory. |
 | `BOLTS_ORIGINS` | Production: `https://play-bolts.github.io,http://127.0.0.1:5173,http://localhost:5173`. Rust local defaults allow the two loopback origins. HTTP CORS and WebSocket upgrades use the same exact allowlist. |
 | `BOLTS_IDENTITY_SALT` | Required stable secret of at least 32 characters for a non-loopback listener. Local loopback runs can generate an ephemeral salt. |
+| `BOLTS_ADMIN_API_KEY` | Private operator Bearer key, 32–128 printable ASCII characters. Falls back to `.env` in the backend working directory; absent/invalid/explicitly empty disables the admin API. |
 | `BOLTS_TRUST_PROXY` | `false`; deployed private CloudFront origin sets `true`. |
 | `BOLTS_EMPTY_SECONDS` | `300`. |
 | `BOLTS_RECONNECT_SECONDS` | `30`. |

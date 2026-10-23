@@ -1,3 +1,4 @@
+v1.0.46 - Adds close-range AI melee, protected multiplayer peeks and retreats, and correct bot strafing.
 v1.0.45 - Aligns crate landing support with collision bounds to prevent stuck edge landings.
 v1.0.44 - Keeps scrollable session chat in the upper-left HUD with classic serif styling.
 v1.0.43 - Clarifies that AI fill applies to Deathmatch and dedicated 1v1 rooms have no bots.

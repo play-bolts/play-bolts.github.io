@@ -211,3 +211,21 @@ test('full update defers an empty skilled rifle reload until shelter and bounds 
   }
  }
 });
+
+test('loaded and reloading bots choose delayed melee when an opponent gets very close',()=>{
+ for(const difficulty of ['recruit','regular','veteran'] as const)for(const reloading of [false,true]){
+  const game=new Game(),target=createActor(0,'german','Target'),bot=createActor(1,'british','Bot');
+  game.state='playing';game.actors=[target,bot];game.difficulty=difficulty;game.seed=571;
+  Object.assign(bot,{x:13.5,z:0,yaw:0,spawnSafe:0,cooldown:0,reload:reloading?3:0});
+  Object.assign(target,{x:13.5,z:1.4,spawnSafe:0,hp:1000});
+  target.pose=initialMotion(target);bot.pose=initialMotion(bot);
+  game.move=()=>{};
+  for(let i=0;i<180&&!Number.isFinite(bot.lastMeleeTime);i++){game.time+=dt;game.updateAI(bot,dt);}
+  assert.ok(Number.isFinite(bot.lastMeleeTime),`${difficulty} failed to bash with ammunition`);
+  assert.ok(bot.lastMeleeTime>=DIFFICULTIES[difficulty].reaction-dt,'melee still needs recognition');
+  assert.equal(bot.shots,0);assert.equal(bot.ammo,10);assert.equal(bot.reload,0);assert.equal(bot.ads,false);
+  assert.equal(target.hp,1000,'strike waits for animation contact');
+  game.time+=MELEE_SECONDS*MELEE_CONTACT_FRACTION.rifle+.001;game.resolveMeleeContacts();
+  assert.equal(target.hp,850,'normal melee contact applies damage');
+ }
+});

@@ -66,7 +66,7 @@ export function updateSurvival(a:Actor,time:number,_dt:number,difficulty:Skilled
   if((state.phase==='seek'||state.phase==='return')&&dist(a,cover.hide)<.14)holdCover(a,time,profile.hold+(a.hp<profile.health?.35:0));
   if(state.phase==='hold'){
    a.ai.path=[];
-   if(!urgent&&!lowAmmo&&time>=state.phaseUntil){
+   if(!urgent&&!lowAmmo&&a.cooldown<=.1&&time>=state.phaseUntil){
     if(cover.peek){state.phase='peek';state.phaseUntil=time+3.5;state.lastShot=a.lastShotTime;state.peekArrived=false;a.ai.path=[{x:cover.peek.x,z:cover.peek.z}];}
     else if(time-state.coverSince>1.5){state.avoid={...cover.hide};state.failedPeeks=2;}
    }

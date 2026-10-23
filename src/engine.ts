@@ -265,7 +265,8 @@ export class Game {
    }
   }
   const survival=skilled?updateSurvival(a,this.time,dt,this.difficulty as 'regular'|'veteran',hasSight,deciding):null;
-  if(survival?.reload)this.reload(a);
+  const closeThreat=hasSight&&brain.observed!==null&&dist(a,brain.observed)<MELEE_RANGE-.35&&Math.abs(eye.y-brain.observed.y)<1.8;
+  if(survival?.reload&&!closeThreat)this.reload(a);
   if(skilled&&deciding&&!brain.survival.cover&&!hasSight&&brain.path.length===0){
    const goal=brain.known??coverPoints[Math.floor(this.random()*coverPoints.length)];brain.path=findPath(a,goal);brain.mode=brain.known?'investigate':'patrol';
   }
@@ -287,30 +288,32 @@ export class Game {
    if(a.cooldown<=0)brain.shotWait=Math.max(0,brain.shotWait-dt);
    a.ads=this.canADS(a)&&brain.reaction<settings.reaction*.7&&!survival?.fastMove&&!survival?.lookAt;
    if(!a.reload&&brain.path.length===0&&(!skilled||!brain.survival.cover)){brain.mode='engage';a.stance=brain.observed&&dist(a,brain.observed)>16&&brain.role===0?'crouch':'stand';}
-   if(brain.observed&&!survival?.lookAt){
+   if(brain.observed&&(!survival?.lookAt||closeThreat)){
     // Persistent motor error is in world metres; it remains meaningful at close
     // range. The rendered rifle and the actual ray use this same imperfect aim.
     const observed=brain.observed,bearing=Math.atan2(observed.x-eye.x,observed.z-eye.z);
     const error=(settings.errorFloor+(settings.error-settings.errorFloor)*Math.exp(-brain.settled/settings.settle))*(1+Math.min(.55,a.moving*.15));
-    const lateral=(brain.biasX+brain.driftX*.3)*error,vertical=(brain.biasY+brain.driftY*.3)*error*.65;
+    const motorError=closeThreat?Math.min(.2,error):error;
+    const lateral=(brain.biasX+brain.driftX*.3)*motorError,vertical=(brain.biasY+brain.driftY*.3)*motorError*.65;
     const aim={x:observed.x+Math.cos(bearing)*lateral,y:observed.y+vertical,z:observed.z-Math.sin(bearing)*lateral};
     const goal=Math.atan2(aim.x-eye.x,aim.z-eye.z),pitchGoal=Math.atan2(aim.y-eye.y,dist(eye,aim));
     const diff=Math.atan2(Math.sin(goal-a.yaw),Math.cos(goal-a.yaw)),motor=1-Math.exp(-dt*settings.tracking);
     a.yaw+=clamp(diff*motor,-dt*settings.turn,dt*settings.turn);a.pitch+=clamp((pitchGoal-a.pitch)*motor,-dt*settings.turn*.7,dt*settings.turn*.7);
     // Readiness is evaluated against the perceived aim point, never the exact
     // target hitbox; the bot must commit to shots that can physically miss.
-    if((!survival||survival.canFire)&&brain.reaction===0&&brain.shotWait===0&&Math.abs(diff)<.12&&Math.abs(pitchGoal-a.pitch)<.12&&!a.reload&&a.cooldown<=0){
-     const before=a.shots;this.fire(a,a.ammo===0&&a.reserve===0);if(a.shots>before)brain.shotWait=settings.hesitation*(.75+this.random()*.5);
+    if((closeThreat||!survival||survival.canFire)&&brain.reaction===0&&brain.shotWait===0&&Math.abs(diff)<.12&&Math.abs(pitchGoal-a.pitch)<.12&&(closeThreat||!a.reload)&&a.cooldown<=0){
+     const before=a.shots;this.fire(a,closeThreat);if(closeThreat){a.ads=false;brain.mode='melee';}if(a.shots>before)brain.shotWait=settings.hesitation*(.75+this.random()*.5);
     }
    }
   }else{brain.sight=false;brain.observations=[];brain.observationClock=0;a.ads=false;a.pitch=lerp(a.pitch,0,Math.min(1,dt*3));}
   let dx=0,dz=0;
   if(target?.alive&&brain.known&&a.ammo===0&&a.reserve===0){if(brain.path.length===0)brain.path=findPath(a,brain.known);brain.mode='melee';a.ads=false;}
-  if(brain.path.length){
+  if(closeThreat){a.ads=false;brain.mode='melee';}
+  else if(brain.path.length){
    const p=brain.path[0],len=dist(a,p),arrival=skilled&&brain.survival.cover&&brain.path.length===1?.12:.45;
    if(len<arrival)brain.path.shift();else{dx=(p.x-a.x)/len;dz=(p.z-a.z)/len;if(!hasSight&&!survival?.lookAt){const goal=Math.atan2(dx,dz);a.yaw+=Math.atan2(Math.sin(goal-a.yaw),Math.cos(goal-a.yaw))*Math.min(1,dt*6);}if(!skilled||!brain.survival.cover)a.stance='stand';}
   }else if(hasSight&&target&&dist(a,target)<8&&(!skilled||!brain.survival.cover)){dx=Math.cos(a.yaw)*brain.strafe*.6;dz=-Math.sin(a.yaw)*brain.strafe*.6;}
-  if(survival?.lookAt){const goal=Math.atan2(survival.lookAt.x-a.x,survival.lookAt.z-a.z),diff=Math.atan2(Math.sin(goal-a.yaw),Math.cos(goal-a.yaw));a.yaw+=clamp(diff,-dt*settings.turn,dt*settings.turn);a.ads=false;}
+  if(survival?.lookAt&&!closeThreat){const goal=Math.atan2(survival.lookAt.x-a.x,survival.lookAt.z-a.z),diff=Math.atan2(Math.sin(goal-a.yaw),Math.cos(goal-a.yaw));a.yaw+=clamp(diff,-dt*settings.turn,dt*settings.turn);a.ads=false;}
   const before={x:a.x,z:a.z},previousPhase=a.pose?.phase??0;this.move(a,dx*settings.speed,dz*settings.speed,dt);
   this.footstep(a,previousPhase);
   if(Math.hypot(dx,dz)>.1&&dist(before,a)<.001){brain.stuck+=dt;if(brain.stuck>.5){brain.path=[];brain.decision=0;brain.strafe*=-1;brain.stuck=0;if(skilled&&brain.survival.cover){brain.survival.avoid={...brain.survival.cover.hide};brain.survival.cover=null;brain.survival.phase='none';}}}else brain.stuck=0;

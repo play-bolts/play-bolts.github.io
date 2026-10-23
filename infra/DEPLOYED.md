@@ -1,5 +1,17 @@
 # Deployed backend
 
+## TODO release and private admin API — 2026-10-22
+
+Release v1.0.50 integrates the completed chat, crate-edge, AI melee/cover, Deathmatch overflow and read-only admin changes onto published main, preserving its existing lobby UI, audio and GameLift lifecycle fixes. The seven later QA audit tasks are outside this release.
+
+Backend archive `5bdd59c9933ede00c4af61db2199153c8d5949f9fd5a6308f1999530d45aab3a` was installed on the existing Oregon host with zero occupied human seats, backups, expected-release checks and automatic binary/configuration rollback. Both Linux executables match build provenance. Postrelease SQLite integrity is `ok`, foreign-key errors are zero, all 66 preexisting human credentials are unchanged, and the service and backup timer are active.
+
+The private admin key is installed in mode-0600 `/etc/bolts.env`; its matching local copy remains in ignored `.env`. The temporary encrypted S3 object version used to transfer it was deleted. Public authentication rejects anonymous requests with 401; authenticated parameterized `SELECT` succeeds with `no-store`. Public activity requests for 1, 2 and 60 minutes each returned the requested window. The existing CloudFront origin-request policy now forwards only `minutes`, preserving its other settings, the distribution and WAF. The source template records this narrow policy change; no stack, DNS, fleet, regional capacity or host migration was performed.
+
+`BOLTS_MAX_ROOMS=11` is active: up to eight six-seat Deathmatches plus the three fixed duels, a provisional 54-human-seat ceiling based on the documented short VM benchmark. Initially only the four base rooms are advertised; extra Deathmatches appear as the existing larger rooms fill.
+
+Validation includes 619 frontend tests, 164 Rust tests, the full Go suite with installer rollback cases, 127 Python tests, production builds, and the 24-check isolated multiplayer flow. The socket test's waypoint controller is timing-sensitive: diagnostic runs completed on both the release and prior published baseline after showing the same overshoot behavior. No controller or gameplay thresholds were changed to make the check pass. Deployment and validation evidence is under ignored `temp/todo-deploy/`; [the release helper](../scripts/deploy-todo-release.py) retains recovery coordinates and never logs the key.
+
 ## Abuse protections — 2026-10-22
 
 Application release `071c636d9e837f839ce4a5a78aa277f74d5671051bfe33c38c6e9203d8cab5d8` adds 120 reads/minute/IP independently for the lobby, status and health endpoints, 12 simultaneous game/probe sockets/IP, and four human or spectator seats/IP across the process. Reconnect reservations count as seats, and Ping/Pong now consume the 150-frame/second connection budget. Canonical addresses and trusted viewer forwarding prevent equivalent-address or spoofed-prefix quota bypasses. People sharing one public address share these limits. The guarded empty-lobby installation preserved the existing four Oregon rooms and disabled overseas configuration; SQLite integrity, identity salt, all 61 pre-existing human credentials, record counts and backups passed verification with no new persistence, replication or panic errors.

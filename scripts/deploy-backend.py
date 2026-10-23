@@ -52,6 +52,7 @@ def prepare():
     rendered.write_text(json.dumps(template, indent=2) + '\n')
     allowlist = [
         ROOT / 'server/Cargo.toml', ROOT / 'server/Cargo.lock', ROOT / 'server/schema.sql',
+        ROOT / 'scripts/benchmark-lobby-capacity.rs',
         *sorted((ROOT / 'server/src').glob('*.rs')),
         ROOT / 'src/generated/hitboxData.json',
         ROOT / 'src/generated/handCollisionData.json',

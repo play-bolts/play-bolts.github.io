@@ -126,6 +126,7 @@ def main():
     (OUT / 'host.json').write_text(json.dumps(config, indent=2) + '\n')
     (OUT / 'fleet.template.json').write_text(json.dumps(template(), indent=2) + '\n')
     files = [ROOT / 'server/Cargo.toml', ROOT / 'server/Cargo.lock', ROOT / 'server/schema.sql',
+             ROOT / 'scripts/benchmark-lobby-capacity.rs',
              *sorted((ROOT / 'server/src').glob('*.rs')), *sorted((ROOT / 'server/gamelift').glob('*.go')),
              ROOT / 'server/gamelift/go.mod', ROOT / 'server/gamelift/go.sum',
              ROOT / 'src/generated/hitboxData.json', ROOT / 'src/generated/handCollisionData.json', ROOT / 'shared/actor-fields.json', ROOT / 'shared/features.json', ROOT / 'infra/gamelift/Dockerfile',

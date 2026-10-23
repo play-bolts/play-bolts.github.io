@@ -302,7 +302,11 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 .lobby-actions button:last-child { color: #fff0b2; min-width: 48px; text-align: right; }
 .lobby-actions button:disabled { cursor: default; }
 #network-status { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); padding: 5px 10px; background: #060906c7; color: #f0e5b2; font-size: 16px; text-align: center; max-width: 70%; }
-.chat { position: absolute; left: 33px; bottom: 153px; width: min(540px, 48vw); font-family: Arial, sans-serif; font-size: 14px; line-height: 1.4; color: #eeeee8; }
+.chat { position: absolute; left: 33px; top: 73px; width: min(540px, 45vw); font-family: Georgia, 'Times New Roman', serif; font-size: 16px; line-height: 1.3; color: #e8e5cd; }
+#chat-log { max-height: min(24vh, 210px); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #aaa68b transparent; overflow-anchor: none; }
+.chat.typing #chat-log { pointer-events: auto; touch-action: pan-y; }
+.chat-help { display: none; margin-top: 5px; font-size: 12px; color: #d5d0b7; text-shadow: 1px 1px 2px #000; }
+.chat.typing .chat-help { display: block; }
 .chat-line { overflow-wrap: anywhere; margin-top: 2px; text-shadow: 1px 1px 2px #000, -1px -1px 2px #000; }
 .chat-system { color: #b7bca9; font-style: italic; }
 .chat-name { font-weight: bold; }
@@ -319,7 +323,7 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
  .lobby-list th { font-size: 15px; padding: 8px; }.lobby-list th:first-child { width: 34%; }.lobby-list th:nth-child(2) { width: 32%; }.lobby-list th:nth-child(3) { width: 17%; }
  .lobby-list td { padding: 6px 8px; font-size: 16px; }.lobby-list td button { padding: 10px 8px; }
  .lobby-actions { gap: 16px; min-height: 56px; }.lobby-actions button { font-size: 17px; }
- .chat { left: 18px; bottom: 127px; width: 65vw; font-size: 12px; }
+ .chat { left: 18px; top: 59px; width: 45vw; font-size: 13px; }
  #hud.online #killfeed { right: 18px; top: 59px; font-size: 12px; }
  #match-lobby { top: 43px; font-size: 13px; }
  #network-status { top: 64px; font-size: 14px; }

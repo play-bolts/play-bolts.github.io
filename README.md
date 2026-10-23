@@ -180,3 +180,5 @@ This is a playable recreation, **not a verified identical port**. The short refe
 During `npm run dev`, open `/inspector.html` to inspect the actual soldier and rifle geometry, orbit the models, check each iron sight, and scrub two-hand animations. Open `/?qa=1` for deterministic HUD, killcam and lean checks through real game events. Both development tools are excluded from the production build.
 
 The app is an independent fan project, not affiliated with Activision. Call of Duty is the property of its respective owners.
+
+Multiplayer chat stays in the upper-left HUD for the current session. Press **T** or **Enter** (or tap **Chat**) to type and scroll the history. **Page Up/Down** scrolls a page; **Ctrl+Home/End** jumps to the beginning/latest message. New messages follow the bottom only while you are already there. Leaving multiplayer clears the session history.

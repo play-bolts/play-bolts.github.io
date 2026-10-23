@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import type {SinglePlayerEvent,SinglePlayerStopReason} from './analytics';
 
 export const VISITOR_STORAGE_KEY='bolts.visitor.v1';
 export const VISITOR_HEARTBEAT_MS=60_000;
@@ -33,6 +34,7 @@ export function readVisitorId(storage:VisitorStorage,randomUUID:()=>string):stri
 }
 
 interface VisitorDocument extends EventTarget {readonly hidden:boolean}
+interface SessionEvent {event:SinglePlayerEvent;sessionId:string;reason?:SinglePlayerStopReason}
 export interface VisitorTrackerOptions {
  enabled:boolean;
  origin:string;
@@ -64,20 +66,27 @@ export class VisitorTracker {
  private running=false;private generation=0;private visitorId:string|null=null;
  private endpoint:string|null;private heartbeat:number|null=null;private lastAttempt=-Infinity;
  private active=false;private pageHidden=false;
+ private singlePlayerRequested=false;private singlePlayerId:string|null=null;
+ private pendingEvents:SessionEvent[]=[];
  private requests=new Map<AbortController,number>();
  constructor(private options:VisitorTrackerOptions){this.endpoint=visitEndpoint(options.origin);}
  start():void {
   if(this.running||!this.endpoint||!this.permitted())return;
   this.running=true;const generation=++this.generation;
+  this.active=false;this.pageHidden=false;
+  // The identity lock can outlive navigation. Keep the queued game boundaries
+  // and page suspension accurate while waiting for another tab's storage read.
+  this.options.document.addEventListener('visibilitychange',this.visibilityChanged);
+  this.options.window.addEventListener('pagehide',this.pageHide);
+  this.options.window.addEventListener('pageshow',this.pageShow);
   const read=()=>this.running&&generation===this.generation&&this.permitted()?readVisitorId(this.options.storage,this.options.randomUUID):null;
   const activate=(id:string|null)=>{
    if(!this.running||generation!==this.generation)return;
    if(!id||!this.permitted()){this.stop();return;}
-   this.visitorId=id;this.active=!this.options.document.hidden;this.pageHidden=false;
-   this.options.document.addEventListener('visibilitychange',this.visibilityChanged);
-   this.options.window.addEventListener('pagehide',this.pageHide);
-   this.options.window.addEventListener('pageshow',this.pageShow);
-   this.send(false);this.schedule();
+   this.visitorId=id;this.active=!this.options.document.hidden&&!this.pageHidden;
+   this.send(false);
+   for(const event of this.pendingEvents.splice(0))this.sendSessionEvent(event);
+   this.schedule();
   };
   try{
    if(this.options.identityLock)void this.options.identityLock(read).then(activate).catch(()=>{if(generation===this.generation)this.stop();});
@@ -90,7 +99,38 @@ export class VisitorTracker {
   this.options.window.removeEventListener('pagehide',this.pageHide);
   this.options.window.removeEventListener('pageshow',this.pageShow);
   for(const[controller,timer]of this.requests){this.options.clearTimer(timer);controller.abort();}
-  this.requests.clear();this.visitorId=null;
+  this.requests.clear();this.visitorId=null;this.singlePlayerRequested=false;this.singlePlayerId=null;this.pendingEvents=[];
+ }
+ /** A session includes pause/team menus. Call only once local play actually
+  * begins, then stop on leaving or finishing the round. */
+ startSinglePlayer():void {
+  if(this.singlePlayerRequested)return;
+  this.singlePlayerRequested=true;this.openSinglePlayer();
+ }
+ stopSinglePlayer(reason:SinglePlayerStopReason='quit'):void {
+  this.singlePlayerRequested=false;this.closeSinglePlayer(reason);
+ }
+ private openSinglePlayer(){
+  if(!this.running||!this.permitted()||this.pageHidden||this.singlePlayerId)return;
+  try{
+   const id=this.options.randomUUID();if(!UUID_V4.test(id))return;
+   this.singlePlayerId=id.toLowerCase();this.queueSessionEvent({event:'single_player_start',sessionId:this.singlePlayerId});
+  }catch{/* Missing browser crypto cannot block local play. */}
+ }
+ private closeSinglePlayer(reason:SinglePlayerStopReason){
+  if(!this.singlePlayerId)return;
+  const sessionId=this.singlePlayerId;this.singlePlayerId=null;
+  this.queueSessionEvent({event:'single_player_stop',sessionId,reason});
+ }
+ private queueSessionEvent(event:SessionEvent){
+  if(!this.running||!this.permitted())return;
+  if(this.visitorId)this.sendSessionEvent(event);
+  else if(this.pendingEvents.length<32)this.pendingEvents.push(event);
+ }
+ private sendSessionEvent(event:SessionEvent){
+  // Session boundaries bypass the one-second heartbeat gap. A quick match
+  // start/exit still produces both events, even next to a page-open receipt.
+  this.request(event,event.event==='single_player_stop');
  }
  private permitted():boolean {try{return this.options.enabled&&!this.options.privacyOptOut?.();}catch{return false;}}
  private cancelHeartbeat(){if(this.heartbeat!==null){this.options.clearTimer(this.heartbeat);this.heartbeat=null;}}
@@ -101,14 +141,14 @@ export class VisitorTracker {
   this.heartbeat=this.options.setTimer(()=>{this.heartbeat=null;if(this.active&&!this.pageHidden&&!this.options.document.hidden)this.send(false);this.schedule();},delay);
  }
  private visibilityChanged=()=>{if(this.options.document.hidden)this.suspend();else if(!this.pageHidden)this.resume();};
- private pageHide=()=>{this.pageHidden=true;this.suspend();};
- private pageShow=()=>{this.pageHidden=false;if(!this.options.document.hidden)this.resume();};
+ private pageHide=()=>{this.pageHidden=true;this.closeSinglePlayer('page_exit');this.suspend();};
+ private pageShow=()=>{this.pageHidden=false;if(this.singlePlayerRequested)this.openSinglePlayer();if(!this.options.document.hidden)this.resume();};
  private suspend(){
   this.cancelHeartbeat();
   if(this.active){this.active=false;this.send(true);}
  }
  private resume(){
-  if(!this.running)return;this.active=true;
+  if(!this.running||!this.visitorId)return;this.active=true;
   if(this.options.now()-this.lastAttempt>=VISITOR_HEARTBEAT_MS)this.send(false);
   this.schedule();
  }
@@ -117,12 +157,17 @@ export class VisitorTracker {
   if(!this.permitted()){this.stop();return;}
   const now=this.options.now();if(now-this.lastAttempt<MIN_SEND_GAP_MS)return;
   this.lastAttempt=now;
+  this.request({},final);
+ }
+ private request(payload:Partial<SessionEvent>,final:boolean){
+  if(!this.running||!this.visitorId||!this.endpoint||this.requests.size>=32)return;
+  if(!this.permitted()){this.stop();return;}
   const controller=new AbortController(),timeout=this.options.setTimer(()=>{controller.abort();this.requests.delete(controller);},REQUEST_TIMEOUT_MS);
   this.requests.set(controller,timeout);
   const finish=()=>{this.options.clearTimer(timeout);this.requests.delete(controller);};
   try{
    void Promise.resolve(this.options.fetcher(this.endpoint,{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId:this.visitorId}),
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId:this.visitorId,...payload}),
     credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',redirect:'error',mode:'cors',
     keepalive:final,signal:controller.signal,
    })).catch(()=>{}).finally(finish);

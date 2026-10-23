@@ -26,6 +26,8 @@ jobs:
       - run: npm test
       - run: python3 -m unittest discover -s tests -p 'test_*.py'
       - run: npm run build
+        env:
+          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || 'G-Q6XEXWGVZP' }}
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: dist

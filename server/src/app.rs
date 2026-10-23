@@ -241,19 +241,32 @@ async fn visit(
     {
         return StatusCode::FORBIDDEN.into_response();
     }
-    if let Some(response) = community_access(&mut h, address, &headers, "visits", 60) {
+    // Lifecycle bursts must not compete with minute heartbeats. Both remain
+    // bounded per observed network, independently of random visitor IDs.
+    let (route, limit) = if body.as_ref().is_ok_and(|Json(body)| body.is_event()) {
+        ("visit_events", 120)
+    } else {
+        ("visits", 60)
+    };
+    if let Some(response) = community_access(&mut h, address, &headers, route, limit) {
         return response;
     }
     let body = match body {
         Ok(Json(body)) => body,
         Err(rejection) => return rejection.into_response(),
     };
-    let Some(visitor_id) = body.visitor_id() else {
+    let Some((visitor_id, event)) = body.validate() else {
         return StatusCode::BAD_REQUEST.into_response();
     };
+    let ip = peer(&h, address, &headers).parse().ok();
     let storage = h.db.clone();
     drop(h);
-    match storage.request(move |db| Ok(db.record_visit(&visitor_id, crate::db::now_ms())?)).await {
+    match storage
+        .request(move |db| {
+            Ok(db.record_visitor_activity(&visitor_id, ip, event.as_ref(), crate::db::now_ms())?)
+        })
+        .await
+    {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             // Analytics are optional: a failed heartbeat must never end games.

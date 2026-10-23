@@ -328,3 +328,236 @@ async fn blocked_visitor_write_does_not_hold_hub_lock_or_stop_snapshot_progress(
     assert_eq!(request.await.unwrap().status(), StatusCode::NO_CONTENT);
     storage.drain().await.unwrap();
 }
+
+#[tokio::test]
+async fn lifecycle_receipts_capture_observed_ip_and_accept_out_of_order_retries() {
+    let server = Server::new().await;
+    let client = reqwest::Client::new();
+    let visitor = uuid::Uuid::new_v4();
+    let session = uuid::Uuid::new_v4();
+    let before = crate::db::now_ms();
+    // Keepalive teardown and ordinary start requests can arrive out of order.
+    for (event, reason) in [
+        ("single_player_stop", Some("page_exit")),
+        ("single_player_start", None),
+        ("single_player_stop", Some("quit")),
+        ("single_player_start", None),
+    ] {
+        let mut body = json!({"visitorId":visitor,"sessionId":session.to_string().to_uppercase(),"event":event});
+        if let Some(reason) = reason {
+            body["reason"] = json!(reason);
+        }
+        let response = client
+            .post(format!("{}/api/visits", server.url))
+            .header("origin", ORIGIN)
+            .header("x-forwarded-for", "198.51.100.50")
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+    let after = crate::db::now_ms();
+    let h = server.state.lock().await;
+    assert_eq!(
+        h.db.test_conn()
+            .query_row("SELECT count(*) FROM single_player_events", &[], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    assert_eq!(h.db.test_conn().query_row("SELECT session_id,ip_address,reason FROM single_player_events WHERE event='single_player_stop'",&[],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).unwrap(),(session.to_string(),"127.0.0.1".into(),"page_exit".into()));
+    let times =
+        h.db.test_conn()
+            .query_row(
+                "SELECT min(at),max(at) FROM single_player_events",
+                &[],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .unwrap();
+    assert!(times.0 >= before && times.1 <= after);
+    assert_eq!(
+        h.db.test_conn()
+            .query_row("SELECT ip_address FROM visitor_networks", &[], |r| r
+                .get::<_, String>(0))
+            .unwrap(),
+        "127.0.0.1"
+    );
+    assert_eq!(
+        h.db.test_conn()
+            .query_row("SELECT count(*) FROM players", &[], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn lifecycle_fields_are_bounded_and_cannot_supply_timestamps_or_ips() {
+    let server = Server::new().await;
+    let client = reqwest::Client::new();
+    let endpoint = format!("{}/api/visits", server.url);
+    let visitor = uuid::Uuid::new_v4();
+    let session = uuid::Uuid::new_v4();
+    for fields in [
+        json!({"event":"single_player_start"}),
+        json!({"sessionId":session}),
+        json!({"reason":"quit"}),
+        json!({"event":"single_player_start","sessionId":"invalid"}),
+        json!({"event":"single_player_start","sessionId":"00000000-0000-0000-0000-000000000000"}),
+        json!({"event":"single_player_start","sessionId":session,"reason":"quit"}),
+    ] {
+        let mut body = json!({"visitorId":visitor});
+        body.as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        assert_eq!(
+            client
+                .post(&endpoint)
+                .header("origin", ORIGIN)
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    for fields in [
+        json!({"event":"arbitrary","sessionId":session}),
+        json!({"event":"single_player_stop","sessionId":session,"reason":"private text"}),
+        json!({"event":"single_player_start","sessionId":session,"at":1}),
+        json!({"ipAddress":"198.51.100.3"}),
+    ] {
+        let mut body = json!({"visitorId":visitor});
+        body.as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        assert_eq!(
+            client
+                .post(&endpoint)
+                .header("origin", ORIGIN)
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+    let h = server.state.lock().await;
+    for table in ["visitors", "visitor_networks", "single_player_events"] {
+        assert_eq!(
+            h.db.test_conn()
+                .query_row(&format!("SELECT count(*) FROM {table}"), &[], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+}
+
+#[tokio::test]
+async fn lifecycle_has_a_separate_bounded_network_quota_from_heartbeats() {
+    let server = Server::new().await;
+    let client = reqwest::Client::new();
+    let endpoint = format!("{}/api/visits", server.url);
+    let visitor = uuid::Uuid::new_v4();
+    let session = uuid::Uuid::new_v4();
+    for _ in 0..60 {
+        assert_eq!(
+            client
+                .post(&endpoint)
+                .header("origin", ORIGIN)
+                .json(&json!({"visitorId":visitor}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NO_CONTENT
+        );
+    }
+    assert_eq!(
+        client
+            .post(&endpoint)
+            .header("origin", ORIGIN)
+            .json(&json!({"visitorId":visitor}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    for i in 0..120 {
+        let body = if i % 2 == 0 {
+            json!({"visitorId":visitor,"sessionId":session,"event":"single_player_start"})
+        } else {
+            json!({"visitorId":visitor,"sessionId":session,"event":"single_player_stop","reason":"quit"})
+        };
+        assert_eq!(
+            client
+                .post(&endpoint)
+                .header("origin", ORIGIN)
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NO_CONTENT,
+            "event request {i}"
+        );
+    }
+    assert_eq!(client.post(&endpoint).header("origin",ORIGIN).json(&json!({"visitorId":uuid::Uuid::new_v4(),"sessionId":uuid::Uuid::new_v4(),"event":"single_player_start"})).send().await.unwrap().status(),StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        server
+            .state
+            .lock()
+            .await
+            .db
+            .test_conn()
+            .query_row("SELECT count(*) FROM single_player_events", &[], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn trusted_proxy_mode_records_only_the_appended_canonical_viewer_ip() {
+    let server = Server::new().await;
+    server.state.lock().await.config.proxy = true;
+    let client = reqwest::Client::new();
+    let endpoint = format!("{}/api/visits", server.url);
+    let visitor = uuid::Uuid::new_v4();
+    for forwarded in [
+        Some("198.51.100.4, 2001:0db8:0:0:0:0:0:1"),
+        Some("198.51.100.4, invalid"),
+        None,
+    ] {
+        let mut request=client.post(&endpoint).header("origin",ORIGIN).json(&json!({"visitorId":visitor,"sessionId":uuid::Uuid::new_v4(),"event":"single_player_start"}));
+        if let Some(value) = forwarded {
+            request = request.header("x-forwarded-for", value);
+        }
+        assert_eq!(
+            request.send().await.unwrap().status(),
+            StatusCode::NO_CONTENT
+        );
+    }
+    let h = server.state.lock().await;
+    assert_eq!(
+        h.db.test_conn()
+            .query_row("SELECT ip_address FROM visitor_networks", &[], |r| r
+                .get::<_, String>(0))
+            .unwrap(),
+        "2001:db8::1"
+    );
+    assert_eq!(
+        h.db.test_conn()
+            .query_row(
+                "SELECT count(*) FROM single_player_events WHERE ip_address IS NULL",
+                &[],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+        2
+    );
+}

@@ -1,3 +1,4 @@
+use super::visitors::{SinglePlayerEvent, StopReason, VisitEvent};
 use super::*;
 
 fn database() -> (tempfile::TempDir, Db) {
@@ -212,6 +213,245 @@ fn migration_failure_rolls_back_new_tables_and_marker() {
     assert_eq!(
         conn.query_row(
             "SELECT count(*) FROM schema_migrations WHERE version=3",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn network_observations_are_canonicalized_and_lifecycle_retries_are_idempotent() {
+    let (_directory, mut db) = database();
+    let existing_events = count(&db, "events");
+    let visitor = Uuid::new_v4();
+    let session = Uuid::new_v4();
+    let start = SinglePlayerEvent {
+        session_id: session,
+        event: VisitEvent::SinglePlayerStart,
+        reason: None,
+    };
+    let stop = SinglePlayerEvent {
+        event: VisitEvent::SinglePlayerStop,
+        reason: Some(StopReason::Quit),
+        ..start
+    };
+    let mapped = "::ffff:192.0.2.1".parse().unwrap();
+    let plain = "192.0.2.1".parse().unwrap();
+    db.record_visitor_activity(&visitor, Some(mapped), Some(&start), 100)
+        .unwrap();
+    db.record_visitor_activity(&visitor, Some(plain), Some(&stop), 200)
+        .unwrap();
+    db.record_visitor_activity(&visitor, Some(plain), Some(&start), 300)
+        .unwrap();
+    db.record_visitor_activity(&visitor, Some(plain), Some(&stop), 400)
+        .unwrap();
+    db.record_visitor_activity(&visitor, Some(plain), None, 50)
+        .unwrap();
+    assert_eq!(count(&db, "visitor_networks"), 1);
+    assert_eq!(count(&db, "single_player_events"), 2);
+    assert_eq!(
+        db.conn
+            .query_row(
+                "SELECT ip_address,first_seen,last_seen FROM visitor_networks",
+                [],
+                |r| Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)?
+                ))
+            )
+            .unwrap(),
+        ("192.0.2.1".into(), 50, 400)
+    );
+    assert_eq!(db.conn.query_row("SELECT at,ip_address,reason FROM single_player_events WHERE event='single_player_stop'", [], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).unwrap(), (200,"192.0.2.1".into(),"quit".into()));
+    assert_eq!(
+        db.conn
+            .query_row(
+                "SELECT at FROM single_player_events WHERE event='single_player_start'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+        100
+    );
+    // Distinct tabs can play independently, while unknown peers stay unknown.
+    let second = SinglePlayerEvent {
+        session_id: Uuid::new_v4(),
+        ..start
+    };
+    db.record_visitor_activity(&visitor, None, Some(&second), 500)
+        .unwrap();
+    assert_eq!(count(&db, "single_player_events"), 3);
+    assert_eq!(
+        db.conn
+            .query_row(
+                "SELECT count(*) FROM single_player_events WHERE ip_address IS NULL",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+        1
+    );
+    assert_eq!(count(&db, "players"), 0);
+    assert_eq!(count(&db, "events"), existing_events);
+}
+
+#[test]
+fn lifecycle_failures_roll_back_receipts_and_network_observations_together() {
+    let (_directory, mut db) = database();
+    let visitor = Uuid::new_v4();
+    let start = SinglePlayerEvent {
+        session_id: Uuid::new_v4(),
+        event: VisitEvent::SinglePlayerStart,
+        reason: None,
+    };
+    db.conn.execute_batch("CREATE TRIGGER reject_local_event BEFORE INSERT ON single_player_events BEGIN SELECT RAISE(ABORT,'test failure'); END;").unwrap();
+    assert!(
+        db.record_visitor_activity(
+            &visitor,
+            Some("192.0.2.1".parse().unwrap()),
+            Some(&start),
+            100
+        )
+        .is_err()
+    );
+    for table in [
+        "visitors",
+        "visitor_activity",
+        "visitor_networks",
+        "single_player_events",
+    ] {
+        assert_eq!(count(&db, table), 0, "{table} must roll back");
+    }
+    let invalid = SinglePlayerEvent {
+        session_id: Uuid::nil(),
+        ..start
+    };
+    assert!(
+        db.record_visitor_activity(&visitor, None, Some(&invalid), 100)
+            .is_err()
+    );
+    let invalid = SinglePlayerEvent {
+        reason: Some(StopReason::Quit),
+        ..start
+    };
+    assert!(
+        db.record_visitor_activity(&visitor, None, Some(&invalid), 100)
+            .is_err()
+    );
+}
+
+#[test]
+fn lifecycle_schema_enforces_types_reasons_timestamps_and_foreign_keys() {
+    let (_directory, mut db) = database();
+    let visitor = Uuid::new_v4();
+    db.record_visit(&visitor, 1).unwrap();
+    let session = Uuid::new_v4().to_string();
+    for (id, event, at, reason) in [
+        (session.as_str(), "arbitrary", 1, None),
+        (session.as_str(), "single_player_start", 1, Some("quit")),
+        (
+            session.as_str(),
+            "single_player_stop",
+            1,
+            Some("private free text"),
+        ),
+        (session.as_str(), "single_player_start", -1, None),
+        (
+            "00000000-0000-0000-0000-000000000000",
+            "single_player_start",
+            1,
+            None,
+        ),
+        (
+            "zzzzzzzz-zzzz-4zzz-8zzz-zzzzzzzzzzzz",
+            "single_player_start",
+            1,
+            None,
+        ),
+    ] {
+        assert!(db.conn.execute("INSERT INTO single_player_events(visitor_id,session_id,event,at,reason) VALUES(?1,?2,?3,?4,?5)",params![visitor.to_string(),id,event,at,reason]).is_err());
+    }
+    assert!(db.conn.execute("INSERT INTO single_player_events(visitor_id,session_id,event,at) VALUES('missing',?1,'single_player_start',1)",[session]).is_err());
+    assert_eq!(count(&db, "single_player_events"), 0);
+}
+
+#[test]
+fn migration_five_preserves_prior_visits_without_inventing_ips_or_local_play() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("previous.sqlite");
+    let conn = Connection::open(&path).unwrap();
+    let previous_schema = include_str!("../schema.sql")
+        .split("-- Private first-party network")
+        .next()
+        .unwrap();
+    conn.execute_batch(previous_schema).unwrap();
+    conn.execute("INSERT OR IGNORE INTO schema_migrations VALUES(2,1)", [])
+        .unwrap();
+    let visitor = Uuid::new_v4().to_string();
+    conn.execute("INSERT INTO visitors VALUES(?1,100,200)", [&visitor])
+        .unwrap();
+    conn.execute(
+        "INSERT INTO visitor_activity VALUES(?1,0,100,200)",
+        [&visitor],
+    )
+    .unwrap();
+    drop(conn);
+    for _ in 0..2 {
+        let db = Db::open(&path).unwrap();
+        assert_eq!(count(&db, "visitors"), 1);
+        assert_eq!(count(&db, "visitor_activity"), 1);
+        assert_eq!(count(&db, "visitor_networks"), 0);
+        assert_eq!(count(&db, "single_player_events"), 0);
+        assert_eq!(
+            db.conn
+                .query_row(
+                    "SELECT count(*) FROM schema_migrations WHERE version=5",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+    }
+}
+
+#[test]
+fn migration_five_failure_rolls_back_new_private_tables_and_marker() {
+    let conn = Connection::open_in_memory().unwrap();
+    let schema = include_str!("../schema.sql");
+    conn.execute_batch(
+        schema
+            .split("-- Private first-party network")
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    conn.execute_batch("CREATE TABLE single_player_events(unrelated TEXT)")
+        .unwrap();
+    let migration = schema
+        .split("-- Private first-party network")
+        .nth(1)
+        .unwrap();
+    assert!(
+        conn.execute_batch(&format!("-- Private first-party network{migration}"))
+            .is_err()
+    );
+    conn.execute_batch("ROLLBACK").unwrap();
+    assert_eq!(
+        conn.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE name='visitor_networks'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT count(*) FROM schema_migrations WHERE version=5",
             [],
             |r| r.get::<_, i64>(0)
         )

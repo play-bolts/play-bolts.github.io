@@ -48,6 +48,28 @@ These are **browser identities, not verified distinct people**. Clearing browser
 
 The frontend respects Global Privacy Control (GPC) and Do Not Track (DNT); opted-out browsers do not contribute receipts. Blocked requests, offline play and failed delivery are also absent. Consequently the result is the number of recorded visitor identities, not a guarantee of counting every person who opened Bolts. Tracking can also be disabled for a page load with `?visits=0`. Development and QA/inspector pages skip tracking by default; `?visits=1` explicitly enables a local test but never overrides GPC/DNT. If local storage is unavailable, tracking is skipped to avoid inventing a fresh identity on each reload. Already recorded receipts are not retroactively erased by changing a browser preference. No IP or browser fingerprint deduplication is performed.
 
+## Private network observations and single-player events
+
+Schema migration 5 adds `visitor_networks` and `single_player_events` without changing the existing visitor reporting metric. Both are private first-party data with no public read endpoint. The migration preserves earlier visits and game records; it cannot backfill historical IP addresses or local-play sessions.
+
+`visitor_networks` stores the raw, canonical observed IP address and first/last receipt times for each `(visitor_id, ip_address)`. This lets operators inspect a browser identity's observed networks without using the address as its identity or joining it to an authenticated multiplayer player. Addresses can be shared or change, so they do not establish a distinct person. Restrict access to the live database and its backups accordingly. The aggregate analytics script neither queries nor returns this table.
+
+`single_player_events` stores a browser visitor UUID, a separate random UUIDv4 for the local play session, `single_player_start` or `single_player_stop`, the server receipt time, the observed IP when available, and an optional bounded stop reason: `quit`, `page_exit`, `restart`, or `round_end`. The unique `(visitor_id, session_id, event)` key preserves the first accepted receipt for each event type, so retries cannot create another start/stop or change the first reason. Start and stop may arrive out of order and are accepted independently. There are no local scores, player names, authentication tokens, URLs or arbitrary event properties in these records.
+
+The browser sends a start when local play or local spectating begins, and a best-effort stop when it quits, restarts, finishes a round, or leaves the page. Pause and ordinary tab hiding do not end the local session. Restoring a page after `pagehide` can start a new session. These events use the same GPC/DNT, storage and page-tracking preferences as visitor receipts. They are optional telemetry; game startup never waits for delivery. A browser crash, network failure, blocked request, or opt-out can leave one side missing. Receipt timestamps reflect server arrival and can differ from client play order; they are not exact play durations or a reliable concurrent-player count.
+
+`POST /api/visits` continues to accept `{visitorId}`. Lifecycle requests additionally include `{event, sessionId}` together and may include `reason` only for a stop. The 256-byte JSON limit, exact allowlisted Origin check, UUIDv4 validation and rejection of unknown fields still apply. Clients cannot submit an IP address or timestamp. Ordinary visitor receipts are limited to 60 requests per minute per network; lifecycle events have an independent 120-request budget, so a heartbeat burst cannot consume their quota. Optional database work stays outside the simulation mutex, and a failed analytics write returns 503 without ending gameplay.
+
+IP addresses come from the direct socket peer unless the existing restricted ingress explicitly enables trusted-proxy mode. That mode uses only the final valid address appended to `X-Forwarded-For`, canonicalizing equivalent IPv6 and IPv4-mapped addresses. An unavailable or invalid trusted address stays unknown: the event address is `NULL` and no network row is invented. Client JSON and untrusted forwarding headers cannot supply the stored address. Raw IPs stay in the private first-party database and are never sent as Google Analytics event parameters.
+
+## Google Analytics
+
+The **Bolts** GA4 property uses web stream **Bolts web** for `https://play-bolts.github.io/`, measurement ID `G-Q6XEXWGVZP`. The public ID is in `.env.production`; a GitHub repository variable named `VITE_GA_MEASUREMENT_ID` can override it during Pages builds. Local builds can also set this Vite environment variable. An absent or invalid ID skips Google entirely.
+
+The asynchronous Google tag records one page view and `single_player_start` / `single_player_stop` events. Its page URL omits queries and fragments, its referrer is empty, and the application sends no player names, first-party visitor/session UUIDs, chat, feedback, or explicit IP fields to GA. Google uses its normal analytics cookies and network metadata; GA identity and counts remain separate from the private database. Both trackers honor GPC, DNT, `?visits=0`, and the development/QA exclusions. Advertising personalization and Google Signals are disabled in the tag configuration. Enhanced Measurement is disabled on this stream, leaving standard page views and the explicitly instrumented events.
+
+Configuration follows Google's [page-view documentation](https://developers.google.com/analytics/devguides/collection/ga4/views) and [privacy controls](https://developers.google.com/tag-platform/security/guides/privacy). GA never delays menu initialization or graphics preparation. Browser blockers or failed script requests leave gameplay available. Verify a production visit and session in GA Realtime after a release; ordinary reporting may take longer to populate.
+
 ## Separate source: multiplayer
 
 `--source multiplayer` preserves the previous non-bot authenticated socket metric. A player has `players.is_bot=0` and at least one connection overlapping `(window_start, window_end]`. The identity key is `players.id`, separate from the visitor UUID. A single person can appear in both reports; do not add them together as distinct people.
@@ -110,6 +132,9 @@ Use SQLite's backup API or the existing S3 backup workflow in [server/README.md]
 
 ```sh
 python3 -m unittest discover -s tests -p 'test_user_analytics.py' -v
+cargo test --locked --manifest-path server/Cargo.toml visitor
 ```
 
 Tests cover both sources, exact window boundaries, repeated visitor receipts and minute approximation, no activity invented between visits, no historical backfill, missing migration errors, source-specific exclusions, separate identity stores, multiplayer carryover/reconnects, default names, bot/session/seed exclusions, read-only WAL access, JSON privacy and the actual compressed source payload executed through SSM. Mocked SSM lifecycle checks cover delayed registration, completion and failure without resubmission.
+
+The visitor backend tests also cover canonical observed IPs and forwarding-header trust, out-of-order lifecycle delivery and retry idempotency, independent network quotas, field/body validation, additive migration rollback and preservation, and analytics storage failure without blocking gameplay. API tests require permission to bind local loopback sockets.

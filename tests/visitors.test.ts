@@ -4,6 +4,7 @@ import {VisitorTracker,VISITOR_STORAGE_KEY,VISITOR_HEARTBEAT_MS,readVisitorId,vi
 
 const ID='15c96e6a-dd7f-4c64-86dc-ffcd84508424';
 const OTHER_ID='8c72c6fd-e992-4d56-ada6-01c3b91e6a65';
+const NEXT_ID='f09aa057-dce0-40e0-a58a-4b8606952c8c';
 const flush=async()=>{for(let i=0;i<5;i++)await Promise.resolve();};
 class Storage implements VisitorStorage {
  values=new Map<string,string>();reads:string[]=[];writes:string[]=[];
@@ -36,6 +37,8 @@ function fixture(overrides:Partial<VisitorTrackerOptions>={}){
  const tracker=new VisitorTracker(options);
  return{tracker,options,storage,document,window,clock,calls,idCount:()=>ids};
 }
+const bodies=(f:ReturnType<typeof fixture>)=>f.calls.map(call=>JSON.parse(String(call.options.body)));
+const sessionBodies=(f:ReturnType<typeof fixture>)=>bodies(f).filter(body=>body.event);
 
 test('visitor ID persists across tabs/reloads without reading player credentials or names',()=>{
  const storage=new Storage();storage.values.set('bolts-player-token','private credential');storage.values.set('bolts-preferences','{"playerName":"Private name"}');let created=0;
@@ -155,5 +158,128 @@ test('privacy changes or stop while waiting for an identity lock prevent storage
   const f=fixture({privacyOptOut:()=>optedOut,identityLock:read=>new Promise(resolve=>{release=()=>resolve(read());})});
   f.tracker.start();if(cancel==='privacy')optedOut=true;else f.tracker.stop();release();await flush();
   assert.equal(f.storage.reads.length,0);assert.equal(f.storage.writes.length,0);assert.equal(f.calls.length,0);assert.equal(f.clock.timers.size,0);
+ }
+});
+
+test('quick single-player boundaries bypass receipt throttling without postponing heartbeats',async()=>{
+ const f=fixture();f.tracker.start();
+ await f.clock.advance(VISITOR_HEARTBEAT_MS-1);f.tracker.startSinglePlayer();
+ await f.clock.advance(1);f.tracker.stopSinglePlayer('quit');
+ assert.deepEqual(bodies(f),[
+  {visitorId:ID},
+  {visitorId:ID,event:'single_player_start',sessionId:ID},
+  {visitorId:ID},
+  {visitorId:ID,event:'single_player_stop',sessionId:ID,reason:'quit'},
+ ]);
+ assert.deepEqual(f.calls.map(call=>call.time),[0,59_999,60_000,60_000]);
+ assert.deepEqual(f.calls.map(call=>call.options.keepalive),[false,false,false,true]);
+ f.tracker.stop();
+});
+
+test('each single-player session has matching boundaries and a fresh ID; duplicate calls are harmless',()=>{
+ const ids=[OTHER_ID,NEXT_ID],f=fixture({randomUUID:()=>ids.shift()!});f.storage.values.set(VISITOR_STORAGE_KEY,ID);
+ f.tracker.start();f.tracker.stopSinglePlayer();f.tracker.startSinglePlayer();f.tracker.startSinglePlayer();
+ f.tracker.stopSinglePlayer('restart');f.tracker.stopSinglePlayer();f.tracker.startSinglePlayer();f.tracker.stopSinglePlayer('round_end');
+ assert.deepEqual(sessionBodies(f),[
+  {visitorId:ID,event:'single_player_start',sessionId:OTHER_ID},
+  {visitorId:ID,event:'single_player_stop',sessionId:OTHER_ID,reason:'restart'},
+  {visitorId:ID,event:'single_player_start',sessionId:NEXT_ID},
+  {visitorId:ID,event:'single_player_stop',sessionId:NEXT_ID,reason:'round_end'},
+ ]);
+ assert.equal(ids.length,0);f.tracker.stop();
+});
+
+test('visibility changes leave a paused single-player session open until explicitly stopped',async()=>{
+ const f=fixture();f.tracker.start();f.tracker.startSinglePlayer();await f.clock.advance(10_000);
+ f.document.visibility(true);await f.clock.advance(120_000);f.document.visibility(false);
+ assert.deepEqual(sessionBodies(f),[{visitorId:ID,event:'single_player_start',sessionId:ID}]);
+ f.tracker.startSinglePlayer();f.tracker.stopSinglePlayer('round_end');
+ assert.deepEqual(sessionBodies(f),[
+  {visitorId:ID,event:'single_player_start',sessionId:ID},
+  {visitorId:ID,event:'single_player_stop',sessionId:ID,reason:'round_end'},
+ ]);f.tracker.stop();
+});
+
+test('pagehide closes local play and BFCache pageshow opens a fresh paired session',async()=>{
+ const ids=[OTHER_ID,NEXT_ID],f=fixture({randomUUID:()=>ids.shift()!});f.storage.values.set(VISITOR_STORAGE_KEY,ID);
+ f.tracker.start();f.tracker.startSinglePlayer();await f.clock.advance(10_000);
+ f.document.visibility(true);f.window.dispatchEvent(new Event('pagehide'));f.window.dispatchEvent(new Event('pagehide'));
+ await f.clock.advance(70_000);f.document.visibility(false);
+ assert.equal(sessionBodies(f).length,2,'visibility alone cannot restore a pagehide session');
+ f.window.dispatchEvent(new Event('pageshow'));f.window.dispatchEvent(new Event('pageshow'));
+ f.tracker.stopSinglePlayer();f.window.dispatchEvent(new Event('pagehide'));
+ assert.deepEqual(sessionBodies(f),[
+  {visitorId:ID,event:'single_player_start',sessionId:OTHER_ID},
+  {visitorId:ID,event:'single_player_stop',sessionId:OTHER_ID,reason:'page_exit'},
+  {visitorId:ID,event:'single_player_start',sessionId:NEXT_ID},
+  {visitorId:ID,event:'single_player_stop',sessionId:NEXT_ID,reason:'quit'},
+ ]);assert.equal(ids.length,0);f.tracker.stop();
+});
+
+test('a start and stop pending a Web Lock are sent in order after identity activation',async()=>{
+ let release!:()=>void;const f=fixture({identityLock:read=>new Promise(resolve=>{release=()=>resolve(read());})});
+ f.storage.values.set(VISITOR_STORAGE_KEY,ID);f.tracker.start();f.tracker.startSinglePlayer();f.tracker.stopSinglePlayer('restart');
+ assert.equal(f.calls.length,0);assert.equal(f.storage.reads.length,0);assert.equal(f.clock.timers.size,0);
+ release();await flush();
+ assert.deepEqual(bodies(f),[
+  {visitorId:ID},
+  {visitorId:ID,event:'single_player_start',sessionId:ID},
+  {visitorId:ID,event:'single_player_stop',sessionId:ID,reason:'restart'},
+ ]);f.tracker.stop();
+});
+
+test('pagehide before Web Lock activation preserves the stop and suspension until pageshow',async()=>{
+ let release!:()=>void;const ids=[OTHER_ID,NEXT_ID];
+ const f=fixture({randomUUID:()=>ids.shift()!,identityLock:read=>new Promise(resolve=>{release=()=>resolve(read());})});
+ f.storage.values.set(VISITOR_STORAGE_KEY,ID);f.tracker.start();f.tracker.startSinglePlayer();
+ f.window.dispatchEvent(new Event('pagehide'));release();await flush();
+ assert.deepEqual(sessionBodies(f),[
+  {visitorId:ID,event:'single_player_start',sessionId:OTHER_ID},
+  {visitorId:ID,event:'single_player_stop',sessionId:OTHER_ID,reason:'page_exit'},
+ ]);
+ await f.clock.advance(120_000);f.document.visibility(false);assert.equal(f.calls.length,3);assert.equal(f.clock.timers.size,0);
+ f.window.dispatchEvent(new Event('pageshow'));assert.equal(sessionBodies(f).at(-1)?.sessionId,NEXT_ID);
+ f.tracker.stopSinglePlayer();assert.equal(sessionBodies(f).at(-1)?.reason,'quit');f.tracker.stop();
+});
+
+test('stopping while an identity lock is pending discards queued session boundaries and stale activation',async()=>{
+ let release!:()=>void;const f=fixture({identityLock:read=>new Promise(resolve=>{release=()=>resolve(read());})});
+ f.tracker.start();f.tracker.startSinglePlayer();f.tracker.stopSinglePlayer();f.tracker.stop();release();await flush();
+ f.window.dispatchEvent(new Event('pagehide'));f.window.dispatchEvent(new Event('pageshow'));
+ assert.equal(f.calls.length,0);assert.equal(f.storage.reads.length,0);assert.equal(f.clock.timers.size,0);
+});
+
+test('opt-outs prevent session events, including queued events awaiting identity readiness',async()=>{
+ const disabled=fixture({enabled:false});disabled.tracker.start();disabled.tracker.startSinglePlayer();disabled.tracker.stopSinglePlayer();
+ assert.equal(disabled.calls.length,0);assert.equal(disabled.idCount(),0);
+ let optedOut=false,release!:()=>void;
+ const pending=fixture({privacyOptOut:()=>optedOut,identityLock:read=>new Promise(resolve=>{release=()=>resolve(read());})});
+ pending.tracker.start();pending.tracker.startSinglePlayer();pending.tracker.stopSinglePlayer();optedOut=true;release();await flush();
+ assert.equal(pending.calls.length,0);assert.equal(pending.storage.reads.length,0);assert.equal(pending.clock.timers.size,0);
+ optedOut=false;const active=fixture({privacyOptOut:()=>optedOut});active.tracker.start();active.tracker.startSinglePlayer();
+ optedOut=true;active.tracker.stopSinglePlayer();await active.clock.advance(VISITOR_HEARTBEAT_MS);
+ assert.equal(active.calls.length,2);assert.equal(active.clock.timers.size,0);
+});
+
+test('failed session requests and unavailable session UUIDs never interrupt local play',async()=>{
+ for(const fail of [()=>Promise.reject(new Error('Offline')),()=>{throw new Error('Blocked');}]){
+  const calls:RequestInit[]=[];const f=fixture({fetcher:(_url,options)=>{calls.push(options);return fail();}});
+  assert.doesNotThrow(()=>{f.tracker.start();f.tracker.startSinglePlayer();f.tracker.stopSinglePlayer();});await flush();
+  assert.equal(calls.length,3);assert.equal(JSON.parse(String(calls[1].body)).sessionId,JSON.parse(String(calls[2].body)).sessionId);
+  await f.clock.advance(VISITOR_HEARTBEAT_MS);assert.equal(calls.length,4,'failures cause no extra retries');f.tracker.stop();
+ }
+ for(const randomUUID of [()=>{throw new Error('No crypto');},()=>'<invalid UUID>']){
+  const f=fixture({randomUUID});f.storage.values.set(VISITOR_STORAGE_KEY,ID);f.tracker.start();
+  assert.doesNotThrow(()=>{f.tracker.startSinglePlayer();f.tracker.stopSinglePlayer();});assert.equal(sessionBodies(f).length,0);f.tracker.stop();
+ }
+});
+
+test('unavailable identity locks discard queued sessions and detach pending lifecycle listeners',async()=>{
+ for(const identityLock of [()=>Promise.reject(new Error('Lock denied')),()=>{throw new Error('Locks blocked');}]){
+  const f=fixture({identityLock});
+  assert.doesNotThrow(()=>{f.tracker.start();f.tracker.startSinglePlayer();f.tracker.stopSinglePlayer();});await flush();const created=f.idCount();
+  f.window.dispatchEvent(new Event('pagehide'));f.window.dispatchEvent(new Event('pageshow'));
+  f.document.visibility(true);f.document.visibility(false);await f.clock.advance(VISITOR_HEARTBEAT_MS);
+  assert.equal(f.calls.length,0);assert.equal(f.storage.reads.length,0);assert.equal(f.idCount(),created);assert.equal(f.clock.timers.size,0);
  }
 });

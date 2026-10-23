@@ -56,3 +56,11 @@ SELECT e.connection_id,c.session FROM events e JOIN cluster_cursors c ON c.sessi
 WHERE e.connection_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM schema_migrations WHERE version=4);
 INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(4,unixepoch('subsec')*1000);
 COMMIT;
+-- Private first-party network observations and local-play lifecycle receipts.
+-- Existing visitor history cannot supply old IPs or local game events.
+BEGIN;
+CREATE TABLE IF NOT EXISTS visitor_networks(visitor_id TEXT NOT NULL REFERENCES visitors(id), ip_address TEXT NOT NULL CHECK(length(ip_address) BETWEEN 2 AND 45), first_seen INTEGER NOT NULL CHECK(first_seen>=0), last_seen INTEGER NOT NULL CHECK(last_seen>=first_seen), PRIMARY KEY(visitor_id,ip_address));
+CREATE TABLE IF NOT EXISTS single_player_events(visitor_id TEXT NOT NULL REFERENCES visitors(id), session_id TEXT NOT NULL CHECK(length(session_id)=36 AND length(replace(session_id,'-',''))=32 AND session_id GLOB '????????-????-4???-[89ab]???-????????????' AND replace(session_id,'-','') NOT GLOB '*[^0-9a-f]*'), event TEXT NOT NULL CHECK(event IN('single_player_start','single_player_stop')), at INTEGER NOT NULL CHECK(at>=0), ip_address TEXT CHECK(ip_address IS NULL OR length(ip_address) BETWEEN 2 AND 45), reason TEXT CHECK(reason IS NULL OR reason IN('quit','page_exit','restart','round_end')), CHECK(event='single_player_stop' OR reason IS NULL), PRIMARY KEY(visitor_id,session_id,event));
+CREATE INDEX IF NOT EXISTS single_player_events_time ON single_player_events(at,visitor_id);
+INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(5,unixepoch('subsec')*1000);
+COMMIT;

@@ -271,7 +271,7 @@ fn dedicated_duels_enforce_two_seats_without_bots_and_keep_reconnect_reservation
 }
 
 #[test]
-fn full_dedicated_inventory_never_creates_a_fifth_room() {
+fn full_dedicated_inventory_opens_one_deathmatch_without_adding_duels() {
     let mut fixture = Fixture::new(32);
     let hub = &mut fixture.hub;
     let list = hub.lobbies().unwrap();
@@ -283,10 +283,19 @@ fn full_dedicated_inventory_never_creates_a_fifth_room() {
             peers.push(peer);
         }
     }
-    let denied = Peer::fresh(hub);
-    assert_eq!(hub.join(&denied.player, &denied.connection, None, "Full", Faction::British, false).unwrap_err().to_string(), "server_busy");
-    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(), 4);
-    assert_eq!(hub.online_count(), 12);
+    let next=hub.lobbies().unwrap();
+    let rows=next["lobbies"].as_array().unwrap();
+    assert_eq!(rows.len(),5);
+    assert_eq!(rows.iter().filter(|r| r["capacity"]==2).count(),3);
+    let overflow=rows.iter().find(|r| r["name"]=="Deathmatch 2").unwrap();
+    assert_eq!(overflow["capacity"],6);assert_eq!(overflow["players"],0);
+    assert_eq!(hub.lobbies().unwrap(),next,"polling never creates duplicate spare rooms");
+    let mut arriving=Peer::fresh(hub);
+    assert_eq!(arriving.join(hub,None)["lobbyId"],overflow["id"]);
+    assert_eq!(hub.online_count(),13);
+    hub.config.empty_seconds=0.0;hub.leave(&arriving.player,"left",false).unwrap();hub.tick().unwrap();
+    assert_eq!(count(hub,"SELECT count(*) FROM lobbies WHERE closed_at IS NOT NULL"),1);
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),5,"a spare is recreated only because all regular rooms remain full");
 }
 
 #[test]
@@ -783,9 +792,10 @@ fn per_room_capacity_and_global_room_cap_never_evict_an_existing_seat() {
     let mut peers = Vec::new();
     let mut first_lobby = String::new();
     let mut second_lobby = String::new();
+    let duel=hub.lobbies().unwrap()["lobbies"].as_array().unwrap().iter().find(|r|r["capacity"]==2).unwrap()["id"].as_str().unwrap().to_owned();
     for i in 0..8 {
         let mut peer = Peer::fresh(hub);
-        let joined = peer.join(hub, None);
+        let joined = peer.join(hub, if i<6 {None} else {Some(&duel)});
         let lobby = joined["lobbyId"].as_str().unwrap();
         if i == 0 {
             first_lobby = lobby.into();
@@ -1041,4 +1051,42 @@ fn shutdown_finishes_connected_and_reconnect_grace_members_exactly_once() {
         ).unwrap();
         assert_eq!(leaves, 1);
     }
+}
+
+#[test]
+fn overflow_counts_reservations_ignores_bots_and_respects_room_cap() {
+    let mut fixture=Fixture::new(5);let hub=&mut fixture.hub;
+    let first=hub.lobbies().unwrap()["lobbies"][0]["id"].as_str().unwrap().to_owned();
+    let mut peers=Vec::new();
+    for _ in 0..6 { let mut peer=Peer::fresh(hub);peer.join(hub,Some(&first));peers.push(peer); }
+    hub.disconnected(&peers[0].player,&peers[0].connection).unwrap();
+    let rows=hub.lobbies().unwrap();
+    let second=rows["lobbies"].as_array().unwrap().iter().find(|r|r["name"]=="Deathmatch 2").unwrap()["id"].as_str().unwrap().to_owned();
+    for _ in 0..6 { let mut peer=Peer::fresh(hub);assert_eq!(peer.join(hub,None)["lobbyId"],second);peers.push(peer); }
+    let denied=Peer::fresh(hub);
+    assert_eq!(hub.join(&denied.player,&denied.connection,None,"Extra",Faction::British,false).unwrap_err().to_string(),"server_busy");
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),5);
+    hub.leave(&peers[1].player,"left",false).unwrap();
+    let mut next=Peer::fresh(hub);assert_eq!(next.join(hub,None)["lobbyId"],first);
+    // Every spare room is reusable and idle overflow expires; fixed rooms retain IDs.
+    for peer in &peers[6..] {hub.leave(&peer.player,"left",false).unwrap();}
+    hub.config.empty_seconds=0.0;hub.tick().unwrap();
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),5);
+    hub.leave(&next.player,"left",false).unwrap();hub.tick().unwrap();
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),4);
+}
+
+#[test]
+fn full_duels_and_temporary_ai_do_not_trigger_overflow() {
+    let mut fixture=Fixture::new(8);let hub=&mut fixture.hub;
+    let original=hub.lobbies().unwrap();let rows=original["lobbies"].as_array().unwrap();
+    let mut peers=Vec::new();
+    for row in rows.iter().filter(|r|r["capacity"]==2) {
+        for _ in 0..2 {let mut p=Peer::fresh(hub);p.join(hub,row["id"].as_str());peers.push(p);}
+    }
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),4);
+    let mut first=Peer::fresh(hub);assert_eq!(bot_count(&first.join(hub,None)),2);
+    let mut second=Peer::fresh(hub);assert_eq!(bot_count(&second.join(hub,None)),2);
+    let listed=hub.lobbies().unwrap();assert_eq!(listed["lobbies"].as_array().unwrap().len(),4);
+    assert_eq!(listed["lobbies"][0]["players"],2);assert_eq!(listed["lobbies"][0]["bots"],2);
 }

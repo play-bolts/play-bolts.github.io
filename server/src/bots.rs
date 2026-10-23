@@ -9,7 +9,7 @@ const STEP: f64 = 0.75;
 const WIDTH: usize = 39;
 const DEPTH: usize = 45;
 const SIGHT_SECONDS: f64 = 0.2;
-const MEMORY_SECONDS: f64 = 2.8;
+const MEMORY_SECONDS: f64 = 6.0;
 
 pub(crate) struct Navigation {
     points: Vec<Vec3>,
@@ -96,16 +96,53 @@ impl Navigation {
         self.points[i]
     }
 
-    fn cover(&self, sim: &Simulation, from: Vec3, enemy: Vec3) -> Option<Vec3> {
-        self.points
-            .iter()
-            .enumerate()
-            .filter(|(i, p)| !self.edges[*i].is_empty() && distance(**p, from) < 9.0)
-            .filter(|(_, p)| !sim.line_of_sight(enemy, Vec3 { y: 1.05, ..**p }))
-            .min_by(|(_, a), (_, b)| distance(**a, from).total_cmp(&distance(**b, from)))
-            .map(|(_, p)| *p)
+    fn cover(&self, sim: &Simulation, from: Vec3, enemy: Vec3) -> Option<Cover> {
+        // Test head, both shoulders and torso: hiding only the eye leaves a
+        // shootable body. Only the last observed opponent enters this planner.
+        let mut candidates: Vec<_> = self.points.iter().enumerate()
+            .filter(|(i,p)| !self.edges[*i].is_empty() && distance(**p,from)<9.0)
+            .filter_map(|(_,p)| {
+                let crouch = !protected(sim,*p,enemy,false);
+                protected(sim,*p,enemy,crouch).then_some((*p,crouch))
+            }).collect();
+        candidates.sort_by(|(a,_),(b,_)| distance(*a,from).total_cmp(&distance(*b,from)));
+        let mut best = None;
+        let mut best_score = f64::INFINITY;
+        for (hide,crouch) in candidates.into_iter().take(12) {
+            let peek = self.points.iter().enumerate()
+                .filter(|(i,p)| !self.edges[*i].is_empty() && (0.5..=2.4).contains(&distance(**p,hide)))
+                .filter(|(_,p)| sim.walkable_segment(hide,**p)
+                    && sim.line_of_sight(Vec3{y:if crouch {1.05} else {1.65},..**p},enemy))
+                .min_by(|(_,a),(_,b)| distance(**a,hide).total_cmp(&distance(**b,hide)))
+                .map(|(_,p)| *p);
+            let route = self.route(from,hide);
+            if route.is_empty() || !sim.walkable_segment(from,route[0]) { continue; }
+            let mut previous=from;
+            let mut cost=0.0;
+            for &point in &route {
+                cost+=distance(previous,point)*(if protected(sim,point,enemy,false){1.0}else{2.5});
+                previous=point;
+            }
+            let score=cost+if peek.is_some(){0.0}else{5.0};
+            if score<best_score { best_score=score;best=Some(Cover{hide,peek,watch:enemy,crouch}); }
+        }
+        best
     }
+
 }
+
+fn protected(sim: &Simulation, p: Vec3, enemy: Vec3, crouch: bool) -> bool {
+    let height=if crouch {1.30} else {1.91};
+    let length=distance(p,enemy).max(0.01);
+    let sx=(enemy.z-p.z)/length*0.28;
+    let sz=-(enemy.x-p.x)/length*0.28;
+    [(0.0,0.0,height),(sx,sz,height*0.76),(-sx,-sz,height*0.76),(0.0,0.0,height*0.4)]
+        .iter().all(|&(x,z,y)| !sim.line_of_sight(enemy,Vec3{x:p.x+x,y:p.y+y,z:p.z+z}))
+}
+#[derive(Clone, Copy, Debug)]
+struct Cover { hide: Vec3, peek: Option<Vec3>, watch: Vec3, crouch: bool }
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum CoverPhase { Seek, Hold, Peek, Return }
 
 #[derive(Clone, Copy)]
 struct Observation {
@@ -131,6 +168,13 @@ pub(crate) struct BotBrain {
     last_position: Vec3,
     stuck_since: f64,
     crouch: bool,
+    cover: Option<Cover>,
+    phase: CoverPhase,
+    phase_until: f64,
+    cover_since: f64,
+    last_hurt: f64,
+    exposed_since: f64,
+    failed_peeks: u8,
 }
 impl BotBrain {
     pub(crate) fn new(seed: u32) -> Self {
@@ -151,6 +195,13 @@ impl BotBrain {
             last_position: Vec3::default(),
             stuck_since: 0.0,
             crouch: false,
+            cover: None,
+            phase: CoverPhase::Seek,
+            phase_until: 0.0,
+            cover_since: 0.0,
+            last_hurt: -1000.0,
+            exposed_since: 0.0,
+            failed_peeks: 0,
         }
     }
     fn random(&mut self) -> f64 {
@@ -177,6 +228,10 @@ impl BotBrain {
             self.next_fire = sim.time + 1.0;
             self.next_plan = sim.time;
             self.route.clear();
+            self.cover = None;
+            self.failed_peeks = 0;
+            self.exposed_since = sim.time;
+            self.last_hurt = actor.last_hurt_time;
             self.last_position = position(actor);
             self.stuck_since = sim.time;
         }
@@ -201,37 +256,69 @@ impl BotBrain {
             self.error_yaw = (self.random() - 0.5) * 0.055;
             self.error_pitch = (self.random() - 0.5) * 0.04;
         }
+        let close = visible.is_some_and(|o| distance(position(actor),o.point)<2.15 && (o.point.y-actor.eye().y).abs()<1.8);
         let reloading = actor.reload > 0.0 || actor.ammo == 0;
-        input.reload = !reloading && actor.ammo <= 2 && visible.is_none() && actor.reserve > 0;
-        if sim.time >= self.next_plan {
-            self.next_plan = sim.time + 1.4 + self.random() * 1.4;
-            let goal = if let Some(o) = observation {
-                if reloading || input.reload || actor.hp <= 40 {
-                    nav.cover(sim, position(actor), o.point).unwrap_or(o.point)
-                } else if visible.is_some() && distance(position(actor), o.point) < 13.0 {
-                    position(actor)
-                } else {
-                    o.point
+        let hurt=actor.last_hurt_time>self.last_hurt;
+        self.last_hurt=actor.last_hurt_time;
+        let urgent=reloading || actor.hp<=60 || hurt;
+        input.reload = actor.reload<=0.0 && actor.ammo<=2 && actor.reserve>0
+            && !close && (visible.is_none() || self.cover.is_some() && self.phase==CoverPhase::Hold);
+        if observation.is_none() || self.failed_peeks>=2 || sim.time-self.cover_since>10.0 {
+            if self.cover.take().is_some() { self.route.clear();self.next_plan=sim.time+1.5; }
+            self.failed_peeks=0;
+        }
+        if let Some(cover)=self.cover {
+            if sim.time>=self.next_plan && observation.is_some_and(|o| !protected(sim,cover.hide,o.point,cover.crouch)) {
+                self.cover=None;self.route.clear();
+            }
+        }
+        if sim.time >= self.next_plan && self.cover.is_none() && !close {
+            self.next_plan = sim.time + 1.2 + self.random()*0.5;
+            if let Some(o)=observation {
+                if urgent || input.reload || sim.time-self.exposed_since>2.5 {
+                    if let Some(cover)=nav.cover(sim,position(actor),o.point) {
+                        self.route=nav.route(position(actor),cover.hide);
+                        self.cover=Some(cover);self.phase=CoverPhase::Seek;self.cover_since=sim.time;
+                    }
                 }
-            } else {
-                nav.patrol(self.random())
-            };
-            self.route = nav.route(position(actor), goal);
-            self.crouch = visible.is_some() && self.random() < 0.6;
+                if self.cover.is_none() {
+                    self.route=if visible.is_some() && distance(position(actor),o.point)<13.0 {
+                        VecDeque::new()
+                    } else { nav.route(position(actor),o.point) };
+                }
+            } else { self.route=nav.route(position(actor),nav.patrol(self.random())); }
+            self.crouch=visible.is_some() && self.random()<0.6;
+        }
+        if let Some(cover)=self.cover {
+            if matches!(self.phase,CoverPhase::Seek|CoverPhase::Return) && distance(position(actor),cover.hide)<0.13 {
+                self.phase=CoverPhase::Hold;self.phase_until=sim.time+0.65;self.route.clear();self.exposed_since=sim.time;
+            }
+            if self.phase==CoverPhase::Hold && !reloading && !input.reload && actor.cooldown<=0.1
+                && sim.time>=self.phase_until && sim.time>=self.next_fire-0.25 {
+                if let Some(peek)=cover.peek {
+                    self.phase=CoverPhase::Peek;self.phase_until=sim.time+3.5;self.route=VecDeque::from([peek]);
+                } else { self.cover=None;self.next_plan=sim.time+1.5; }
+            } else if self.phase==CoverPhase::Peek && (reloading || hurt || sim.time>=self.phase_until) {
+                if sim.time>=self.phase_until { self.failed_peeks+=1; }
+                self.phase=CoverPhase::Return;self.route=VecDeque::from([cover.hide]);
+            }
+            self.crouch=cover.crouch && (self.phase!=CoverPhase::Seek || distance(position(actor),cover.hide)<0.7);
         }
         while self
             .route
             .front()
-            .is_some_and(|p| distance(*p, position(actor)) < 0.45)
+            .is_some_and(|p| distance(*p, position(actor)) < if self.cover.is_some() {0.12} else {0.45})
         {
             self.route.pop_front();
         }
         while self.route.len() > 1 && sim.walkable_segment(position(actor), self.route[1]) {
             self.route.pop_front();
         }
-        let destination = self.route.front().copied();
-        let target_yaw = visible
-            .map(|o| (o.point.x - actor.x).atan2(o.point.z - actor.z) + self.error_yaw)
+        let destination = if close {None} else {self.route.front().copied()};
+        let travelling=self.cover.is_some() && matches!(self.phase,CoverPhase::Seek|CoverPhase::Return);
+        let watch=visible.map(|o| o.point).or_else(|| self.cover.map(|c| c.watch));
+        let target_yaw = watch
+            .map(|p| (p.x - actor.x).atan2(p.z - actor.z) + self.error_yaw)
             .or_else(|| destination.map(|p| (p.x - actor.x).atan2(p.z - actor.z)))
             .unwrap_or(actor.yaw);
         input.yaw = turn(actor.yaw, target_yaw, 2.4 * crate::sim::TICK_SECONDS);
@@ -242,8 +329,8 @@ impl BotBrain {
             })
             .unwrap_or(0.0);
         input.pitch = turn(actor.pitch, target_pitch, 1.5 * crate::sim::TICK_SECONDS);
-        input.ads = visible.is_some() && !reloading && !input.reload;
-        input.stance = Some(if self.crouch && visible.is_some() {
+        input.ads = visible.is_some() && !reloading && !input.reload && !travelling && !close;
+        input.stance = Some(if self.crouch && (visible.is_some() || self.cover.is_some()) {
             Stance::Crouch
         } else {
             Stance::Stand
@@ -252,12 +339,13 @@ impl BotBrain {
             let length = distance(position(actor), p).max(0.01);
             let (dx, dz) = ((p.x - actor.x) / length, (p.z - actor.z) / length);
             input.forward = (dx * input.yaw.sin() + dz * input.yaw.cos()) * 0.85;
-            input.right = (dx * input.yaw.cos() - dz * input.yaw.sin()) * 0.85;
-            input.walk = visible.is_some();
+            input.right = (-dx * input.yaw.cos() + dz * input.yaw.sin()) * 0.85;
+            input.walk = visible.is_some() && !travelling;
             if distance(self.last_position, position(actor)) > 0.3 {
                 self.last_position = position(actor);
                 self.stuck_since = sim.time;
             } else if sim.time - self.stuck_since > 1.6 {
+                self.cover=None;
                 self.route = nav.route(position(actor), nav.patrol(self.random()));
                 self.next_plan = sim.time + 2.5;
                 self.stuck_since = sim.time;
@@ -270,15 +358,21 @@ impl BotBrain {
             let aimed = angle(target_yaw - input.yaw).abs() < 0.04
                 && (target_pitch - input.pitch).abs() < 0.04;
             if sim.time >= self.react_at
-                && sim.time >= self.next_fire
+                && (close || sim.time >= self.next_fire)
                 && aimed
                 && actor.cooldown <= 0.0
-                && actor.reload <= 0.0
-                && actor.ammo > 0
+                && (close || actor.reload <= 0.0 && actor.ammo > 0)
+                && (close || self.cover.is_none() || self.phase==CoverPhase::Peek)
                 && actor.spawn_safe <= 0.0
                 && sim.line_of_sight(actor.eye(), o.point)
             {
-                input.fire = true;
+                input.melee = close;
+                input.fire = !close;
+                if !close {
+                    if let Some(cover)=self.cover {
+                        self.phase=CoverPhase::Return;self.route=VecDeque::from([cover.hide]);self.failed_peeks=0;
+                    }
+                }
                 self.next_fire = sim.time + 1.45 + self.random() * 0.9;
                 // Do not lock error to a target or correct it on a hit/miss.
                 self.next_error = sim.time;
@@ -369,6 +463,55 @@ mod tests {
         }
         let nav = Navigation::new(&sim);
         (sim, nav, BotBrain::new(57))
+    }
+
+    #[test]
+    fn close_loaded_bot_bashes_after_reaction_and_interrupts_reload_at_contact() {
+        let (mut sim,nav,mut brain)=encounter();
+        for (id,z) in [(1,0.0),(2,1.4)] { let a=sim.actor_mut(id).unwrap();a.x=13.5;a.z=z; }
+        brain.input(&sim,&nav,1);brain.route.clear();brain.next_plan=f64::INFINITY;
+        let a=sim.actor_mut(1).unwrap();a.reload=3.0;a.reload_total=3.0;
+        let mut started=None;
+        for _ in 0..180 {
+            let frame=brain.input(&sim,&nav,1);
+            if frame.melee && started.is_none() {
+                assert!(sim.time>=brain.react_at && sim.time>0.5);
+                assert!(!frame.fire && !frame.ads);
+                started=Some(sim.time);
+            }
+            sim.submit_input(1,frame);sim.tick(TICK_SECONDS);
+            if started.is_some_and(|at|sim.time-at<0.2) { assert_eq!(sim.actor(2).unwrap().hp,100); }
+            if !sim.actor(2).unwrap().alive { break; }
+        }
+        assert!(started.is_some());assert!(!sim.actor(2).unwrap().alive);
+        let a=sim.actor(1).unwrap();assert_eq!(a.shots,0);assert_eq!(a.ammo,5);assert_eq!(a.reload,0.0);
+    }
+
+    #[test]
+    fn cover_shields_the_body_then_bot_peeks_fires_and_withdraws() {
+        let (mut sim,nav,mut brain)=encounter();
+        { let a=sim.actor_mut(1).unwrap();a.x=-8.0;a.z=2.0;a.yaw=PI/2.0; }
+        { let a=sim.actor_mut(2).unwrap();a.x=0.0;a.z=2.0;a.hp=10000; }
+        let enemy=torso(sim.actor(2).unwrap());
+        let cover=nav.cover(&sim,position(sim.actor(1).unwrap()),enemy).unwrap();
+        assert!(protected(&sim,cover.hide,enemy,cover.crouch));
+        let peek=cover.peek.expect("reachable corner firing lane");
+        assert!(sim.walkable_segment(cover.hide,peek));
+        assert!(sim.line_of_sight(Vec3{y:if cover.crouch{1.05}else{1.65},..peek},enemy));
+        brain.input(&sim,&nav,1);brain.cover=Some(cover);brain.phase=CoverPhase::Hold;
+        brain.cover_since=sim.time;brain.phase_until=sim.time+0.5;brain.route.clear();
+        brain.observation=Some(Observation{actor:2,point:enemy,seen:sim.time});
+        { let a=sim.actor_mut(1).unwrap();a.x=cover.hide.x;a.z=cover.hide.z;a.stance=if cover.crouch{Stance::Crouch}else{Stance::Stand};a.eye_height=if cover.crouch{1.05}else{1.65};a.reload=1.0; }
+        let mut peeked=false;let mut fired=false;let mut returned=false;
+        for _ in 0..480 {
+            let frame=brain.input(&sim,&nav,1);
+            if sim.time<0.8 { assert_eq!(brain.phase,CoverPhase::Hold);assert!(!frame.fire); }
+            peeked|=brain.phase==CoverPhase::Peek;
+            if frame.fire { fired=true;assert_eq!(brain.phase,CoverPhase::Return); }
+            sim.submit_input(1,frame);sim.tick(TICK_SECONDS);
+            if fired && brain.phase==CoverPhase::Hold { returned=true;break; }
+        }
+        assert!(peeked && fired && returned,"peeked={peeked}, fired={fired}, returned={returned}");
     }
 
     #[test]

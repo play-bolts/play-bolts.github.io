@@ -8,8 +8,8 @@ export function yieldLoadingPaint():Promise<void>{
  return new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
 }
 
-/** Upload and compile actual retained scene resources while the loading screen
- * is visible. The temporary 4px target uploads geometry and depth/shadow
+/** Upload and compile actual retained scene resources during preparation.
+ * The temporary 4px target uploads geometry and depth/shadow
  * programs without replacing the canvas. All temporary presentation state is
  * restored even if compilation fails; real renderer errors are propagated. */
 export async function prepareScenes(renderer:PreparingRenderer,scenes:readonly {scene:THREE.Scene;camera:THREE.Camera}[],onProgress?:(value:number)=>void){

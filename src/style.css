@@ -250,7 +250,8 @@ kbd { display: inline-block; padding: 2px 5px; border: 1px solid #bdc5a75c; colo
 @media(max-width:700px){.intro-menu { right: 8%; top: 23%; width: 50vw; min-height: 0; padding-left: 20px; }.intro-menu h1 { font-size: clamp(40px, 9.7vw, 68px); margin-bottom: 25px; }.intro-menu .classic-choice { font-size: 23px; }.intro-menu .difficulty { gap: 10px; }.intro-menu .difficulty button { font-size: 14px; } #weapon-slot > span:last-child { display:none; }}
 @media(max-height:600px){.intro-menu { top: 16%; min-height:0; }.intro-menu h1 { font-size: clamp(40px, 9.7vw, 60px); margin-bottom: 15px; }.intro-menu .classic-choice { min-height: 25px; padding-top:3px;padding-bottom:3px; }.intro-menu .difficulty { margin-top:14px; }}
 
-/* Startup fully covers the menu until assets and the first frame are ready. */
+/* Gameplay preparation runs behind the usable menu and team selection. */
+#startup-status { position: absolute; bottom: max(20px, env(safe-area-inset-bottom)); left: max(24px, env(safe-area-inset-left)); right: 24px; color: #d8dbc5; font-size: 16px; text-shadow: 0 1px 3px #000; pointer-events: none; }
 .loading-overlay { z-index: 20; background: #000; opacity: 1; }
 .loading-overlay.loading-complete { opacity: 0; pointer-events: none; transition: opacity .18s ease; }
 .loading-complete #loading-fill { transition: none; }

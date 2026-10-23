@@ -16,7 +16,7 @@ The main menu displays a Kar98k, ammunition clips, breadbag and marching compass
 
 The all-time leaderboard includes three operator-seeded launch scores, tracked separately in `leaderboard_seeds`. They create no player identities or activity events and contribute nothing to the rolling 24-hour scores. The repeatable [seed utility](scripts/seed-leaderboard.py) preserves later earned scores and requires a private pre-change backup when applying changes.
 
-Count browsers opening Bolts in the past N hours with `python3 scripts/user-analytics.py --aws --hours 24 --json`. Lightweight visitor tracking includes the menu and single-player mode, using a random browser ID and server receipt times, independent of multiplayer identities. It respects Do Not Track and Global Privacy Control; failed requests never block play. Counts begin at deployment and represent browsers, not verified distinct people. Use `--source multiplayer` for the separate connection-based report. The [analytics and privacy guide](research/user-analytics.md) covers time windows, exclusions, opt-out and limitations.
+Count browsers opening Bolts in the past N hours with `python3 scripts/user-analytics.py --aws --hours 24 --json`. Lightweight visitor tracking includes the menu and single-player mode, using a random browser ID and server receipt times, independent of multiplayer identities. Private database records also capture server-observed IPs and paired single-player start/stop events. GA4 records page views and single-player events separately. Both trackers respect Do Not Track and Global Privacy Control; failed requests never block play. Counts begin at deployment and represent browsers, not verified distinct people. Use `--source multiplayer` for the separate connection-based report. The [analytics and privacy guide](research/user-analytics.md) covers time windows, exclusions, opt-out and limitations.
 
 ## Run locally
 
@@ -50,6 +50,8 @@ npm run preview
 The production build in `dist/` includes the complete game, JavaScript, CSS, models and textures. Development tools such as the model inspector and QA controls are excluded. No external fonts or separate game installation are required.
 
 ## Performance
+
+The menu and team selection become usable before the game runtime, models, textures and graphics preparation finish. Arena downloads run in the background while visitors browse Options, Controls, Credits, the leaderboard or feedback. Choosing a team early waits for preparation; Back cancels that choice. Recorded sounds begin loading on the first play or multiplayer action, with immediate procedural fallbacks. The initial menu JavaScript is approximately 90 kB before compression, about 94% smaller than the previous eager entry; the complete game still downloads afterward.
 
 Rendering reuses actor models and effect buffers, batches compatible scenery, skips invisible posing, updates unchanged HUD elements less often, and draws the static menu on demand. Models, textures and shaders warm up before play; rifle audio warms in a worker after audio initialization. Gameplay rules, controls, hitboxes, AI decisions and multiplayer authority are unchanged.
 

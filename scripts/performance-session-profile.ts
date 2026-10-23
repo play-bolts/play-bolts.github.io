@@ -25,7 +25,7 @@ Sound.prototype.endSceneUpdate=function(){
 try{new PerformanceObserver(list=>{if(measuring)for(const e of list.getEntries())longTasks.push({start:e.startTime,duration:e.duration});}).observe({type:'longtask',buffered:true});}catch{}
 function wrap(target:any,key:string,label:string){const original=target[key];if(typeof original!=='function')return;target[key]=function(...args:unknown[]){if(!measuring)return original.apply(this,args);const start=performance.now();try{return original.apply(this,args);}finally{samples[label].push(performance.now()-start);}};}
 wrap(Game.prototype,'update','simulation');wrap(View.prototype,'render','renderer');wrap(UI.prototype,'update','hud');wrap(Sound.prototype,'endSceneUpdate','audioRouting');
-await import('../src/main');
+const {gameReady}=await import('../src/main');await gameReady;
 const app=(window as any).__bolts as {game:Game;view:View;ui:UI;start:()=>void;leave:()=>void};
 const panel=document.createElement('div');panel.style.cssText='position:fixed;top:5px;left:5px;z-index:20000;background:#17231fee;color:white;padding:12px;font:12px monospace;max-width:640px;max-height:65vh;overflow:auto;pointer-events:auto';
 panel.innerHTML='<button id="profile-run">Run 30-second local session</button> <button id="profile-download" disabled>Download</button><p id="profile-status">Ready. Real main loop, six actors; this click requests audio. Clock progression is checked separately. Player spawn-safe; scripted turning and shooting.</p><pre id="profile-results"></pre>';document.body.append(panel);

@@ -127,8 +127,8 @@ export class View {
   this.rifle.visible=true;this.grenade.visible=false;this.weapon.add(this.rifle,this.grenade);
   this.muzzle.position.set(...getRifleVisuals(faction).muzzle);this.muzzle.position.z-=.012;this.flash.position.copy(this.muzzle.position);
  }
- /** Startup intentionally spends construction/upload/compilation time here,
-  * before controls become ready. Reserves are reused by normal actor creation;
+ /** Preparation spends construction/upload/compilation time here while the
+  * menu remains usable, before entering the arena. Reserves are reused by normal actor creation;
   * at most one idle soldier per faction and three viewmodel pairs are retained. */
  prepare(onProgress?:(value:number)=>void):Promise<void>{
   return this.preparation??=this.prepareModels(onProgress);

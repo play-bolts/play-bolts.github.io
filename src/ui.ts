@@ -77,7 +77,7 @@ export class UI {
       <p>Email me at <a href="mailto:ckrapu@gmail.com">ckrapu@gmail.com</a> with any feature requests. You can also submit using the <button id="welcome-feedback" type="button" aria-haspopup="dialog">feedback form</button>.</p>
       <p class="welcome-signature">-Chris</p>
      </aside>
-    </section><div id="players-online" class="hidden" role="status" aria-live="polite"></div>
+    </section><div id="players-online" class="hidden" role="status" aria-live="polite"></div><div id="startup-status" class="hidden" role="status" aria-live="polite"></div>
   <section id="lobby-window" class="classic-window lobby-window hidden" aria-labelledby="lobby-title">
    <header class="lobby-heading"><h2 id="lobby-title">Join game</h2></header>
    <div id="lobby-location-controls" class="lobby-location-controls hidden"><div class="lobby-location-picker" role="group" aria-labelledby="lobby-location-label"><span id="lobby-location-label">Location</span><div id="lobby-locations"></div></div><button id="lobby-play" aria-describedby="lobby-location-hint">Play</button><p id="lobby-location-hint"></p></div>
@@ -343,13 +343,19 @@ export class UI {
   if(progress===this.loadingProgress)return;this.loadingProgress=progress;
   this.el['loading-fill'].style.transform=`scaleX(${progress})`;
   this.el['loading-progress'].setAttribute('aria-valuenow',String(Math.round(progress*1000)/10));
+  if(!this.el['startup-status'].classList.contains('hidden'))this.setStartupProgress(progress);
  }
- setReady(ready:boolean){
+ setStartupProgress(value:number|null){
+  this.el['startup-status'].classList.toggle('hidden',value===null);
+  if(value!==null)this.el['startup-status'].textContent=`Preparing arena… ${Math.round(value*100)}%`;
+ }
+ setReady(ready:boolean,loadingComplete=true){
   this.ready=ready;(this.el.start as HTMLButtonElement).disabled=!ready;(this.el.multiplayer as HTMLButtonElement).disabled=!ready;this.setSelectionBusy(this.selectionBusy);this.refreshBackgroundInert();this.el.menu.setAttribute('aria-busy',String(!ready));
   clearTimeout(this.loadingCompletion);
   if(ready){
    const tipsFocused=this.el.loading.contains(document.activeElement);this.loadingTips.stop();this.el.loading.inert=true;
    if(tipsFocused)this.el.start.focus({preventScroll:true});
+   if(!loadingComplete){this.hideLoading();return;}
    // Reveal the prepared menu as soon as loading completes.
    this.setLoadingProgress(1);this.el.loading.classList.add('loading-complete');
    this.loadingCompletion=setTimeout(()=>this.el.loading.classList.add('hidden'),200);

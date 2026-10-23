@@ -1,3 +1,4 @@
+v1.0.54 - Opens menus before arena downloads, defers sound loading to play, and records real single-player session boundaries.
 v1.0.53 - Adds GA4 tracking and private IP and single-player lifecycle telemetry with privacy opt-outs.
 v1.0.52 - Adds three permanent six-player Deathmatch lobbies alongside the existing duel rooms.
 v1.0.51 - Keeps recorded audio from blocking first play and adds social link previews and search discovery metadata.

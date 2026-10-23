@@ -1,0 +1,554 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Bolts API edge rate limits only. CloudFront association is guarded separately; no origin or gameplay changes.",
+  "Parameters": {
+    "QaEnabled": {
+      "Type": "String",
+      "AllowedValues": [
+        "false",
+        "true"
+      ],
+      "Default": "false"
+    },
+    "QaSourceCidr": {
+      "Type": "String",
+      "Default": "192.0.2.1/32",
+      "AllowedPattern": "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}/32$"
+    },
+    "QaPath": {
+      "Type": "String",
+      "Default": "/api/waf-qa-00000000000000000000000000000000",
+      "AllowedPattern": "^/api/waf-qa-[a-f0-9]{32}$"
+    }
+  },
+  "Conditions": {
+    "QaEnabled": {
+      "Fn::Equals": [
+        {
+          "Ref": "QaEnabled"
+        },
+        "true"
+      ]
+    }
+  },
+  "Resources": {
+    "QaSource": {
+      "Type": "AWS::WAFv2::IPSet",
+      "Condition": "QaEnabled",
+      "Properties": {
+        "Name": "bolts-api-abuse-qa-source",
+        "Description": "Temporary single tester address, removed after rate-limit verification.",
+        "Scope": "CLOUDFRONT",
+        "IPAddressVersion": "IPV4",
+        "Addresses": [
+          {
+            "Ref": "QaSourceCidr"
+          }
+        ]
+      }
+    },
+    "ApiWebAcl": {
+      "Type": "AWS::WAFv2::WebACL",
+      "Properties": {
+        "Name": "bolts-api-abuse",
+        "Description": "Bolts API request protection using the actual CloudFront viewer IP.",
+        "Scope": "CLOUDFRONT",
+        "DefaultAction": {
+          "Allow": {}
+        },
+        "CustomResponseBodies": {
+          "rateLimited": {
+            "ContentType": "APPLICATION_JSON",
+            "Content": "{\"message\":\"Too many requests. Please try again in a minute.\",\"source\":\"edge-rate-limit\"}"
+          }
+        },
+        "Rules": [
+          {
+            "Fn::If": [
+              "QaEnabled",
+              {
+                "Name": "BoltsQaRateProof",
+                "Priority": 0,
+                "Action": {
+                  "Block": {
+                    "CustomResponse": {
+                      "ResponseCode": 429,
+                      "CustomResponseBodyKey": "rateLimited",
+                      "ResponseHeaders": [
+                        {
+                          "Name": "Retry-After",
+                          "Value": "60"
+                        },
+                        {
+                          "Name": "X-Bolts-Rate-Limit",
+                          "Value": "edge"
+                        },
+                        {
+                          "Name": "Access-Control-Allow-Origin",
+                          "Value": "https://play-bolts.github.io"
+                        },
+                        {
+                          "Name": "Access-Control-Allow-Methods",
+                          "Value": "GET, POST, OPTIONS"
+                        },
+                        {
+                          "Name": "Access-Control-Allow-Headers",
+                          "Value": "Content-Type"
+                        },
+                        {
+                          "Name": "Access-Control-Expose-Headers",
+                          "Value": "Retry-After, X-Bolts-Rate-Limit"
+                        },
+                        {
+                          "Name": "Cache-Control",
+                          "Value": "no-store"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "Statement": {
+                  "RateBasedStatement": {
+                    "Limit": 10,
+                    "EvaluationWindowSec": 60,
+                    "AggregateKeyType": "IP",
+                    "ScopeDownStatement": {
+                      "AndStatement": {
+                        "Statements": [
+                          {
+                            "ByteMatchStatement": {
+                              "SearchString": {
+                                "Ref": "QaPath"
+                              },
+                              "FieldToMatch": {
+                                "UriPath": {}
+                              },
+                              "PositionalConstraint": "EXACTLY",
+                              "TextTransformations": [
+                                {
+                                  "Priority": 0,
+                                  "Type": "URL_DECODE"
+                                },
+                                {
+                                  "Priority": 1,
+                                  "Type": "NORMALIZE_PATH"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "ByteMatchStatement": {
+                              "SearchString": "GET",
+                              "FieldToMatch": {
+                                "Method": {}
+                              },
+                              "PositionalConstraint": "EXACTLY",
+                              "TextTransformations": [
+                                {
+                                  "Priority": 0,
+                                  "Type": "NONE"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "IPSetReferenceStatement": {
+                              "ARN": {
+                                "Fn::GetAtt": [
+                                  "QaSource",
+                                  "Arn"
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "VisibilityConfig": {
+                  "CloudWatchMetricsEnabled": true,
+                  "SampledRequestsEnabled": false,
+                  "MetricName": "BoltsQaRateProof"
+                }
+              },
+              {
+                "Ref": "AWS::NoValue"
+              }
+            ]
+          },
+          {
+            "Name": "BoltsFeedbackPerIp",
+            "Priority": 10,
+            "Action": {
+              "Block": {
+                "CustomResponse": {
+                  "ResponseCode": 429,
+                  "CustomResponseBodyKey": "rateLimited",
+                  "ResponseHeaders": [
+                    {
+                      "Name": "Retry-After",
+                      "Value": "60"
+                    },
+                    {
+                      "Name": "X-Bolts-Rate-Limit",
+                      "Value": "edge"
+                    },
+                    {
+                      "Name": "Access-Control-Allow-Origin",
+                      "Value": "https://play-bolts.github.io"
+                    },
+                    {
+                      "Name": "Access-Control-Allow-Methods",
+                      "Value": "GET, POST, OPTIONS"
+                    },
+                    {
+                      "Name": "Access-Control-Allow-Headers",
+                      "Value": "Content-Type"
+                    },
+                    {
+                      "Name": "Access-Control-Expose-Headers",
+                      "Value": "Retry-After, X-Bolts-Rate-Limit"
+                    },
+                    {
+                      "Name": "Cache-Control",
+                      "Value": "no-store"
+                    }
+                  ]
+                }
+              }
+            },
+            "Statement": {
+              "RateBasedStatement": {
+                "Limit": 20,
+                "EvaluationWindowSec": 60,
+                "AggregateKeyType": "IP",
+                "ScopeDownStatement": {
+                  "AndStatement": {
+                    "Statements": [
+                      {
+                        "ByteMatchStatement": {
+                          "SearchString": "/api/feedback",
+                          "FieldToMatch": {
+                            "UriPath": {}
+                          },
+                          "PositionalConstraint": "EXACTLY",
+                          "TextTransformations": [
+                            {
+                              "Priority": 0,
+                              "Type": "URL_DECODE"
+                            },
+                            {
+                              "Priority": 1,
+                              "Type": "NORMALIZE_PATH"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "ByteMatchStatement": {
+                          "SearchString": "POST",
+                          "FieldToMatch": {
+                            "Method": {}
+                          },
+                          "PositionalConstraint": "EXACTLY",
+                          "TextTransformations": [
+                            {
+                              "Priority": 0,
+                              "Type": "NONE"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "VisibilityConfig": {
+              "CloudWatchMetricsEnabled": true,
+              "SampledRequestsEnabled": false,
+              "MetricName": "BoltsFeedbackPerIp"
+            }
+          },
+          {
+            "Name": "BoltsAdmissionPerIp",
+            "Priority": 20,
+            "Action": {
+              "Block": {
+                "CustomResponse": {
+                  "ResponseCode": 429,
+                  "CustomResponseBodyKey": "rateLimited",
+                  "ResponseHeaders": [
+                    {
+                      "Name": "Retry-After",
+                      "Value": "60"
+                    },
+                    {
+                      "Name": "X-Bolts-Rate-Limit",
+                      "Value": "edge"
+                    },
+                    {
+                      "Name": "Access-Control-Allow-Origin",
+                      "Value": "https://play-bolts.github.io"
+                    },
+                    {
+                      "Name": "Access-Control-Allow-Methods",
+                      "Value": "GET, POST, OPTIONS"
+                    },
+                    {
+                      "Name": "Access-Control-Allow-Headers",
+                      "Value": "Content-Type"
+                    },
+                    {
+                      "Name": "Access-Control-Expose-Headers",
+                      "Value": "Retry-After, X-Bolts-Rate-Limit"
+                    },
+                    {
+                      "Name": "Cache-Control",
+                      "Value": "no-store"
+                    }
+                  ]
+                }
+              }
+            },
+            "Statement": {
+              "RateBasedStatement": {
+                "Limit": 120,
+                "EvaluationWindowSec": 60,
+                "AggregateKeyType": "IP",
+                "ScopeDownStatement": {
+                  "AndStatement": {
+                    "Statements": [
+                      {
+                        "OrStatement": {
+                          "Statements": [
+                            {
+                              "ByteMatchStatement": {
+                                "SearchString": "/api/session",
+                                "FieldToMatch": {
+                                  "UriPath": {}
+                                },
+                                "PositionalConstraint": "EXACTLY",
+                                "TextTransformations": [
+                                  {
+                                    "Priority": 0,
+                                    "Type": "URL_DECODE"
+                                  },
+                                  {
+                                    "Priority": 1,
+                                    "Type": "NORMALIZE_PATH"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "ByteMatchStatement": {
+                                "SearchString": "/api/join",
+                                "FieldToMatch": {
+                                  "UriPath": {}
+                                },
+                                "PositionalConstraint": "EXACTLY",
+                                "TextTransformations": [
+                                  {
+                                    "Priority": 0,
+                                    "Type": "URL_DECODE"
+                                  },
+                                  {
+                                    "Priority": 1,
+                                    "Type": "NORMALIZE_PATH"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "ByteMatchStatement": {
+                                "SearchString": "/api/ws",
+                                "FieldToMatch": {
+                                  "UriPath": {}
+                                },
+                                "PositionalConstraint": "EXACTLY",
+                                "TextTransformations": [
+                                  {
+                                    "Priority": 0,
+                                    "Type": "URL_DECODE"
+                                  },
+                                  {
+                                    "Priority": 1,
+                                    "Type": "NORMALIZE_PATH"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "ByteMatchStatement": {
+                                "SearchString": "/api/ping",
+                                "FieldToMatch": {
+                                  "UriPath": {}
+                                },
+                                "PositionalConstraint": "EXACTLY",
+                                "TextTransformations": [
+                                  {
+                                    "Priority": 0,
+                                    "Type": "URL_DECODE"
+                                  },
+                                  {
+                                    "Priority": 1,
+                                    "Type": "NORMALIZE_PATH"
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "NotStatement": {
+                          "Statement": {
+                            "ByteMatchStatement": {
+                              "SearchString": "OPTIONS",
+                              "FieldToMatch": {
+                                "Method": {}
+                              },
+                              "PositionalConstraint": "EXACTLY",
+                              "TextTransformations": [
+                                {
+                                  "Priority": 0,
+                                  "Type": "NONE"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "VisibilityConfig": {
+              "CloudWatchMetricsEnabled": true,
+              "SampledRequestsEnabled": false,
+              "MetricName": "BoltsAdmissionPerIp"
+            }
+          },
+          {
+            "Name": "BoltsApiPerIp",
+            "Priority": 30,
+            "Action": {
+              "Block": {
+                "CustomResponse": {
+                  "ResponseCode": 429,
+                  "CustomResponseBodyKey": "rateLimited",
+                  "ResponseHeaders": [
+                    {
+                      "Name": "Retry-After",
+                      "Value": "60"
+                    },
+                    {
+                      "Name": "X-Bolts-Rate-Limit",
+                      "Value": "edge"
+                    },
+                    {
+                      "Name": "Access-Control-Allow-Origin",
+                      "Value": "https://play-bolts.github.io"
+                    },
+                    {
+                      "Name": "Access-Control-Allow-Methods",
+                      "Value": "GET, POST, OPTIONS"
+                    },
+                    {
+                      "Name": "Access-Control-Allow-Headers",
+                      "Value": "Content-Type"
+                    },
+                    {
+                      "Name": "Access-Control-Expose-Headers",
+                      "Value": "Retry-After, X-Bolts-Rate-Limit"
+                    },
+                    {
+                      "Name": "Cache-Control",
+                      "Value": "no-store"
+                    }
+                  ]
+                }
+              }
+            },
+            "Statement": {
+              "RateBasedStatement": {
+                "Limit": 600,
+                "EvaluationWindowSec": 60,
+                "AggregateKeyType": "IP",
+                "ScopeDownStatement": {
+                  "ByteMatchStatement": {
+                    "SearchString": "/api/",
+                    "FieldToMatch": {
+                      "UriPath": {}
+                    },
+                    "PositionalConstraint": "STARTS_WITH",
+                    "TextTransformations": [
+                      {
+                        "Priority": 0,
+                        "Type": "URL_DECODE"
+                      },
+                      {
+                        "Priority": 1,
+                        "Type": "NORMALIZE_PATH"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "VisibilityConfig": {
+              "CloudWatchMetricsEnabled": true,
+              "SampledRequestsEnabled": false,
+              "MetricName": "BoltsApiPerIp"
+            }
+          }
+        ],
+        "VisibilityConfig": {
+          "CloudWatchMetricsEnabled": true,
+          "SampledRequestsEnabled": false,
+          "MetricName": "BoltsApiWebAcl"
+        },
+        "Tags": [
+          {
+            "Key": "Application",
+            "Value": "bolts"
+          },
+          {
+            "Key": "Component",
+            "Value": "edge-abuse-protection"
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "WebAclArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "ApiWebAcl",
+          "Arn"
+        ]
+      }
+    },
+    "WebAclId": {
+      "Value": {
+        "Fn::GetAtt": [
+          "ApiWebAcl",
+          "Id"
+        ]
+      }
+    },
+    "QaSourceArn": {
+      "Condition": "QaEnabled",
+      "Value": {
+        "Fn::GetAtt": [
+          "QaSource",
+          "Arn"
+        ]
+      }
+    }
+  }
+}

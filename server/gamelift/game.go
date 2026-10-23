@@ -77,8 +77,7 @@ func (g *gameHost) handler() http.Handler {
 			problem(w, 503, "Server is closing.")
 			return
 		}
-		if !g.limits.allow(clientIP(q, false), 90, time.Minute) {
-			problem(w, 429, "Too many connections.")
+		if !g.limits.check(w, clientIP(q, false), 90, time.Minute, "Too many connections.") {
 			return
 		}
 		select {

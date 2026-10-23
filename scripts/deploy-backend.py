@@ -113,7 +113,41 @@ def wait_stack(stack, timeout=2400, region=REGION):
     raise DeploymentError('CloudFormation is still running; inspect the stack before retrying')
 
 
+def require_web_acl_preserved(stack, template, values, region=REGION):
+    """An independently attached edge WAF must survive every stack update.
+
+    CloudFormation's previous template does not include out-of-band WAF
+    associations. Compare the candidate with CloudFront itself, not merely with
+    that previous template. Never silently modify the reviewed source template.
+    """
+    current = describe(stack, region=region)
+    if not current:
+        return
+    outputs = {item['OutputKey']: item['OutputValue'] for item in current.get('Outputs', [])}
+    distribution_id = outputs.get('DistributionId')
+    if not distribution_id:
+        return  # Certificate and other stacks without the backend distribution.
+    observed = aws('cloudfront', 'get-distribution', '--id', distribution_id,
+                   region=EDGE_REGION)['Distribution']['DistributionConfig']
+    active_acl = observed.get('WebACLId', '')
+    if not active_acl:
+        return
+    candidate = json.loads(template.read_text())
+    resource = candidate.get('Resources', {}).get('Distribution', {})
+    config = resource.get('Properties', {}).get('DistributionConfig', {})
+    requested_acl = config.get('WebACLId')
+    if isinstance(requested_acl, dict) and set(requested_acl) == {'Ref'}:
+        requested_acl = values.get(requested_acl['Ref'])
+    if resource.get('Type') != 'AWS::CloudFront::Distribution' or requested_acl != active_acl:
+        raise DeploymentError(
+            'Deployment would remove or change the active CloudFront WAF. '
+            'Preserve Distribution.DistributionConfig.WebACLId as the current ARN '
+            '(literal or a Ref supplied through deployment parameters): ' + active_acl)
+
+
 def apply_stack(stack, template, values, exists, region=REGION):
+    if exists:
+        require_web_acl_preserved(stack, template, values, region=region)
     parameters = [{'ParameterKey': key, 'ParameterValue': value} for key, value in values.items()]
     path = STATE / 'parameters.json'
     path.write_text(json.dumps(parameters))
@@ -137,6 +171,8 @@ def configure_domain(args, template):
         raise DeploymentError('--domain-only requires the existing backend stack')
     if previous['StackStatus'].endswith('_IN_PROGRESS'):
         previous = wait_stack(args.stack)
+    values = {p['ParameterKey']: p['ParameterValue'] for p in previous['Parameters']}
+    require_web_acl_preserved(args.stack, template, values)
     zone = aws('route53', 'get-hosted-zone', '--id', CUSTOM_ZONE)
     if zone['HostedZone']['Name'] != 'christopherkrapu.com.' or zone['HostedZone']['Config'].get('PrivateZone'):
         raise DeploymentError('Custom domain must use the reviewed public hosted zone')
@@ -187,13 +223,13 @@ def configure_domain(args, template):
         candidate['Resources']['Distribution']['Properties']['DistributionConfig'].pop('ViewerCertificate', None)
     if old['Resources']['Distribution'] != new['Resources']['Distribution']:
         raise DeploymentError('Domain-only deployment would change unrelated CloudFront settings')
-    values = {p['ParameterKey']: p['ParameterValue'] for p in previous['Parameters']}
     values.update({'CustomDomainName': CUSTOM_DOMAIN, 'CustomDomainCertificateArn': certificate_arn,
                    'CustomDomainHostedZoneId': CUSTOM_ZONE})
     parameters = STATE / 'domain-parameters.json'
     parameters.write_text(json.dumps([{'ParameterKey': key, 'ParameterValue': value} for key, value in values.items()]))
     aws('cloudformation', 'validate-template', '--template-body', 'file://' + str(template))
     change_name = f'bolts-custom-domain-{time.time_ns()}'
+    require_web_acl_preserved(args.stack, template, values)
     aws('cloudformation', 'create-change-set', '--stack-name', args.stack, '--change-set-name', change_name,
         '--change-set-type', 'UPDATE', '--template-body', 'file://' + str(template),
         '--parameters', 'file://' + str(parameters), '--capabilities', 'CAPABILITY_IAM')
@@ -221,6 +257,7 @@ def configure_domain(args, template):
             summary.append({'resource': logical_id, 'action': resource['Action'], 'replacement': resource.get('Replacement', 'False')})
         print('Reviewed domain-only changes: ' + json.dumps(summary), flush=True)
         (STATE / 'domain-change-set.json').write_text(json.dumps(change, indent=2) + '\n')
+        require_web_acl_preserved(args.stack, template, values)
         aws('cloudformation', 'execute-change-set', '--stack-name', args.stack, '--change-set-name', change_name)
         state = wait_stack(args.stack)
     outputs.update({item['OutputKey']: item['OutputValue'] for item in state['Outputs']})

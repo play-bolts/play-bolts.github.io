@@ -73,10 +73,13 @@ type lobby struct {
 	Managed  bool   `json:"managed"`
 }
 
-func (d *directory) legacy(ctx context.Context, path string, out any) error {
+func (d *directory) legacy(ctx context.Context, path, viewer string, out any) error {
 	q, err := http.NewRequestWithContext(ctx, "GET", d.r.local+path, nil)
 	if err != nil {
 		return err
+	}
+	if viewer != "" {
+		q.Header.Set("X-Forwarded-For", viewer)
 	}
 	response, err := d.r.http.Do(q)
 	if err != nil {
@@ -122,7 +125,7 @@ func (d *directory) catalog(ctx context.Context, force bool) ([]lobby, error) {
 	var local struct {
 		Lobbies []lobby `json:"lobbies"`
 	}
-	if err := d.legacy(ctx, "/api/lobbies", &local); err != nil {
+	if err := d.legacy(ctx, "/api/lobbies", "", &local); err != nil {
 		return nil, err
 	}
 	if local.Lobbies == nil {
@@ -273,8 +276,7 @@ func (d *directory) join(w http.ResponseWriter, q *http.Request) {
 		problem(w, 503, "Extra regional lobbies are disabled.")
 		return
 	}
-	if !d.limits.allow(clientIP(q, true), 300, time.Minute) {
-		problem(w, 429, "Too many join requests.")
+	if !d.limits.check(w, "join:"+clientIP(q, true), 300, time.Minute, "Too many join requests.") {
 		return
 	}
 	var body struct {
@@ -562,6 +564,18 @@ func (r *runtime) ingest(w http.ResponseWriter, q *http.Request) {
 	}
 	respond(w, 200, map[string]bool{"ok": true})
 }
+
+func (d *directory) limitRead(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
+		// Enforce before serving cached results, and isolate each public endpoint
+		// so polling one resource cannot consume another resource's allowance.
+		if !d.limits.check(w, "read:"+q.URL.Path+":"+clientIP(q, true), 120, time.Minute, "Too many requests. Please try again shortly.") {
+			return
+		}
+		next.ServeHTTP(w, q)
+	})
+}
+
 func (d *directory) handler() http.Handler {
 	r := d.r
 	local, _ := url.Parse(r.local)
@@ -580,8 +594,8 @@ func (d *directory) handler() http.Handler {
 		return nil
 	}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/lobbies", d.list)
-	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, q *http.Request) {
+	mux.Handle("GET /api/lobbies", d.limitRead(http.HandlerFunc(d.list)))
+	mux.Handle("GET /api/status", d.limitRead(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
 		rows, err := d.catalog(q.Context(), false)
 		if err != nil {
 			problem(w, 503, "Unable to load status.")
@@ -590,7 +604,9 @@ func (d *directory) handler() http.Handler {
 		var local struct {
 			Online int32 `json:"online"`
 		}
-		if d.legacy(q.Context(), "/api/status", &local) != nil {
+		// Rust applies its own per-client status limit. Preserve the trusted
+		// viewer here rather than putting every browser in its unknown-IP bucket.
+		if d.legacy(q.Context(), "/api/status", clientIP(q, true), &local) != nil {
 			problem(w, 503, "Unable to load status.")
 			return
 		}
@@ -601,10 +617,11 @@ func (d *directory) handler() http.Handler {
 			}
 		}
 		respond(w, 200, map[string]int32{"online": count})
-	})
+	})))
 	mux.HandleFunc("POST /api/join", d.join)
 	mux.HandleFunc("POST /api/cluster/replicate", r.ingest)
-	for _, route := range []string{"GET /api/health", "POST /api/session", "GET /api/leaderboard", "POST /api/feedback", "POST /api/visits", "GET /api/ws", "GET /api/ping"} {
+	mux.Handle("GET /api/health", d.limitRead(proxy))
+	for _, route := range []string{"POST /api/session", "GET /api/leaderboard", "POST /api/feedback", "POST /api/visits", "GET /api/ws", "GET /api/ping"} {
 		mux.Handle(route, proxy)
 	}
 	return r.cors(mux)

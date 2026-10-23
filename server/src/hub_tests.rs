@@ -47,7 +47,15 @@ impl Peer {
         let (player, _) = hub.db.session(None).unwrap().unwrap();
         Self::connect(hub, player)
     }
+    fn fresh_from(hub: &mut Hub, ip: &str) -> Self {
+        let (player, _) = hub.db.session(None).unwrap().unwrap();
+        Self::connect_from(hub, player, ip).unwrap()
+    }
     fn connect(hub: &mut Hub, player: String) -> Self {
+        let ip = std::net::Ipv6Addr::from(uuid::Uuid::parse_str(&player).unwrap().as_u128()).to_string();
+        Self::connect_from(hub, player, &ip).unwrap()
+    }
+    fn connect_from(hub: &mut Hub, player: String, ip: &str) -> crate::hub::HResult<Self> {
         let connection = db::id();
         let (tx, messages) = crate::transport::channel();
         let (cancel, cancelled) = watch::channel(None);
@@ -56,16 +64,16 @@ impl Peer {
             connection.clone(),
             tx,
             cancel,
-            "127.0.0.1",
+            ip,
             "hub-test",
         )
-        .unwrap();
-        Self {
+        ?;
+        Ok(Self {
             player,
             connection,
             messages,
             cancelled,
-        }
+        })
     }
     fn join(&mut self, hub: &mut Hub, lobby: Option<&str>) -> Value {
         self.join_as(hub, lobby, false)
@@ -89,6 +97,99 @@ impl Peer {
         }
         joined.expect("successful join sends the authoritative actor snapshot")
     }
+}
+
+#[test]
+fn ip_seat_limit_spans_lobbies_spectators_and_reconnect_reservations_but_not_bots() {
+    let mut fixture = Fixture::new(4);
+    let hub = &mut fixture.hub;
+    let rows = hub.lobbies().unwrap()["lobbies"].as_array().unwrap().clone();
+    let mut peers = Vec::new();
+    for (index, row) in rows.iter().enumerate() {
+        let mut peer = Peer::fresh_from(hub, "192.0.2.10");
+        let joined = peer.join_as(hub, row["id"].as_str(), index % 2 == 1);
+        if index == 0 { assert_eq!(bot_count(&joined), 2); }
+        peers.push(peer);
+    }
+    let mut rejected = Peer::fresh_from(hub, "::ffff:c000:20a");
+    let reject = |hub: &mut Hub, peer: &Peer| hub.join(&peer.player, &peer.connection, rows[0]["id"].as_str(), "Fifth", Faction::British, false).unwrap_err().to_string();
+    assert_eq!(reject(hub, &rejected), "ip_seat_limit");
+    hub.disconnected(&peers[0].player, &peers[0].connection).unwrap();
+    assert_eq!(reject(hub, &rejected), "ip_seat_limit", "disconnect retains the quota during reconnect grace");
+    let mut resumed = Peer::connect_from(hub, peers[0].player.clone(), "192.0.2.10").unwrap();
+    resumed.join(hub, rows[0]["id"].as_str());
+    // Moving the same identity at the cap must not require a fifth seat.
+    resumed.join(hub, rows[1]["id"].as_str());
+    resumed.join(hub, rows[0]["id"].as_str());
+    let mut independent = Peer::fresh_from(hub, "192.0.2.11");
+    independent.join(hub, rows[0]["id"].as_str());
+    hub.leave(&peers[1].player, "left", false).unwrap();
+    rejected.join(hub, rows[0]["id"].as_str());
+    assert_eq!(hub.online_count(), 5);
+    assert!(!hub.failed);
+}
+
+#[test]
+fn reconnect_ip_change_transfers_the_reserved_seat_and_same_ip_replacement_keeps_one_seat() {
+    let mut fixture = Fixture::new(4);
+    let hub = &mut fixture.hub;
+    let rows = hub.lobbies().unwrap()["lobbies"].as_array().unwrap().clone();
+    let mut peers = Vec::new();
+    for row in &rows {
+        let mut peer = Peer::fresh_from(hub, "192.0.2.20");
+        peer.join(hub, row["id"].as_str());peers.push(peer);
+    }
+    hub.disconnected(&peers[0].player, &peers[0].connection).unwrap();
+    let mut moved = Peer::connect_from(hub, peers[0].player.clone(), "2001:0db8:0:0:0:0:0:20").unwrap();
+    moved.join(hub, rows[0]["id"].as_str());
+    let mut replacement = Peer::connect_from(hub, moved.player.clone(), "2001:db8::20").unwrap();
+    assert_eq!(moved.cancelled.borrow().as_deref(), Some("session_replaced"));
+    replacement.join(hub, rows[0]["id"].as_str());
+    // A disconnect callback from the replaced socket must not reserve another seat.
+    hub.disconnected(&moved.player, &moved.connection).unwrap();
+    let mut original_ip = Peer::fresh_from(hub, "192.0.2.20");
+    original_ip.join(hub, rows[0]["id"].as_str());
+    for _ in 0..3 {
+        let mut other = Peer::fresh_from(hub, "2001:db8::20");
+        other.join(hub, rows[0]["id"].as_str());
+    }
+    let over = Peer::fresh_from(hub, "2001:0db8:0000:0000:0000:0000:0000:0020");
+    assert_eq!(hub.join(&over.player, &over.connection, rows[0]["id"].as_str(), "Fifth", Faction::British, true).unwrap_err().to_string(), "ip_seat_limit");
+    assert_eq!(hub.online_count(), 8);
+}
+
+#[test]
+fn reconnect_to_a_full_ip_rejects_without_evicting_the_existing_connection() {
+    let mut fixture = Fixture::new(4);
+    let hub = &mut fixture.hub;
+    let rows = hub.lobbies().unwrap()["lobbies"].as_array().unwrap().clone();
+    for row in &rows {
+        let mut peer = Peer::fresh_from(hub, "192.0.2.30");peer.join(hub, row["id"].as_str());
+    }
+    let mut original = Peer::fresh_from(hub, "192.0.2.31");
+    let joined = original.join(hub, rows[0]["id"].as_str());
+    let error = Peer::connect_from(hub, original.player.clone(), "192.0.2.30").err().unwrap();
+    assert_eq!(error.to_string(), "ip_seat_limit");
+    assert!(original.cancelled.borrow().is_none());
+    assert_eq!(hub.connections[&original.player].cid, original.connection);
+    assert_eq!(original.join(hub, rows[0]["id"].as_str())["actorId"], joined["actorId"]);
+    assert_eq!(hub.online_count(), 5);
+}
+
+#[test]
+fn expired_reconnect_reservation_releases_the_ip_seat() {
+    let mut fixture = Fixture::new(4);
+    let hub = &mut fixture.hub;
+    let rows = hub.lobbies().unwrap()["lobbies"].as_array().unwrap().clone();
+    let mut peers = Vec::new();
+    for row in &rows {
+        let mut peer = Peer::fresh_from(hub, "192.0.2.40");peer.join(hub, row["id"].as_str());peers.push(peer);
+    }
+    hub.config.reconnect_seconds = 0.0;
+    hub.disconnected(&peers[0].player, &peers[0].connection).unwrap();
+    hub.tick().unwrap();
+    let mut fresh = Peer::fresh_from(hub, "192.0.2.40");fresh.join(hub, rows[0]["id"].as_str());
+    assert_eq!(hub.online_count(), 4);
 }
 
 fn count(hub: &Hub, sql: &str) -> i64 {

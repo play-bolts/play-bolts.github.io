@@ -17,6 +17,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
+    collections::VecDeque,
     net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
@@ -78,7 +79,7 @@ async fn health(State(state): State<Shared>) -> Response {
     }
 }
 fn peer(h: &Hub, address: SocketAddr, headers: &HeaderMap) -> String {
-    if h.config.proxy {
+    let value = if h.config.proxy {
         headers
             .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
@@ -89,7 +90,8 @@ fn peer(h: &Hub, address: SocketAddr, headers: &HeaderMap) -> String {
             .to_owned()
     } else {
         address.ip().to_string()
-    }
+    };
+    crate::limits::canonical_ip(&value)
 }
 fn origin(headers: &HeaderMap) -> Option<&str> {
     headers.get("origin").and_then(|s| s.to_str().ok())
@@ -365,6 +367,9 @@ async fn upgrade(
     if h.connections.len() >= 256 || !h.allow(format!("upgrade:{ip}"), 60, 60) {
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     }
+    let Some(ip_slot) = h.connection_limits.acquire(&ip) else {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    };
     let ua = headers
         .get("user-agent")
         .and_then(|v| v.to_str().ok())
@@ -377,6 +382,7 @@ async fn upgrade(
         .max_frame_size(8192)
         .on_upgrade(move |socket| async move {
             let _slot = slot;
+            let _ip_slot = ip_slot;
             serve_socket(socket, state, ip, ua).await;
         })
 }
@@ -392,15 +398,21 @@ async fn probe(
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     };
     let mut h = state.lock().await;
-    let key = format!("probe:{}", peer(&h, address, &headers));
+    if h.failed || h.shutting_down { return unavailable(); }
+    let ip = peer(&h, address, &headers);
+    let key = format!("probe:{ip}");
     if !h.allowed_origin(origin(&headers)) || !h.allow(key, 60, 60) {
         return StatusCode::FORBIDDEN.into_response();
     }
+    let Some(ip_slot) = h.connection_limits.acquire(&ip) else {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    };
     drop(h);
     ws.max_message_size(256)
         .max_frame_size(256)
         .on_upgrade(move |mut socket| async move {
             let _slot = slot;
+            let _ip_slot = ip_slot;
             let _ = tokio::time::timeout(Duration::from_secs(4), async {
                 for _ in 0..3 {
                     let Some(Ok(Message::Text(text))) = socket.recv().await else {
@@ -436,6 +448,9 @@ mod community_tests;
 #[cfg(test)]
 #[path = "visitor_api_tests.rs"]
 mod visitor_tests;
+#[cfg(test)]
+#[path = "connection_limit_tests.rs"]
+mod connection_limit_tests;
 
 /// Decode bounded control messages once, before taking the shared simulation
 /// lock. High-rate inputs have a separate compact binary representation.
@@ -574,6 +589,11 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
         let mut h = state.lock().await;
         if h.failed || h.shutting_down { return; }
         if let Err(e) = h.register(&player, cid.clone(), tx.clone(), cancel.clone(), &ip, &ua) {
+            if e.to_string() == "ip_seat_limit" {
+                drop(h);
+                let _ = socket.send(Message::Text(error("ip_seat_limit", "This network already has four players or reserved seats.").to_string().into())).await;
+                return;
+            }
             tracing::error!(error=%e,"connection persistence failed");
             h.fail();
             return;
@@ -586,6 +606,7 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
     tokio::pin!(idle);
     let mut ping = tokio::time::interval(Duration::from_secs(3));
     ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut received_times = VecDeque::new();
     loop {
         tokio::select! {
          _ = cancelled.changed() => break,
@@ -598,10 +619,15 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
          },
          received=incoming.next()=>{
           idle.as_mut().reset(tokio::time::Instant::now()+Duration::from_secs(30));
-          let frame=match received {Some(Ok(frame @ (Message::Text(_) | Message::Binary(_))))=>frame,Some(Ok(Message::Ping(v)))=>{if !tx.control(Message::Pong(v)){break;}continue;},Some(Ok(Message::Pong(v)))=>{state.lock().await.pong(&player,&cid,&v,Instant::now());continue;},_=>break};
+          let Some(Ok(frame))=received else {break;};
+          // Control frames consume the same budget as inputs and JSON. Count
+          // before replying, so Ping/Pong floods cannot bypass the quota.
+          let now=Instant::now();while received_times.front().is_some_and(|at|now.duration_since(*at)>=Duration::from_secs(1)){received_times.pop_front();}
+          if received_times.len()>=150 {let _=tx.send(error("rate_limited","Too many messages."));break;}
+          received_times.push_back(now);
+          let frame=match frame {frame @ (Message::Text(_) | Message::Binary(_))=>frame,Message::Ping(v)=>{if !tx.control(Message::Pong(v)){break;}continue;},Message::Pong(v)=>{state.lock().await.pong(&player,&cid,&v,now);continue;},_=>break};
           let decoded=decode_client_message(frame);
           let mut h=state.lock().await;if h.failed||h.shutting_down||!h.connections.get(&player).is_some_and(|e|e.cid==cid){break;}
-          if !h.allow(format!("ws:{cid}"),150,1){h.send(&player,error("rate_limited","Too many messages."));break;}
           let message=match decoded {Ok(message)=>message,Err(())=>{h.send(&player,error("invalid_message","Invalid message."));continue;}};
           let result:crate::hub::HResult<()>=match message {
            ClientMessage::Input(input)=>{h.input(&player,input);Ok(())},
@@ -613,7 +639,7 @@ async fn serve_socket(mut socket: WebSocket, state: Shared, ip: String, ua: Stri
            ClientMessage::Control(ClientControl::Leave{})=>h.leave(&player,"left",true),
            ClientMessage::Control(ClientControl::Ping{nonce})=>{h.send(&player,json!({"type":"pong","nonce":nonce}));Ok(())},
           };
-          if let Err(e)=result{let code=e.to_string();let message=match code.as_str(){"lobby_full"=>"Lobby full.","lobby_missing"=>"Lobby closed.","not_joined"=>"Join a lobby first.","rate_limited"=>"Try again shortly.","server_busy"=>"Server full.","invalid_message"=>"Invalid message.",_=>{tracing::error!(error=%e,"persistent game operation failed");h.fail();break;}};h.send(&player,error(&code,message));}
+          if let Err(e)=result{let code=e.to_string();let message=match code.as_str(){"lobby_full"=>"Lobby full.","lobby_missing"=>"Lobby closed.","not_joined"=>"Join a lobby first.","rate_limited"=>"Try again shortly.","ip_seat_limit"=>"This network already has four players or reserved seats.","server_busy"=>"Server full.","invalid_message"=>"Invalid message.",_=>{tracing::error!(error=%e,"persistent game operation failed");h.fail();break;}};h.send(&player,error(&code,message));}
          }
         }
     }

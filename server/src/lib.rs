@@ -3,6 +3,7 @@ pub mod db;
 pub mod storage;
 mod cluster;
 pub mod hub;
+mod limits;
 pub mod hitboxes;
 mod hitbox_motion;
 mod hitbox_arms;

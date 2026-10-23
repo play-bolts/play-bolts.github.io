@@ -1,4 +1,5 @@
 use crate::transport::{Outbox, WirePayload};
+use crate::limits::{ConnectionLimits, SEATS_PER_IP, canonical_ip};
 use crate::{
     bots::{BotBrain, Navigation},
     db::{self, EventRow},
@@ -12,6 +13,7 @@ use sha2::Sha256;
 use std::{
     collections::{HashMap, VecDeque},
     path::PathBuf,
+    sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
@@ -75,6 +77,7 @@ pub struct Endpoint {
     pub cid: String,
     pub tx: Outbox,
     pub cancel: watch::Sender<Option<String>>,
+    ip_hash: String,
     latency: Latency,
 }
 const PING_STALE: Duration = Duration::from_secs(10);
@@ -117,6 +120,8 @@ impl Latency {
 struct Member {
     actor: u32,
     bot: Option<BotBrain>,
+    // Retained during reconnect grace; bots never consume an IP seat.
+    ip_hash: Option<String>,
     membership: String,
     disconnected: Option<Instant>,
     chat: VecDeque<Instant>,
@@ -196,6 +201,7 @@ pub struct Hub {
     pub db: Storage,
     rooms: HashMap<String, Room>,
     pub connections: HashMap<String, Endpoint>,
+    pub(crate) connection_limits: Arc<ConnectionLimits>,
     pub failed: bool,
     pub shutting_down: bool,
     rate: HashMap<String, VecDeque<Instant>>,
@@ -211,6 +217,7 @@ impl Hub {
             db,
             rooms: HashMap::new(),
             connections: HashMap::new(),
+            connection_limits: Arc::new(ConnectionLimits::default()),
             failed: false,
             shutting_down: false,
             rate: HashMap::new(),
@@ -277,6 +284,12 @@ impl Hub {
         ua: &str,
     ) -> HResult<()> {
         if self.shutting_down { return Err("server_busy".into()); }
+        let ip_hash = self.fingerprint(&canonical_ip(ip));
+        // Validate an IP change before replacing a live identity. Its retained
+        // seat moves atomically, and a full destination cannot evict the old tab.
+        if self.rooms.values().any(|room| room.members.contains_key(player)) {
+            self.check_ip_seat(player, &ip_hash)?;
+        }
         if let Some(old) = self.connections.remove(player) {
             let _ = old
                 .tx
@@ -285,16 +298,29 @@ impl Hub {
             self.db.disconnect(&old.cid, "session_replaced")?;
         }
         self.db
-            .connect(&cid, player, &self.fingerprint(ip), &self.fingerprint(ua))?;
+            .connect(&cid, player, &ip_hash, &self.fingerprint(ua))?;
+        for room in self.rooms.values_mut() {
+            if let Some(member) = room.members.get_mut(player) {
+                member.ip_hash = Some(ip_hash.clone());
+            }
+        }
         self.connections.insert(
             player.into(),
             Endpoint {
                 cid,
                 tx,
                 cancel,
+                ip_hash,
                 latency: Latency::default(),
             },
         );
+        Ok(())
+    }
+    fn check_ip_seat(&self, player: &str, ip_hash: &str) -> HResult<()> {
+        let occupied = self.rooms.values().flat_map(|room| room.members.iter())
+            .filter(|(id, member)| id.as_str() != player && member.bot.is_none() && member.ip_hash.as_deref() == Some(ip_hash))
+            .count();
+        if occupied >= SEATS_PER_IP { return Err("ip_seat_limit".into()); }
         Ok(())
     }
     /// Only transport control replies to an outstanding random server challenge
@@ -421,6 +447,9 @@ impl Hub {
         if self.shutting_down {
             return Err("server_busy".into());
         }
+        let ip_hash = self.connections.get(player).filter(|endpoint| endpoint.cid == cid)
+            .ok_or("not_joined")?.ip_hash.clone();
+        self.check_ip_seat(player, &ip_hash)?;
         if let Some(room) = self
             .rooms
             .values_mut()
@@ -503,6 +532,7 @@ impl Hub {
             Member {
                 actor,
                 bot: None,
+                ip_hash: Some(ip_hash),
                 membership,
                 disconnected: None,
                 chat: VecDeque::new(),
@@ -939,6 +969,7 @@ fn reconcile_bots(
                 bot: Some(BotBrain::new(
                     actor.wrapping_mul(19417) ^ room.sim.tick_number as u32,
                 )),
+                ip_hash: None,
                 membership,
                 disconnected: None,
                 chat: VecDeque::new(),

@@ -183,6 +183,60 @@ Run `node --import tsx scripts/test-multiplayer-clients.ts` after building the l
 
 The complete HTTP/WebSocket shapes are in [PROTOCOL.md](PROTOCOL.md). Authentication travels in the first WebSocket message rather than a URL parameter. Browser-origin checks, bounded messages and chat limits apply before broadcast. Chat is room-scoped, limited to 256 Unicode characters and three messages per five seconds; the UI renders chat bodies as text.
 
+## Abuse protection and verification
+
+The application combines endpoint quotas, connection and seat caps, and bounded WebSocket traffic. [The directory limiter](gamelift/limits.go) canonicalizes IPv4-mapped and equivalent IPv6 addresses, uses CloudFront's appended viewer address, and applies limits before returning cached responses. The proxy replaces downstream forwarding headers with that trusted address. Rust status requests retain the viewer address, so one caller cannot exhaust a shared anonymous status quota.
+
+| Control | Limit and scope |
+| --- | --- |
+| Directory lobby, status and health reads | 120 requests/minute/IP **per endpoint**; HTTP 429 includes `Retry-After`. |
+| Anonymous session creation | 30 requests/minute/IP. |
+| Feedback | 3 requests/minute/IP and 5 accepted submissions/hour/IP; the hourly quota persists in SQLite. |
+| Visitor tracking / leaderboard | 60 / 30 requests/minute/IP. |
+| Rust WebSocket upgrades | Game upgrades and probes each allow 60/minute/IP; 12 simultaneous connections/IP, shared by both routes and sockets awaiting authentication; 256 total sockets/process. |
+| Human and spectator seats | 4/IP across all lobbies in one Rust process, including disconnected seats during reconnect grace. |
+| WebSocket messages | 150/second/connection, including Ping/Pong control frames; excess closes the connection. |
+| Chat | 3 messages/5 seconds/lobby membership, at most 256 characters. |
+
+The concurrent caps are defined in [limits.rs](src/limits.rs). Closing or rejecting a socket releases its connection permit. Explicit leave releases a seat immediately; unexpected disconnect retains it for the configured reconnect grace. Reconnecting or changing rooms with the same identity does not require an additional seat. Moving an identity to a full IP quota rejects the new connection without evicting the existing one. Server-owned AI do not consume IP seats.
+
+These are per-process, per-address limits. People behind one NAT share the 12-connection and four-seat quotas; IPv6 addresses are canonicalized but not grouped by subnet. Independent IP addresses retain independent allowances. Limits do not establish that a client is human: anonymous identities remain available, and there is no CAPTCHA, verified-account requirement, managed Bot Control, or detection of automation distributed across many addresses. Origin checks restrict browsers; they do not authenticate non-browser clients. Rate counters reset on process restart except for the persisted hourly feedback quota. The Go quota table is bounded to 4096 entries and denies new keys while full until entries expire.
+
+### CloudFront edge limits
+
+[abuse-protection.template.json](../infra/abuse-protection.template.json) defines a default-allow WAF WebACL for the API distribution. Its rules aggregate the actual source IP, not a caller-supplied forwarded header, over 60-second evaluation windows: feedback POSTs have a limit of 20; session/join/WebSocket/probe requests share a limit of 120 excluding OPTIONS; all `/api/` requests share a limit of 600. These rules inspect HTTP requests and WebSocket handshakes, not messages inside an established WebSocket. The Rust message and concurrency limits remain necessary. Regional connections would go directly to GameLift and are outside this API distribution's WAF; overseas hosting remains disabled.
+
+WAF responses use HTTP 429, `Retry-After: 60`, `X-Bolts-Rate-Limit: edge`, and the production browser's CORS headers. WAF rate enforcement is approximate and may lag changes in traffic; use application tests for exact thresholds and a separate edge test for observed WAF blocking. [AWS rate-based rule caveats](https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-rate-based-caveats.html).
+
+Future backend CloudFormation changes and any California migration must explicitly preserve the live `DistributionConfig.WebACLId` ARN. The backend deployment helper refuses to omit or change active protection, including a final check before executing a domain change set. The standalone association creates intentional drift from the original backend template; synchronize that property deliberately before future infrastructure updates. The WAF costs approximately $8/month for the ACL and three rules, plus $0.60 per million requests; the temporary QA rule adds one prorated $1/month rule. [AWS WAF pricing](https://aws.amazon.com/waf/pricing/).
+
+Use a fresh state directory for each rollout or update. Planning reads AWS and saves the exact configuration and rollback association; applying refuses concurrent distribution changes and changes only the reviewed WebACL association:
+
+```sh
+python3 scripts/deploy-abuse-protection.py --plan --state-dir temp/abuse-protection/review
+python3 scripts/deploy-abuse-protection.py --apply --state-dir temp/abuse-protection/review
+python3 scripts/deploy-abuse-protection.py --check --state-dir temp/abuse-protection/review
+```
+
+For an isolated live edge check, create a separate plan with `--qa-ip YOUR_PUBLIC_IPV4/32`, apply it, then use `--probe-qa` against that same state directory. The temporary rule matches only that source IP and one random, otherwise unused QA path. The probe sends at most 180 QA-path GETs, two seconds apart, verifies an edge 429 and ordinary health/CORS, and saves `qa-probe.json`. Remove the temporary rule afterward by planning in a fresh directory **without** `--qa-ip`, applying, and checking. `--rollback` against a saved rollout directory restores its previous WebACL association while preserving other current distribution settings; the WAF stack remains and continues to incur charges.
+
+### Local and live regression checks
+
+Run the local checks with permission to bind loopback sockets:
+
+```sh
+cargo test --locked --manifest-path server/Cargo.toml connection_limit_tests
+cargo test --locked --manifest-path server/Cargo.toml hub_tests
+cargo build --locked --manifest-path server/Cargo.toml
+(cd server/gamelift && BOLTS_TEST_SERVER="$(pwd)/../target/debug/bolts-server" go test -race ./...)
+python3 -m unittest discover -s tests -p 'test_abuse_protection.py'
+python3 -m unittest discover -s tests -p 'test_backend_waf_preservation.py'
+```
+
+These cover independent clients/endpoints, canonical addresses and spoofed forwarding prefixes, cached-read quotas, mixed expiry windows, concurrent admission, real Rust status forwarding, failed authentication and probe cleanup, cross-room seat limits, reconnect/IP changes, and Ping/Pong floods. The WAF Python tests validate scopes, guarded rollout/rollback and response headers without sending attack traffic.
+
+The explicitly requested live check is `node --import tsx scripts/test-abuse-backend.ts --remote-qa`. It refuses occupied lobbies, uses five temporary spectator identities, checks the 13th socket and fifth seat rejections, verifies explicit-leave recovery and directory throttling, and confirms normal health/status still work. It creates ordinary QA identity/activity records, cleans up sockets, has a 150-second deadline, and saves `temp/abuse-protection/backend-live-tests.json`. This bounded check does not establish capacity under sustained or distributed attacks. Deployment status belongs in [DEPLOYED.md](../infra/DEPLOYED.md); source configuration alone does not prove live enforcement.
+
 ## Identity and persisted data
 
 The server issues a random UUID plus a separate opaque secret. The browser keeps the secret in origin-scoped local storage; SQLite stores its SHA-256 hash. A UUID or display name alone cannot authenticate. Clearing browser storage creates a new anonymous identity. There is no browser fingerprinting or IP-derived player ID, so an IP change does not change the player's identity.

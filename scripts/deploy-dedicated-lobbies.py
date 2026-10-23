@@ -16,6 +16,12 @@ OUT = ROOT / 'temp/dedicated-lobbies'
 BUILD = ROOT / 'artifacts/gamelift'
 EXPECTED = 'e3c3a4c105618faa13d89843566de75ae1f1a399364066f235349bde60bd6ae4'
 FLEET = 'fleet-84aaebc2-b484-4822-83c1-3efefb720c06'
+EXPECTED_LOBBIES = [('Deathmatch', 6), ('1v1 Alpha', 2), ('1v1 Beta', 2), ('1v1 Delta', 2)]
+# Application wrappers can supply a reviewed installer and additional checks
+# while retaining the same archive validation and S3/SSM deployment path.
+INSTALLER = None
+VALIDATE_OBSERVED = None
+VALIDATE_BUILD = None
 spec = importlib.util.spec_from_file_location('deploy', ROOT / 'scripts/deploy-gamelift.py')
 deploy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deploy)
@@ -36,8 +42,16 @@ db.execute('PRAGMA query_only=ON')
 credentials=db.execute('SELECT id,credential_hash FROM players WHERE is_bot=0 ORDER BY id').fetchall()
 integrity=db.execute('PRAGMA integrity_check').fetchone()[0]
 foreign_keys=len(db.execute('PRAGMA foreign_key_check').fetchall())
+schema_digest=hashlib.sha256(json.dumps(db.execute("SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name").fetchall()).encode()).hexdigest()
 db.close()
-print(json.dumps({'release':path.rsplit('/',1)[1],'humans':sum(r['players'] for r in rooms),'config':config,'catalog':catalog,'identities':len(credentials),'credentialsDigest':hashlib.sha256(json.dumps(credentials).encode()).hexdigest(),'integrity':integrity,'foreignKeyErrors':foreign_keys,'binaries':{name:hashlib.sha256(Path(path,name).read_bytes()).hexdigest() for name in ('bolts-host','bolts-server')}}))
+env_path=Path('/etc/bolts.env')
+env_data=env_path.read_bytes()
+caps=re.findall(rb'(?m)^BOLTS_MAX_ROOMS=([^\r\n]*)$',env_data)
+environment={'maxRooms':caps[0].decode() if len(caps)==1 else None,
+ 'adminKeyConfigured':bool(re.search(rb'(?m)^BOLTS_ADMIN_API_KEY=[^\r\n]+$',env_data)),
+ 'mode':oct(env_path.stat().st_mode & 0o777),
+ 'otherValuesDigest':hashlib.sha256(re.sub(rb'(?m)^BOLTS_MAX_ROOMS=[^\r\n]*$',b'',env_data)).hexdigest()}
+print(json.dumps({'release':path.rsplit('/',1)[1],'humans':sum(r['players'] for r in rooms),'config':config,'catalog':catalog,'identities':len(credentials),'credentialsDigest':hashlib.sha256(json.dumps(credentials).encode()).hexdigest(),'integrity':integrity,'foreignKeyErrors':foreign_keys,'schemaDigest':schema_digest,'environment':environment,'binaries':{name:hashlib.sha256(Path(path,name).read_bytes()).hexdigest() for name in ('bolts-host','bolts-server')}}))
 BOLTS_INSPECT
 '''
 
@@ -60,6 +74,8 @@ def main():
         return
     if observed['release'] != EXPECTED or observed['integrity'] != 'ok' or observed['foreignKeyErrors']:
         raise deploy.DeploymentError('Unexpected live release or database health')
+    if VALIDATE_OBSERVED:
+        VALIDATE_OBSERVED(observed, None)
     config = observed['config']
     if config['fleet'] != FLEET or config['api'] != 'https://bolts-api.christopherkrapu.com' or config.get('extraLobbiesEnabled') is not False:
         raise deploy.DeploymentError('Unexpected live hosting configuration')
@@ -73,8 +89,10 @@ def main():
         if deploy.digest(data) != provenance['outputs'][name] or data[:4] != b'\x7fELF':
             raise deploy.DeploymentError('Linux binary mismatch: ' + name)
         files[name] = data
+    if VALIDATE_BUILD:
+        VALIDATE_BUILD(provenance, files)
     archive = OUT / 'directory.tar.gz'
-    release = deploy.directory_archive(files, config, FLEET, archive)
+    release = deploy.directory_archive(files, config, FLEET, archive, installer=INSTALLER)
     state_path = OUT / 'release.json'
     previous = json.loads(state_path.read_text()) if state_path.exists() else {}
     if previous.get('commandId'):
@@ -82,6 +100,8 @@ def main():
     state = {'release': release, 'expectedRelease': EXPECTED, 'backend': existing,
              'binaries': {name: deploy.digest(data) for name, data in files.items()},
              'before': observed, 'sourceFiles': provenance['sourceFiles']}
+    if INSTALLER is not None:
+        state['installerSha256'] = deploy.digest(INSTALLER)
     deploy.save(state_path, state)
     print(json.dumps({'preparedRelease': release, 'instance': existing['instance']}), flush=True)
     if not args.apply:
@@ -103,9 +123,11 @@ def main():
     deploy.save(OUT / 'postrelease.json', dict(after, commandId=command))
     if after['release'] != release or after['binaries'] != state['binaries'] or after['integrity'] != 'ok' or after['foreignKeyErrors']:
         raise deploy.DeploymentError('Postrelease verification failed; inspect evidence')
-    expected = [('Deathmatch', 6), ('1v1 Alpha', 2), ('1v1 Beta', 2), ('1v1 Delta', 2)]
+    expected = EXPECTED_LOBBIES
     if [(r['name'], r['capacity']) for r in after['catalog']['lobbies']] != expected or after['catalog']['locations']:
         raise deploy.DeploymentError('Unexpected dedicated lobby inventory')
+    if VALIDATE_OBSERVED:
+        VALIDATE_OBSERVED(observed, after)
     print(json.dumps({'verifiedRelease': release, 'lobbies': expected,
                       'existingCredentialsUnchanged': after['credentialsDigest'] == observed['credentialsDigest']}), flush=True)
 

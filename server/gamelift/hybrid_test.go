@@ -172,14 +172,20 @@ func TestRealRustOregonAdmissionAndProbeThroughDirectory(t *testing.T) {
 	}
 	err = json.NewDecoder(response.Body).Decode(&list)
 	response.Body.Close()
-	if err != nil || len(list.Lobbies) != 4 || list.Lobbies[0].Name != "Deathmatch" || list.Lobbies[0].Location != "or" || list.Lobbies[0].Managed {
+	if err != nil || len(list.Lobbies) != 6 {
 		t.Fatalf("Oregon list: %+v %v", list, err)
 	}
-	for i, name := range []string{"1v1 Alpha", "1v1 Beta", "1v1 Delta"} {
-		row := list.Lobbies[i+1]
-		if row.Name != name || row.Capacity != 2 || row.Managed || row.Location != "or" {
-			t.Fatalf("dedicated duel room: %+v", row)
+	ids := map[string]bool{}
+	for i, name := range []string{"Deathmatch 1", "Deathmatch 2", "Deathmatch 3", "1v1 Alpha", "1v1 Beta", "1v1 Delta"} {
+		row := list.Lobbies[i]
+		capacity := int32(6)
+		if i >= 3 {
+			capacity = 2
 		}
+		if row.Name != name || row.Capacity != capacity || row.Players != 0 || row.Managed || row.Location != "or" || row.ID == "" || ids[row.ID] {
+			t.Fatalf("dedicated local room: %+v", row)
+		}
+		ids[row.ID] = true
 	}
 	if strings.Join(list.Locations, ",") != "lon,sg,sp" {
 		t.Fatalf("managed picker: %+v", list.Locations)

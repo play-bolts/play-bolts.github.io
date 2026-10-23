@@ -37,7 +37,9 @@ async function handshake(){
 try{
  const listing=await fetcher(origin+'/api/lobbies');assert.equal(listing.status,200);
  const catalog=await listing.json();assert.deepEqual(catalog.locations,[]);
- assert.equal(catalog.lobbies.length,4);assert.ok(catalog.lobbies.every((room:any)=>room.players===0),'Production tests require every human seat to be empty.');
+ assert.deepEqual(catalog.lobbies.map((room:any)=>[room.name,room.capacity]),[['Deathmatch 1',6],['Deathmatch 2',6],['Deathmatch 3',6],['1v1 Alpha',2],['1v1 Beta',2],['1v1 Delta',2]]);
+ assert.equal(new Set(catalog.lobbies.map((room:any)=>room.id)).size,6);
+ assert.ok(catalog.lobbies.every((room:any)=>room.players===0&&!room.managed&&room.location==='or'),'Production tests require empty local rooms.');
  check('normal directory and disabled overseas regions');
  // Open together so all remain within the five-second unauthenticated timeout.
  const pending=await Promise.allSettled(Array.from({length:12},()=>handshake()));

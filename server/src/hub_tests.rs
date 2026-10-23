@@ -226,8 +226,8 @@ fn dedicated_duels_enforce_two_seats_without_bots_and_keep_reconnect_reservation
     let hub = &mut fixture.hub;
     let list = hub.lobbies().unwrap();
     let rows = list["lobbies"].as_array().unwrap();
-    assert_eq!(rows.len(), 4);
-    for (row, name) in rows.iter().zip(["Deathmatch", "1v1 Alpha", "1v1 Beta", "1v1 Delta"]) {
+    assert_eq!(rows.len(), 6);
+    for (row, name) in rows.iter().zip(["Deathmatch 1", "Deathmatch 2", "Deathmatch 3", "1v1 Alpha", "1v1 Beta", "1v1 Delta"]) {
         assert_eq!(row["name"], name);
     }
     let deathmatch = rows[0]["id"].as_str().unwrap();
@@ -235,7 +235,7 @@ fn dedicated_duels_enforce_two_seats_without_bots_and_keep_reconnect_reservation
     let dm = waiting.join(hub, Some(deathmatch));
     let mut dm_actor = dm["actorId"].clone();
     assert_eq!(bot_count(&dm), 2);
-    for row in &rows[1..] {
+    for row in &rows[3..] {
         assert_eq!(row["capacity"], 2);
         let id = row["id"].as_str().unwrap();
         let mut first = Peer::fresh(hub);
@@ -285,17 +285,51 @@ fn full_dedicated_inventory_opens_one_deathmatch_without_adding_duels() {
     }
     let next=hub.lobbies().unwrap();
     let rows=next["lobbies"].as_array().unwrap();
-    assert_eq!(rows.len(),5);
+    assert_eq!(rows.len(),7);
     assert_eq!(rows.iter().filter(|r| r["capacity"]==2).count(),3);
-    let overflow=rows.iter().find(|r| r["name"]=="Deathmatch 2").unwrap();
+    let overflow=rows.iter().find(|r| r["name"]=="Deathmatch 4").unwrap();
     assert_eq!(overflow["capacity"],6);assert_eq!(overflow["players"],0);
     assert_eq!(hub.lobbies().unwrap(),next,"polling never creates duplicate spare rooms");
     let mut arriving=Peer::fresh(hub);
     assert_eq!(arriving.join(hub,None)["lobbyId"],overflow["id"]);
-    assert_eq!(hub.online_count(),13);
+    assert_eq!(hub.online_count(),25);
     hub.config.empty_seconds=0.0;hub.leave(&arriving.player,"left",false).unwrap();hub.tick().unwrap();
     assert_eq!(count(hub,"SELECT count(*) FROM lobbies WHERE closed_at IS NOT NULL"),1);
-    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),5,"a spare is recreated only because all regular rooms remain full");
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),7,"a spare is recreated only because all regular rooms remain full");
+}
+
+#[test]
+fn six_fixed_lobbies_keep_their_ids_and_capacities_and_never_overflow_at_the_default_cap() {
+    let mut fixture = Fixture::new(6);
+    let hub = &mut fixture.hub;
+    let original = hub.lobbies().unwrap();
+    let rows = original["lobbies"].as_array().unwrap();
+    assert_eq!(rows.len(), 6);
+    assert_eq!(rows.iter().map(|row| row["name"].as_str().unwrap()).collect::<Vec<_>>(),
+        ["Deathmatch 1", "Deathmatch 2", "Deathmatch 3", "1v1 Alpha", "1v1 Beta", "1v1 Delta"]);
+    assert_eq!(rows.iter().map(|row| row["capacity"].as_u64().unwrap()).collect::<Vec<_>>(), [6, 6, 6, 2, 2, 2]);
+    let mut peers = Vec::new();
+    for row in rows {
+        for _ in 0..row["capacity"].as_u64().unwrap() {
+            let mut peer = Peer::fresh(hub);
+            peer.join(hub, row["id"].as_str());
+            peers.push(peer);
+        }
+    }
+    assert_eq!(hub.online_count(), 24);
+    let mut arriving = Peer::fresh(hub);
+    assert_eq!(hub.join(&arriving.player, &arriving.connection, None, "Extra", Faction::British, false).unwrap_err().to_string(), "server_busy");
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(), 6);
+    hub.leave(&peers[18].player, "left", false).unwrap();
+    assert_eq!(hub.join(&arriving.player, &arriving.connection, None, "Extra", Faction::British, false).unwrap_err().to_string(), "server_busy", "quick join cannot use an available duel seat");
+    hub.leave(&peers[6].player, "left", false).unwrap();
+    assert_eq!(arriving.join(hub, None)["lobbyId"], rows[1]["id"], "quick join fills the available six-player room");
+    for peer in &peers { hub.leave(&peer.player, "left", false).unwrap(); }
+    hub.leave(&arriving.player, "left", false).unwrap();
+    hub.config.empty_seconds = 0.0;
+    hub.tick().unwrap();
+    assert_eq!(hub.lobbies().unwrap(), original, "all six fixed rooms survive empty expiry with unchanged IDs");
+    assert_eq!(count(hub, "SELECT count(*) FROM lobbies WHERE closed_at IS NOT NULL"), 0);
 }
 
 #[test]
@@ -1055,25 +1089,28 @@ fn shutdown_finishes_connected_and_reconnect_grace_members_exactly_once() {
 
 #[test]
 fn overflow_counts_reservations_ignores_bots_and_respects_room_cap() {
-    let mut fixture=Fixture::new(5);let hub=&mut fixture.hub;
-    let first=hub.lobbies().unwrap()["lobbies"][0]["id"].as_str().unwrap().to_owned();
+    let mut fixture=Fixture::new(7);let hub=&mut fixture.hub;
+    let initial=hub.lobbies().unwrap();
+    let first=initial["lobbies"][0]["id"].as_str().unwrap().to_owned();
     let mut peers=Vec::new();
-    for _ in 0..6 { let mut peer=Peer::fresh(hub);peer.join(hub,Some(&first));peers.push(peer); }
+    for row in initial["lobbies"].as_array().unwrap().iter().filter(|row|row["capacity"]==6) {
+        for _ in 0..6 { let mut peer=Peer::fresh(hub);peer.join(hub,row["id"].as_str());peers.push(peer); }
+    }
     hub.disconnected(&peers[0].player,&peers[0].connection).unwrap();
     let rows=hub.lobbies().unwrap();
-    let second=rows["lobbies"].as_array().unwrap().iter().find(|r|r["name"]=="Deathmatch 2").unwrap()["id"].as_str().unwrap().to_owned();
+    let second=rows["lobbies"].as_array().unwrap().iter().find(|r|r["name"]=="Deathmatch 4").unwrap()["id"].as_str().unwrap().to_owned();
     for _ in 0..6 { let mut peer=Peer::fresh(hub);assert_eq!(peer.join(hub,None)["lobbyId"],second);peers.push(peer); }
     let denied=Peer::fresh(hub);
     assert_eq!(hub.join(&denied.player,&denied.connection,None,"Extra",Faction::British,false).unwrap_err().to_string(),"server_busy");
-    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),5);
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),7);
     hub.leave(&peers[1].player,"left",false).unwrap();
     let mut next=Peer::fresh(hub);assert_eq!(next.join(hub,None)["lobbyId"],first);
     // Every spare room is reusable and idle overflow expires; fixed rooms retain IDs.
-    for peer in &peers[6..] {hub.leave(&peer.player,"left",false).unwrap();}
+    for peer in &peers[18..] {hub.leave(&peer.player,"left",false).unwrap();}
     hub.config.empty_seconds=0.0;hub.tick().unwrap();
-    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),5);
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),7);
     hub.leave(&next.player,"left",false).unwrap();hub.tick().unwrap();
-    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),4);
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),6);
 }
 
 #[test]
@@ -1084,9 +1121,10 @@ fn full_duels_and_temporary_ai_do_not_trigger_overflow() {
     for row in rows.iter().filter(|r|r["capacity"]==2) {
         for _ in 0..2 {let mut p=Peer::fresh(hub);p.join(hub,row["id"].as_str());peers.push(p);}
     }
-    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),4);
-    let mut first=Peer::fresh(hub);assert_eq!(bot_count(&first.join(hub,None)),2);
-    let mut second=Peer::fresh(hub);assert_eq!(bot_count(&second.join(hub,None)),2);
-    let listed=hub.lobbies().unwrap();assert_eq!(listed["lobbies"].as_array().unwrap().len(),4);
-    assert_eq!(listed["lobbies"][0]["players"],2);assert_eq!(listed["lobbies"][0]["bots"],2);
+    assert_eq!(hub.lobbies().unwrap()["lobbies"].as_array().unwrap().len(),6);
+    let mut first=Peer::fresh(hub);let joined=first.join(hub,None);assert_eq!(bot_count(&joined),2);
+    let mut second=Peer::fresh(hub);let second_joined=second.join(hub,None);assert_eq!(bot_count(&second_joined),2);assert_eq!(second_joined["lobbyId"],joined["lobbyId"]);
+    let listed=hub.lobbies().unwrap();assert_eq!(listed["lobbies"].as_array().unwrap().len(),6);
+    let occupied=listed["lobbies"].as_array().unwrap().iter().find(|row|row["id"]==joined["lobbyId"]).unwrap();
+    assert_eq!(occupied["players"],2);assert_eq!(occupied["bots"],2);
 }

@@ -392,11 +392,11 @@ BOLTS_INSPECT
 """
 
 
-def directory_archive(files, config, fleet, destination):
+def directory_archive(files, config, fleet, destination, installer=None):
     finalized = dict(config, fleet=fleet)
     payload = {name: files[name] for name in ('bolts-host', 'bolts-server')}
     payload['host.json'] = (json.dumps(finalized, indent=2) + '\n').encode()
-    payload['install-directory.sh'] = (ROOT / 'infra/gamelift/install-directory.sh').read_bytes()
+    payload['install-directory.sh'] = installer if installer is not None else (ROOT / 'infra/gamelift/install-directory.sh').read_bytes()
     raw = io.BytesIO()
     with gzip.GzipFile(fileobj=raw, mode='wb', mtime=0) as compressed:
         with tarfile.open(fileobj=compressed, mode='w') as tar:

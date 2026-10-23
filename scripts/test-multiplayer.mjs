@@ -1,7 +1,7 @@
 /** Real HTTP/WebSocket integration against the Rust server. Node 22.13+.
  * BOLTS_TEST_URL=https://host runs the same client checks against a deployment.
- * With no URL, build server/target/debug/bolts-server first; an isolated DB and
- * short idle/reconnection timeouts are used. No simulation or teleport hooks.
+ * With no URL, build server/target/debug/bolts-server first or set BOLTS_TEST_SERVER;
+ * an isolated DB and short idle/reconnection timeouts are used. No simulation or teleport hooks.
  */
 import assert from 'node:assert/strict';
 import {decodeMessage,decodeSnapshot,encodeInput,PROTOCOL_VERSION} from '../src/networkCodec.ts';
@@ -90,7 +90,7 @@ async function legitKill(shooter,victim){
 try {
  if(!external){
   temporary=await mkdtemp(join(tmpdir(),'bolts-network-'));dbPath=join(temporary,'events.sqlite');const port=await unusedPort();base=`http://127.0.0.1:${port}`;
-  backend=spawn(resolve(root,'server/target/debug/bolts-server'),[],{cwd:root,env:{...process.env,BOLTS_BIND:`127.0.0.1:${port}`,BOLTS_DB:dbPath,BOLTS_EMPTY_SECONDS:'2',BOLTS_RECONNECT_SECONDS:'1',BOLTS_ORIGINS:'http://127.0.0.1:5173',BOLTS_TRUST_PROXY:'true',BOLTS_ADMIN_API_KEY:''},stdio:['ignore','pipe','pipe']});
+  backend=spawn(resolve(root,process.env.BOLTS_TEST_SERVER??'server/target/debug/bolts-server'),[],{cwd:root,env:{...process.env,BOLTS_BIND:`127.0.0.1:${port}`,BOLTS_DB:dbPath,BOLTS_EMPTY_SECONDS:'2',BOLTS_RECONNECT_SECONDS:'1',BOLTS_ORIGINS:'http://127.0.0.1:5173',BOLTS_TRUST_PROXY:'true',BOLTS_ADMIN_API_KEY:''},stdio:['ignore','pipe','pipe']});
   backend.stdout.on('data',chunk=>{serverOutput=(serverOutput+chunk).slice(-12000);});backend.stderr.on('data',chunk=>{serverOutput=(serverOutput+chunk).slice(-12000);});backend.on('error',error=>{serverOutput+=error.message;});
  }
  await eventually(async()=>(await json('/api/health')).ok,15000,'server health');
@@ -99,13 +99,14 @@ try {
  check('seven independent persistent UUIDs and secret credentials',()=>{assert.equal(new Set(sessions.map(s=>s.playerId)).size,7);assert.equal(new Set(sessions.map(s=>s.token)).size,7);for(const session of sessions){assert.match(session.playerId,/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i);assert.ok(session.token.length>=32);assert.notEqual(session.token,session.playerId);}});
  const recovered=await json('/api/session',{token:sessions[0].token});check('session credential restores same UUID',()=>assert.equal(recovered.playerId,sessions[0].playerId));
  const firstList=await lobbies(),empty=firstList.find(lobby=>lobby.players===0&&lobby.capacity===6);assert.ok(empty,'an empty six-player lobby is available for isolated integration checks');
+ if(!external)check('three permanent Deathmatches and three dedicated duels',()=>{assert.deepEqual(firstList.map(lobby=>[lobby.name,lobby.capacity]),[['Deathmatch 1',6],['Deathmatch 2',6],['Deathmatch 3',6],['1v1 Alpha',2],['1v1 Beta',2],['1v1 Delta',2]]);assert.equal(new Set(firstList.map(lobby=>lobby.id)).size,6);});
  const again=await lobbies();check('refresh does not create redundant empty lobbies',()=>assert.deepEqual(again.map(l=>l.id).sort(),firstList.map(l=>l.id).sort()));
  for(let i=0;i<7;i++){const client=await new Client(sessions[i],`Net tester ${i+1}`).connect();clients.push(client);}
  for(let i=0;i<6;i++){const result=await clients[i].join(empty.id);assert.equal(result.type,'joined',`player ${i+1} joins first room`);assert.equal(result.lobbyId,empty.id);}
  await eventually(()=>clients[0].snapshot?.actors.length===6,5000,'six-player snapshot');
  const full=await clients[6].join(empty.id);check('explicit join rejects seventh player',()=>{assert.equal(full.type,'error');assert.equal(full.code,'lobby_full');});
- const overflow=await clients[6].join();check('quick join creates a six-slot overflow Deathmatch',()=>{assert.equal(overflow.type,'joined');assert.notEqual(overflow.lobbyId,empty.id);assert.equal(overflow.lobbyName,'Deathmatch 2');});
- const populated=await lobbies();check('all lobbies enforce their advertised capacity',()=>{assert.ok(populated.every(lobby=>[2,6].includes(lobby.capacity)&&lobby.players<=lobby.capacity));assert.equal(populated.find(l=>l.id===empty.id)?.players,6);assert.equal(populated.find(l=>l.id===overflow.lobbyId)?.players,1);});
+ const otherRoom=await clients[6].join();check('quick join uses another existing six-slot Deathmatch',()=>{assert.equal(otherRoom.type,'joined');assert.notEqual(otherRoom.lobbyId,empty.id);assert.ok(firstList.some(lobby=>lobby.id===otherRoom.lobbyId&&lobby.capacity===6));assert.match(otherRoom.lobbyName,/^Deathmatch [123]$/);});
+ const populated=await lobbies();check('all lobbies enforce their advertised capacity',()=>{assert.ok(populated.every(lobby=>[2,6].includes(lobby.capacity)&&lobby.players<=lobby.capacity));assert.equal(populated.find(l=>l.id===empty.id)?.players,6);assert.equal(populated.find(l=>l.id===otherRoom.lobbyId)?.players,1);assert.deepEqual(populated.map(lobby=>lobby.id).sort(),firstList.map(lobby=>lobby.id).sort());});
  check('snapshots reveal no persistent UUIDs or session credentials',()=>{for(const client of clients){const wire=JSON.stringify(client.snapshot);for(const session of sessions){assert.ok(!wire.includes(session.playerId));assert.ok(!wire.includes(session.token));}}});
 
  const literal='<img src=x onerror=alert(1)> ^1literal chat',roomAMarks=clients.map(client=>client.messages.length);
@@ -126,7 +127,7 @@ try {
  const disconnected=clients[5];disconnected.close();await eventually(async()=>((await lobbies()).find(l=>l.id===empty.id)?.players??0)===5,external?36000:5000,'disconnected seat released',external?650:150);disconnected.joined=false;
  const rejoin=await clients[4].join(empty.id);check('disconnect timeout frees a seat',()=>assert.equal(rejoin.type,'joined'));
  await Promise.all(clients.map(client=>client.leave()));for(const client of clients)client.close();
- if(!external){await delay(2200);const idle=await lobbies();check('overflow expires while the four base lobbies persist',()=>{assert.deepEqual(idle.map(l=>l.id).sort(),firstList.map(l=>l.id).sort());assert.ok(idle.every(l=>l.players===0));});}
+ if(!external){await delay(2200);const idle=await lobbies();check('all six permanent lobbies persist while idle',()=>{assert.deepEqual(idle.map(l=>l.id).sort(),firstList.map(l=>l.id).sort());assert.ok(idle.every(l=>l.players===0));});}
 
  if(!external){
   await delay(150);const db=new DatabaseSync(dbPath,{readOnly:true});
@@ -136,7 +137,7 @@ try {
    check('chat records link to typed events and preserve the literal body',()=>{const rows=db.prepare("SELECT c.body,e.event_type,c.player_id,e.actor_player_id FROM chat_messages c JOIN events e ON e.id=c.id").all();assert.equal(rows.length,2);assert.ok(rows.some(row=>row.body===literal));assert.ok(rows.every(row=>row.event_type==='chat'&&row.player_id===row.actor_player_id));});
    check('each membership has exactly one enter and leave event',()=>{const rows=db.prepare("SELECT m.id,m.left_at,(SELECT count(*) FROM events e WHERE e.event_type='player_enter' AND json_extract(e.data,'$.membershipId')=m.id) AS enters,(SELECT count(*) FROM events e WHERE e.event_type='player_leave' AND json_extract(e.data,'$.membershipId')=m.id) AS leaves FROM memberships m").all();assert.ok(rows.length>=9);assert.ok(rows.every(row=>row.left_at!==null&&row.enters===1&&row.leaves===1));});
    check('kill and death events form one durable linked combat record',()=>{const rows=db.prepare("SELECT c.*,k.event_type AS kill_type,d.event_type AS death_type,k.actor_player_id AS killer,d.actor_player_id AS victim FROM combat_events c JOIN events k ON k.id=c.kill_event_id JOIN events d ON d.id=c.death_event_id").all();assert.ok(rows.some(row=>row.killer===sessions[0].playerId&&row.victim===sessions[1].playerId&&row.kill_type==='player_kill'&&row.death_type==='player_death'&&row.headshot===1));});
-   check('reconnection and dedicated room identities are durable',()=>{assert.ok(db.prepare("SELECT count(*) AS n FROM events WHERE event_type='player_reconnect'").get().n>=1);assert.equal(db.prepare('SELECT count(*) AS n FROM lobbies WHERE closed_at IS NULL').get().n,4);});
+   check('reconnection and dedicated room identities are durable',()=>{assert.ok(db.prepare("SELECT count(*) AS n FROM events WHERE event_type='player_reconnect'").get().n>=1);assert.equal(db.prepare('SELECT count(*) AS n FROM lobbies WHERE closed_at IS NULL').get().n,6);});
   }finally{db.close();}
  }
  console.log(`Multiplayer integration: ${assertions} checks passed (${external?'deployed server':'isolated local server'}).`);

@@ -85,11 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     for group in 0..rooms + 3 {
         let list = hub.lobbies()?;
         let name = if group < rooms {
-            if group == 0 {
-                "Deathmatch".into()
-            } else {
-                format!("Deathmatch {}", group + 1)
-            }
+            format!("Deathmatch {}", group + 1)
         } else {
             ["1v1 Alpha", "1v1 Beta", "1v1 Delta"][group - rooms].into()
         };

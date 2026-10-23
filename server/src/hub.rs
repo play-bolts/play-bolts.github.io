@@ -18,11 +18,13 @@ use std::{
 };
 use tokio::sync::watch;
 
-const LOCAL_LOBBIES: [(&str, usize); 4] = [
-    ("Deathmatch", sim::MAX_PLAYERS),
+const LOCAL_LOBBIES: [(&str, usize); 6] = [
+    ("Deathmatch 1", sim::MAX_PLAYERS),
     ("1v1 Alpha", 2),
     ("1v1 Beta", 2),
     ("1v1 Delta", 2),
+    ("Deathmatch 2", sim::MAX_PLAYERS),
+    ("Deathmatch 3", sim::MAX_PLAYERS),
 ];
 
 pub struct Config {
@@ -66,7 +68,7 @@ impl Config {
             reconnect_seconds: env("BOLTS_RECONNECT_SECONDS", "30")
                 .parse()
                 .map_err(|_| "Invalid reconnect timeout")?,
-            max_rooms: env("BOLTS_MAX_ROOMS", "11")
+            max_rooms: env("BOLTS_MAX_ROOMS", "6")
                 .parse()
                 .map_err(|_| "Invalid room limit")?,
             proxy: env("BOLTS_TRUST_PROXY", "false") == "true",
@@ -368,7 +370,7 @@ impl Hub {
         }
         // Extra rooms share this process and its admission budget. Duels are
         // fixed; human reconnect reservations count as occupied, bots do not.
-        let number = (2..).find(|n| self.rooms.values().all(|r| r.name != format!("Deathmatch {n}"))).unwrap();
+        let number = (4..).find(|n| self.rooms.values().all(|r| r.name != format!("Deathmatch {n}"))).unwrap();
         self.create_named_room(db::id(), format!("Deathmatch {number}"), sim::MAX_PLAYERS)
     }
     fn create_named_room(&mut self, id: String, name: String, capacity: usize) -> HResult<String> {
@@ -494,7 +496,7 @@ impl Hub {
             }
             return Ok(());
         }
-        // Populate a single available Deathmatch before quick join selection.
+        // Populate the fixed inventory and any permitted spare before quick join.
         // Explicit joins still reject stale/full IDs without evicting a seat.
         if lobby.is_none() { self.lobbies()?; }
         // Validate the destination before giving up an existing seat.

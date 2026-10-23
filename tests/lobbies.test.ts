@@ -4,12 +4,14 @@ import {gameEndpoint,locationLabel,LOBBY_LOCATIONS,probeLobby,type ProbeSocket} 
 import {NetworkClient,type SocketLike} from '../src/network.ts';
 import {Game,createActor} from '../src/engine.ts';
 
-test('directory preserves duel capacities and rejects malformed seat counts',async()=>{
- const rows=[{id:'dm',name:'Deathmatch',players:0,capacity:6,phase:'playing'},...['Alpha','Beta','Delta'].map(name=>({id:name,name:`1v1 ${name}`,players:2,capacity:2,phase:'playing'}))];
+test('directory preserves three Deathmatches and three duels while rejecting malformed seat counts',async()=>{
+ const rows=[...[1,2,3].map(number=>({id:`dm-${number}`,name:`Deathmatch ${number}`,players:0,capacity:6,phase:'playing'})),...['Alpha','Beta','Delta'].map(name=>({id:name,name:`1v1 ${name}`,players:2,capacity:2,phase:'playing'}))];
  const client=new NetworkClient(new Game(),{origin:'https://api.example.com',fetch:async()=>new Response(JSON.stringify({version:2,locations:[],lobbies:[...rows,
   {...rows[0],id:'overfull',capacity:2,players:3},{...rows[0],id:'unsupported',capacity:3},{...rows[0],id:'fractional',players:1.5}
  ]}))});
  const listed=await client.lobbies();
+ assert.equal(new Set(listed.map(row=>row.id)).size,6);
+ assert.deepEqual(listed.map(row=>[row.name,row.capacity]),[['Deathmatch 1',6],['Deathmatch 2',6],['Deathmatch 3',6],['1v1 Alpha',2],['1v1 Beta',2],['1v1 Delta',2]]);
  assert.deepEqual(listed.map(({name,capacity,players})=>({name,capacity,players})),rows.map(({name,capacity,players})=>({name,capacity,players})));
 });
 

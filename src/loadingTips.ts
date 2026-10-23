@@ -4,7 +4,7 @@ export const LOADING_TIPS=[
  'In multiplayer, press T to chat, Enter to send, or Esc to cancel.',
  'Turn hit indicators on or off in Options.',
  'Press Shift to interrupt a reload with a melee attack at close range.',
- 'With one or two human players, multiplayer lobbies add two AI soldiers.',
+ 'Deathmatch adds two AI soldiers for one or two human players; 1v1 lobbies have no bots.',
  'Bolts is inspired by the original Call of Duty and its competitive rifle-only community.',
 ] as const;
 export const LOADING_TIP_INTERVAL_MS=10000;

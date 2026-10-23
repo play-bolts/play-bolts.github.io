@@ -34,7 +34,9 @@ async function unusedPort(){const server=createServer();await new Promise((resol
 class Client {
  constructor(session,label){this.session=session;this.label=label;this.messages=[];this.waiters=[];this.seq=0;this.joined=false;this.controls=new TestInputStream(message=>this.send(message),()=>this.self);}
  async connect(){
-  this.socket=new WebSocket(base.replace(/^http/,'ws')+'/api/ws');this.socket.binaryType='arraybuffer';
+  // The isolated server models distinct viewer IPs through its trusted proxy setting.
+  const socketOptions=external?[]:{headers:{'x-forwarded-for':`192.0.2.${Number(this.label.replace(/\D/g,''))}`}};
+  this.socket=new WebSocket(base.replace(/^http/,'ws')+'/api/ws',socketOptions);this.socket.binaryType='arraybuffer';
   this.socket.addEventListener('message',event=>{const raw=decodeMessage(event.data),message=raw.type==='snapshot'?decodeSnapshot(raw):raw;if(!message)return;this.messages.push(message);if(message.type==='snapshot')this.snapshot=message;if(message.type==='joined'){this.snapshot=message.snapshot;this.actorId=message.actorId;this.lobbyId=message.lobbyId;this.joined=true;}if(message.type==='snapshot'||message.type==='joined')this.controls.observe(this.snapshot);for(const waiter of [...this.waiters])if(waiter.predicate(message)){clearTimeout(waiter.timer);this.waiters.splice(this.waiters.indexOf(waiter),1);waiter.resolve(message);}});
   await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(`${this.label}: socket open timed out`)),8000);this.socket.addEventListener('open',()=>{clearTimeout(timer);resolve();},{once:true});this.socket.addEventListener('error',()=>{clearTimeout(timer);reject(new Error(`${this.label}: socket connection failed`));},{once:true});});
   const welcome=this.wait(message=>message.type==='welcome');this.send({type:'hello',version:PROTOCOL_VERSION,token:this.session.token});const message=await welcome;assert.equal(message.playerId,this.session.playerId);this.heartbeat=setInterval(()=>{if(this.socket.readyState===WebSocket.OPEN)this.send({type:'ping',nonce:Date.now()});},5000);this.socket.addEventListener('close',()=>{clearInterval(this.heartbeat);this.controls.close();},{once:true});return this;
@@ -88,7 +90,7 @@ async function legitKill(shooter,victim){
 try {
  if(!external){
   temporary=await mkdtemp(join(tmpdir(),'bolts-network-'));dbPath=join(temporary,'events.sqlite');const port=await unusedPort();base=`http://127.0.0.1:${port}`;
-  backend=spawn(resolve(root,'server/target/debug/bolts-server'),[],{cwd:root,env:{...process.env,BOLTS_BIND:`127.0.0.1:${port}`,BOLTS_DB:dbPath,BOLTS_EMPTY_SECONDS:'2',BOLTS_RECONNECT_SECONDS:'1',BOLTS_ORIGINS:'http://127.0.0.1:5173'},stdio:['ignore','pipe','pipe']});
+  backend=spawn(resolve(root,'server/target/debug/bolts-server'),[],{cwd:root,env:{...process.env,BOLTS_BIND:`127.0.0.1:${port}`,BOLTS_DB:dbPath,BOLTS_EMPTY_SECONDS:'2',BOLTS_RECONNECT_SECONDS:'1',BOLTS_ORIGINS:'http://127.0.0.1:5173',BOLTS_TRUST_PROXY:'true',BOLTS_ADMIN_API_KEY:''},stdio:['ignore','pipe','pipe']});
   backend.stdout.on('data',chunk=>{serverOutput=(serverOutput+chunk).slice(-12000);});backend.stderr.on('data',chunk=>{serverOutput=(serverOutput+chunk).slice(-12000);});backend.on('error',error=>{serverOutput+=error.message;});
  }
  await eventually(async()=>(await json('/api/health')).ok,15000,'server health');
@@ -102,7 +104,7 @@ try {
  for(let i=0;i<6;i++){const result=await clients[i].join(empty.id);assert.equal(result.type,'joined',`player ${i+1} joins first room`);assert.equal(result.lobbyId,empty.id);}
  await eventually(()=>clients[0].snapshot?.actors.length===6,5000,'six-player snapshot');
  const full=await clients[6].join(empty.id);check('explicit join rejects seventh player',()=>{assert.equal(full.type,'error');assert.equal(full.code,'lobby_full');});
- const overflow=await clients[6].join();check('quick join uses an available dedicated duel lobby',()=>{assert.equal(overflow.type,'joined');assert.notEqual(overflow.lobbyId,empty.id);assert.match(overflow.lobbyName,/^1v1 (Alpha|Beta|Delta)$/);});
+ const overflow=await clients[6].join();check('quick join creates a six-slot overflow Deathmatch',()=>{assert.equal(overflow.type,'joined');assert.notEqual(overflow.lobbyId,empty.id);assert.equal(overflow.lobbyName,'Deathmatch 2');});
  const populated=await lobbies();check('all lobbies enforce their advertised capacity',()=>{assert.ok(populated.every(lobby=>[2,6].includes(lobby.capacity)&&lobby.players<=lobby.capacity));assert.equal(populated.find(l=>l.id===empty.id)?.players,6);assert.equal(populated.find(l=>l.id===overflow.lobbyId)?.players,1);});
  check('snapshots reveal no persistent UUIDs or session credentials',()=>{for(const client of clients){const wire=JSON.stringify(client.snapshot);for(const session of sessions){assert.ok(!wire.includes(session.playerId));assert.ok(!wire.includes(session.token));}}});
 
@@ -124,7 +126,7 @@ try {
  const disconnected=clients[5];disconnected.close();await eventually(async()=>((await lobbies()).find(l=>l.id===empty.id)?.players??0)===5,external?36000:5000,'disconnected seat released',external?650:150);disconnected.joined=false;
  const rejoin=await clients[4].join(empty.id);check('disconnect timeout frees a seat',()=>assert.equal(rejoin.type,'joined'));
  await Promise.all(clients.map(client=>client.leave()));for(const client of clients)client.close();
- if(!external){await delay(2200);const idle=await lobbies();check('dedicated lobbies stay available after the idle timeout',()=>{assert.deepEqual(idle.map(l=>l.id).sort(),firstList.map(l=>l.id).sort());assert.ok(idle.every(l=>l.players===0));});}
+ if(!external){await delay(2200);const idle=await lobbies();check('overflow expires while the four base lobbies persist',()=>{assert.deepEqual(idle.map(l=>l.id).sort(),firstList.map(l=>l.id).sort());assert.ok(idle.every(l=>l.players===0));});}
 
  if(!external){
   await delay(150);const db=new DatabaseSync(dbPath,{readOnly:true});

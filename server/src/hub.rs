@@ -66,7 +66,7 @@ impl Config {
             reconnect_seconds: env("BOLTS_RECONNECT_SECONDS", "30")
                 .parse()
                 .map_err(|_| "Invalid reconnect timeout")?,
-            max_rooms: env("BOLTS_MAX_ROOMS", "32")
+            max_rooms: env("BOLTS_MAX_ROOMS", "11")
                 .parse()
                 .map_err(|_| "Invalid room limit")?,
             proxy: env("BOLTS_TRUST_PROXY", "false") == "true",
@@ -359,12 +359,17 @@ impl Hub {
         if self.managed_lobby.is_some() || self.rooms.len() >= self.config.max_rooms {
             return Err("server_busy".into());
         }
-        let &(name, capacity) = LOCAL_LOBBIES
+        if let Some(&(name, capacity)) = LOCAL_LOBBIES
             .iter()
             .take(self.config.max_rooms)
             .find(|(name, _)| self.rooms.values().all(|r| r.name != *name))
-            .ok_or("server_busy")?;
-        self.create_named_room(db::id(), name.into(), capacity)
+        {
+            return self.create_named_room(db::id(), name.into(), capacity);
+        }
+        // Extra rooms share this process and its admission budget. Duels are
+        // fixed; human reconnect reservations count as occupied, bots do not.
+        let number = (2..).find(|n| self.rooms.values().all(|r| r.name != format!("Deathmatch {n}"))).unwrap();
+        self.create_named_room(db::id(), format!("Deathmatch {number}"), sim::MAX_PLAYERS)
     }
     fn create_named_room(&mut self, id: String, name: String, capacity: usize) -> HResult<String> {
         let game = db::id();
@@ -422,6 +427,12 @@ impl Hub {
             if self.rooms.is_empty() { return Err("server_busy".into()); }
         } else {
             while self.rooms.len() < LOCAL_LOBBIES.len().min(self.config.max_rooms) {
+                self.create_room()?;
+            }
+            if self.rooms.len() < self.config.max_rooms && self.rooms.values()
+                .filter(|r| r.capacity == sim::MAX_PLAYERS)
+                .all(|r| r.human_seats() >= r.capacity)
+            {
                 self.create_room()?;
             }
         }
@@ -483,6 +494,9 @@ impl Hub {
             }
             return Ok(());
         }
+        // Populate a single available Deathmatch before quick join selection.
+        // Explicit joins still reject stale/full IDs without evicting a seat.
+        if lobby.is_none() { self.lobbies()?; }
         // Validate the destination before giving up an existing seat.
         let roomid = if let Some(lobby) = lobby {
             let r = self.rooms.get(lobby).ok_or("lobby_missing")?;
@@ -493,12 +507,12 @@ impl Hub {
         } else if let Some(r) = self
             .rooms
             .values()
-            .filter(|r| r.human_seats() < r.capacity)
+            .filter(|r| r.capacity == sim::MAX_PLAYERS && r.human_seats() < r.capacity)
             .max_by_key(|r| r.human_seats())
         {
             r.id.clone()
         } else {
-            self.create_room()?
+            return Err("server_busy".into());
         };
         self.leave(player, "switch_lobby", false)?;
         let room = self.rooms.get_mut(&roomid).unwrap();
@@ -749,7 +763,8 @@ impl Hub {
                 chats.push((room.id.clone(), room.durable_chat.pop_front().unwrap().1));
             }
             if room.members.is_empty() {
-                if self.managed_lobby.is_some() && room
+                let fixed = LOCAL_LOBBIES.iter().any(|(name, capacity)| room.name == *name && room.capacity == *capacity);
+                if (self.managed_lobby.is_some() || !fixed) && room
                     .empty_since
                     .is_some_and(|t| t.elapsed().as_secs_f64() > self.config.empty_seconds)
                 {

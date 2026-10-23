@@ -1,3 +1,4 @@
+v1.0.51 - Keeps recorded audio from blocking first play and adds social link previews and search discovery metadata.
 v1.0.50 - Integrates the TODO release with published fixes, guards private admin configuration rollout, and forwards admin time windows.
 v1.0.49 - Adds a private key-authenticated admin API for current/recent activity and bounded read-only SQL queries.
 v1.0.48 - Adds bounded Deathmatch overflow and an existing-VM capacity benchmark with a 54-seat starting limit.

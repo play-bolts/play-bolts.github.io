@@ -41,11 +41,14 @@ let graphics:WebGLRenderer;
 try{graphics=new WebGLRenderer({antialias:true,powerPreference:'high-performance'});}catch(error){ui.hideLoading();ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].textContent='WebGL 2 required';throw error;}
 try{
  setInitialAssetTier(assetTierForQuality(ui.prefs.quality));
- const resources=[loadHandAssets(),preloadSoldierModels(),preloadSurfaceAssets(graphics,{includeLegacy:false}),preloadImportedWeapons(),preloadWorldModelLods(),sound.preload()];let completed=0;
+ const resources=[loadHandAssets(),preloadSoldierModels(),preloadSurfaceAssets(graphics,{includeLegacy:false}),preloadImportedWeapons(),preloadWorldModelLods()];let completed=0;
  await Promise.all(resources.map(resource=>resource.then(()=>ui.setLoadingProgress(.45*++completed/resources.length))));
 }catch(error){ui.hideLoading();ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].innerHTML='<div class="dialog"><h2>Unable to load models</h2><button onclick="location.reload()">Retry</button></div>';throw error;}finally{DefaultLoadingManager.onProgress=()=>{};}
 let view:View;
 try{await yieldLoadingPaint();view=new View(ui.el.world,graphics);view.setQuality(ui.prefs.quality,wantsTouch());ui.setLoadingProgress(.5);await view.prepare(progress=>ui.setLoadingProgress(.5+.48*progress));}catch(error){ui.hideLoading();ui.el['load-error'].classList.remove('hidden');ui.el['load-error'].innerHTML='<div class="dialog"><h2>Unable to initialize graphics</h2><button class="start-button" onclick="location.reload()">Reload</button></div>';throw error;}
+// Audio has immediate procedural fallbacks. Start it after graphics so stalled
+// clips neither block readiness nor occupy the graphics' HTTP download slots.
+void sound.preload().catch(()=>{});
 const keys=new Set<string>();let menu=true,previous=performance.now(),accumulator=0,resumeState:'playing'|'killcam'='playing',dragging=false,previousX=0,previousY=0,jump=false,endingReleased=false,lastReplaySound=-1;
 const mouseCapture=new PointerCapture(view.renderer.domElement,document);let lastPointerUnlock=-Infinity;
 let touchEnabled=wantsTouch(),mobilePortrait=innerHeight>=innerWidth,mobileResumeRequired=false,touchLife='',touchTap=false,touchWasActive=false;

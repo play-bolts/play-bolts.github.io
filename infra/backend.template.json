@@ -470,7 +470,8 @@
             "CookieBehavior": "none"
           },
           "QueryStringsConfig": {
-            "QueryStringBehavior": "none"
+            "QueryStringBehavior": "whitelist",
+            "QueryStrings": ["minutes"]
           },
           "HeadersConfig": {
             "HeaderBehavior": "allViewerAndWhitelistCloudFront",

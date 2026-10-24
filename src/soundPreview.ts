@@ -44,7 +44,7 @@ export function previewBuffer(context:AudioContext,samples:Float32Array,gain=1):
 }
 
 export async function loadPreviewFile(context:AudioContext,file:string,signal:AbortSignal):Promise<AudioBuffer> {
- const response=await fetch(file,{signal});if(!response.ok)throw new Error('Audio unavailable');
+ const response=await fetch(file,{signal,cache:'no-cache'});if(!response.ok)throw new Error('Audio unavailable');
  const bytes=await response.arrayBuffer();if(signal.aborted)throw new Error('Preview cancelled');
  return context.decodeAudioData(bytes);
 }

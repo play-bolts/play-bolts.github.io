@@ -44,7 +44,24 @@ class GameLiftConfigurationTests(unittest.TestCase):
                 self.assertEqual(capacity['MinSize'], 1)
                 self.assertEqual(capacity['DesiredEC2Instances'], 1)
                 self.assertNotIn('ManagedCapacityConfiguration', capacity)
-        self.assertEqual({s['Location'] for s in fleet['ScalingPolicies']}, set(prepare.LOCATIONS.values()))
+
+    def test_one_fleet_target_policy_scales_each_city_within_its_own_limits(self):
+        fleet = prepare.template(True)['Resources']['Fleet']['Properties']
+        policies = fleet['ScalingPolicies']
+        # AWS PutScalingPolicy allows only one TargetBased policy per fleet and
+        # has no Location parameter. Per-city policies fail after the first one.
+        self.assertEqual(len(policies), 1)
+        policy = policies[0]
+        self.assertEqual(policy['PolicyType'], 'TargetBased')
+        self.assertEqual(policy['MetricName'], 'PercentAvailableGameSessions')
+        self.assertEqual(policy['TargetConfiguration'], {'TargetValue': 20})
+        self.assertNotIn('Location', policy)
+        self.assertEqual(set(policy), {'Name', 'PolicyType', 'MetricName', 'TargetConfiguration'})
+        capacities = {row['Location']: row['LocationCapacity'] for row in fleet['Locations']}
+        self.assertEqual(capacities[prepare.HOME_REGION], {'MinSize': 0, 'DesiredEC2Instances': 0, 'MaxSize': 0})
+        for location in prepare.LOCATIONS.values():
+            self.assertEqual(capacities[location], {'MinSize': 1, 'DesiredEC2Instances': 1,
+                                                  'MaxSize': {'Ref': 'MaximumInstancesPerLocation'}})
 
     def test_managed_locations_match_requested_cities_without_replacing_oregon(self):
         self.assertEqual(prepare.LOCATIONS, {'lon': 'eu-west-2', 'sg': 'ap-southeast-1', 'sp': 'sa-east-1'})

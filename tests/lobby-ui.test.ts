@@ -14,17 +14,17 @@ class Element {
  focus(){}
 }
 
-test('loading and connection failures retain region controls until a directory explicitly removes them',()=>{
+test('loading and connection failures retain idle-city rows until a directory explicitly removes them',()=>{
  const previous=Object.getOwnPropertyDescriptor(globalThis,'document');
  Object.defineProperty(globalThis,'document',{configurable:true,value:{activeElement:null,createElement:(tag:string)=>new Element(tag),createTextNode:(text:string)=>Object.assign(new Element('text'),{textContent:text})}});
  try{
-  const ui=Object.create(UI.prototype) as UI,el=Object.fromEntries(['lobby-location-controls','lobby-locations','lobby-play','lobby-location-hint','menu','menu-main','selection-window','lobby-window','lobby-rows','lobby-refresh','lobby-join','lobby-status'].map(id=>[id,new Element()]));
-  Object.assign(ui,{el,lobbyLocations:[],lobbyRows:[],selectedLocation:'lon',selectedLobby:'',lobbyBusy:false,lobbyOpen:false,refreshOnlineCountVisibility(){}});
-  ui.showLobbies([],'',['lon','sg','sp']);const choices=()=>el['lobby-locations'].children.map(button=>button.dataset.location);
-  assert.deepEqual(choices(),['lon','sg','sp']);assert.equal(el['lobby-play'].disabled,false);
+  const ui=Object.create(UI.prototype) as UI,el=Object.fromEntries(['menu','menu-main','selection-window','lobby-window','lobby-rows','lobby-refresh','lobby-join','lobby-status'].map(id=>[id,new Element()]));
+  Object.assign(ui,{el,lobbyLocations:[],lobbyRows:[],selectedLobby:'',lobbyBusy:false,lobbyOpen:false,refreshOnlineCountVisibility(){}});
+  ui.showLobbies([],'',['lon','sg','sp']);const choices=()=>el['lobby-rows'].children.map(row=>row.dataset.lobby);
+  assert.deepEqual(choices(),['new:lon','new:sg','new:sp']);assert.equal(el['lobby-join'].disabled,false);
   for(const status of ['Connection lost.','Loading…','Unable to load servers.']){
-   ui.showLobbies([],status);assert.deepEqual(choices(),['lon','sg','sp']);assert.equal(el['lobby-location-controls'].classes.has('hidden'),false);assert.equal(el['lobby-play'].disabled,false);
+   ui.showLobbies([],status);assert.deepEqual(choices(),['new:lon','new:sg','new:sp']);assert.equal(el['lobby-join'].disabled,false);
   }
-  ui.showLobbies([],'',[]);assert.deepEqual(choices(),[]);assert.equal(el['lobby-location-controls'].classes.has('hidden'),true);assert.equal(el['lobby-play'].disabled,true);
+  ui.showLobbies([],'',[]);assert.deepEqual(choices(),[]);assert.equal(el['lobby-join'].disabled,true);
  }finally{if(previous)Object.defineProperty(globalThis,'document',previous);else delete (globalThis as any).document;}
 });

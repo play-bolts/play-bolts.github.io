@@ -12,8 +12,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -113,6 +115,90 @@ func TestDirectoryPreservesVisitorTrackingAndPrivateRouteBoundary(t *testing.T) 
 	}
 }
 
+func TestDirectoryProxyOwnsCORSOnSuccessAndErrorResponses(t *testing.T) {
+	r := testRuntime()
+	origin := "https://play-bolts.github.io"
+	r.cfg.Origins = []string{origin}
+	var calls atomic.Int32
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Methods", "DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "X-Upstream")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Upstream")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		var value map[string]string
+		if json.NewDecoder(q.Body).Decode(&value) != nil {
+			problem(w, 400, "Invalid JSON.")
+			return
+		}
+		respond(w, 200, map[string]bool{"ok": true})
+	}))
+	defer backend.Close()
+	r.local = backend.URL
+	front := httptest.NewServer((&directory{r: r}).handler())
+	defer front.Close()
+	request := func(method, requestOrigin, body string) (*http.Response, []byte) {
+		t.Helper()
+		q, err := http.NewRequest(method, front.URL+"/api/session", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		q.Header.Set("Origin", requestOrigin)
+		q.Header.Set("Content-Type", "application/json")
+		response, err := front.Client().Do(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return response, data
+	}
+	for _, test := range []struct {
+		body   string
+		status int
+		result string
+	}{{`{}`, 200, `"ok":true`}, {`{`, 400, "Invalid JSON."}} {
+		response, data := request("POST", origin, test.body)
+		if response.StatusCode != test.status || !strings.Contains(string(data), test.result) {
+			t.Fatalf("upstream status/body changed: HTTP %d", response.StatusCode)
+		}
+		if values := response.Header.Values("Access-Control-Allow-Origin"); len(values) != 1 || values[0] != origin {
+			t.Fatalf("browser requires one validated Allow-Origin: %v", values)
+		}
+		if values := response.Header.Values("Access-Control-Allow-Methods"); len(values) != 1 || values[0] != "GET, POST, OPTIONS" {
+			t.Fatalf("upstream overrode allowed methods: %v", values)
+		}
+		if values := response.Header.Values("Access-Control-Allow-Headers"); len(values) != 1 || values[0] != "Content-Type" {
+			t.Fatalf("upstream overrode allowed headers: %v", values)
+		}
+		for _, header := range []string{"Access-Control-Allow-Credentials", "Access-Control-Expose-Headers", "Access-Control-Max-Age"} {
+			if response.Header.Get(header) != "" {
+				t.Errorf("upstream CORS header leaked: %s", header)
+			}
+		}
+		if response.Header.Get("X-Content-Type-Options") != "nosniff" {
+			t.Fatal("unrelated upstream response headers removed")
+		}
+	}
+	response, _ := request("OPTIONS", origin, "")
+	if values := response.Header.Values("Access-Control-Allow-Origin"); response.StatusCode != 204 || len(values) != 1 || values[0] != origin {
+		t.Fatal("allowed preflight changed")
+	}
+	response, _ = request("POST", "https://other.example", `{}`)
+	if response.StatusCode != 403 || len(response.Header.Values("Access-Control-Allow-Origin")) != 0 {
+		t.Fatal("foreign origin bypassed the directory allowlist")
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("preflight or rejected origin reached upstream: %d calls", calls.Load())
+	}
+}
+
 func TestAdmissionScopeAndExpiry(t *testing.T) {
 	r := testRuntime()
 	a := admission{Player: "p", Session: "s", PlayerSession: "ps", Expires: time.Now().Add(time.Minute).Unix()}
@@ -141,6 +227,7 @@ type fakeFleet struct {
 	name       string
 	seats      map[string][]types.PlayerSession
 	creates    int
+	seatPages  int
 	racedFull  string
 	queues     map[string]types.GameSessionQueue
 	queueErr   error
@@ -192,7 +279,28 @@ func (f *fakeFleet) StartGameSessionPlacement(_ context.Context, q *gamelift.Sta
 func (f *fakeFleet) DescribePlayerSessions(_ context.Context, q *gamelift.DescribePlayerSessionsInput, _ ...func(*gamelift.Options)) (*gamelift.DescribePlayerSessionsOutput, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return &gamelift.DescribePlayerSessionsOutput{PlayerSessions: f.seats[*q.GameSessionId]}, nil
+	limit := int(aws.ToInt32(q.Limit))
+	// Match the service constraint so admission tests cannot silently accept a
+	// request that AWS rejects before it can reserve a seat.
+	if limit < 1 || limit > 50 {
+		return nil, &smithy.GenericAPIError{Code: "InvalidRequestException", Message: "Limit must be between 1 and 50"}
+	}
+	start := 0
+	if q.NextToken != nil {
+		var err error
+		start, err = strconv.Atoi(*q.NextToken)
+		if err != nil || start < 0 || start > len(f.seats[*q.GameSessionId]) {
+			return nil, &smithy.GenericAPIError{Code: "InvalidRequestException", Message: "Invalid next token"}
+		}
+	}
+	f.seatPages++
+	seats := f.seats[*q.GameSessionId]
+	end := min(start+limit, len(seats))
+	response := &gamelift.DescribePlayerSessionsOutput{PlayerSessions: seats[start:end]}
+	if end < len(seats) {
+		response.NextToken = aws.String(strconv.Itoa(end))
+	}
+	return response, nil
 }
 func (f *fakeFleet) CreatePlayerSession(_ context.Context, q *gamelift.CreatePlayerSessionInput, _ ...func(*gamelift.Options)) (*gamelift.CreatePlayerSessionOutput, error) {
 	f.mu.Lock()
@@ -298,6 +406,27 @@ func joinForTest(d *directory, target, player string) *httptest.ResponseRecorder
 }
 func londonGame(id string, players int32) types.GameSession {
 	return types.GameSession{GameSessionId: &id, Name: &id, Location: aws.String("eu-west-2"), Status: types.GameSessionStatusActive, CurrentPlayerSessionCount: &players, DnsName: aws.String("lon.amazongamelift.com"), Port: aws.Int32(8080)}
+}
+func TestAdmissionUsesValidPlayerSessionPagesAndReusesLaterReservation(t *testing.T) {
+	for _, target := range []string{"Alpha", "new:lon"} {
+		t.Run(target, func(t *testing.T) {
+			player := strings.Repeat("a", 64)
+			seats := make([]types.PlayerSession, 51)
+			for i := range seats[:50] {
+				seats[i] = types.PlayerSession{PlayerId: &player, Status: types.PlayerSessionStatusCompleted}
+			}
+			seats[50] = types.PlayerSession{PlayerId: &player, PlayerSessionId: aws.String("ps-existing"), GameSessionId: aws.String("Alpha"), Status: types.PlayerSessionStatusReserved, DnsName: aws.String("lon.amazongamelift.com"), Port: aws.Int32(8080)}
+			api := &fakeFleet{games: map[string][]types.GameSession{"eu-west-2": {londonGame("Alpha", 1)}}, seats: map[string][]types.PlayerSession{"Alpha": seats}}
+			d := directoryForTest(t, api)
+			w := joinForTest(d, target, "a")
+			if w.Code != 200 {
+				t.Fatalf("valid paginated admission rejected: HTTP %d", w.Code)
+			}
+			if api.seatPages != 2 || api.creates != 0 || api.starts != 0 {
+				t.Fatalf("later reservation not reused: pages=%d seats=%d games=%d", api.seatPages, api.creates, api.starts)
+			}
+		})
+	}
 }
 func TestDirectoryListsOnlyRealSessionsAndRetainsLocationsAtZero(t *testing.T) {
 	api := &fakeFleet{games: map[string][]types.GameSession{}}
@@ -535,7 +664,18 @@ func TestRealRustAdmissionHeartbeatReconnectAndReplication(t *testing.T) {
 		}
 		c.WriteJSON(map[string]any{"type": "join", "lobbyId": session, "name": "Alice", "faction": "british"})
 		for {
-			if err = c.ReadJSON(&m); err != nil {
+			kind, data, err := c.ReadMessage()
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Reconnect can resume v3 snapshots before the join acknowledgement.
+			if kind == websocket.BinaryMessage {
+				continue
+			}
+			if kind != websocket.TextMessage {
+				t.Fatalf("unexpected join message kind: %d", kind)
+			}
+			if err = json.Unmarshal(data, &m); err != nil {
 				t.Fatal(err)
 			}
 			if m["type"] == "joined" {

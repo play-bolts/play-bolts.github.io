@@ -21,6 +21,19 @@ export interface Lobby {
 export function locationLabel(location?:string){
  return location&&Object.hasOwn(LOBBY_LOCATIONS,location)?LOBBY_LOCATIONS[location as LobbyLocation]:undefined;
 }
+export type LobbyBrowserRow=Pick<Lobby,'id'|'name'|'players'|'capacity'|'ping'|'location'> & Partial<Pick<Lobby,'phase'>>;
+/** Keep idle cities joinable without presenting unallocated games as live servers. */
+export function lobbyBrowserRows(games:readonly LobbyBrowserRow[],locations:readonly LobbyLocation[]):LobbyBrowserRow[]{
+ const rows=games.map(row=>({...row}));
+ for(const location of new Set(locations))if(location!=='or'&&locationLabel(location)&&!games.some(row=>row.location===location&&row.players<row.capacity))rows.push({id:`new:${location}`,name:'New lobby',location,players:0,capacity:6});
+ const order=Object.keys(LOBBY_LOCATIONS);
+ const rank=(location?:string)=>{const index=order.indexOf(location??'');return index<0?order.length:index;};
+ return rows.sort((a,b)=>rank(a.location)-rank(b.location));
+}
+/** Refreshes can replace an idle entry with a live room or vice versa. */
+export function selectedBrowserLobby(rows:readonly LobbyBrowserRow[],previous?:LobbyBrowserRow):string{
+ return rows.find(row=>row.id===previous?.id)?.id??rows.find(row=>previous?.location&&row.location===previous.location&&row.players<row.capacity)?.id??rows.find(row=>row.players<row.capacity)?.id??rows[0]?.id??'';
+}
 /** Only first-party game endpoints may receive probes or admission tickets. */
 export function gameEndpoint(value:string,controlOrigin:string):URL {
  const url=new URL(value),control=new URL(controlOrigin);

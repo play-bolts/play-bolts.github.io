@@ -323,67 +323,19 @@ func (r *runtime) replicate(ctx context.Context, after int64) (int64, error) {
 	}
 	return cursor.Through, nil
 }
-func (r *runtime) runGame(parent context.Context, port int, dataPath string) error {
-	ctx, stop := context.WithCancel(parent)
+func (r *runtime) runGame(process *gameProcess, port int, dataPath string) error {
+	ctx, stop, g := process.ctx, process.stop, process.g
 	defer stop()
-	g := newGame(r, managedSessions{})
-	certificate, err := sdk.GetComputeCertificate()
-	if err != nil {
-		return err
-	}
-	pem, err := os.ReadFile(filepath.Join(certificate.CertificatePath, "certificate.pem"))
-	if err != nil {
-		return err
-	}
-	chain, err := os.ReadFile(filepath.Join(certificate.CertificatePath, "certificateChain.pem"))
-	if err != nil {
-		return err
-	}
-	key, err := os.ReadFile(filepath.Join(certificate.CertificatePath, "privateKey.pem"))
-	if err != nil {
-		return err
-	}
-	cert, err := tls.X509KeyPair(append(append(pem, '\n'), chain...), key)
-	if err != nil {
-		return err
-	}
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Handler: g.handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 8192, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}}
+	server := &http.Server{Handler: g.handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 8192, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{process.certificate}}}
 	result := make(chan error, 1)
 	go func() { result <- server.Serve(tls.NewListener(listener, server.TLSConfig)); stop() }()
 	defer server.Close()
-	err = sdk.ProcessReady(sdk.ProcessParameters{
-		Port: port, LogParameters: sdk.LogParameters{LogPaths: []string{filepath.Dir(dataPath)}},
-		OnStartGameSession: func(s model.GameSession) {
-			if g.stopping.Load() {
-				return
-			}
-			if e := r.localCall(ctx, map[string]string{"op": "activate", "session": s.GameSessionID, "name": s.Name}, nil); e != nil {
-				log.Printf("activation failed: %v", e)
-				stop()
-				return
-			}
-			g.mu.Lock()
-			g.session = s.GameSessionID
-			g.mu.Unlock()
-			if e := sdk.ActivateGameSession(); e != nil {
-				log.Printf("GameLift activation failed: %v", e)
-				stop()
-			}
-		}, OnUpdateGameSession: func(model.UpdateGameSession) {}, OnProcessTerminate: stop,
-		OnHealthCheck: func() bool {
-			var status struct {
-				OK bool `json:"ok"`
-			}
-			return !g.stopping.Load() && r.localCall(ctx, map[string]string{"op": "status"}, &status) == nil && status.OK
-		},
-	})
-	if err != nil {
-		return err
-	}
+	process.listenerReady()
+	log.Printf("Rust service and TLS listener ready on port %d", port)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	var cursor int64
@@ -444,10 +396,6 @@ func (r *runtime) runGame(parent context.Context, port int, dataPath string) err
 		if _, e := r.replicate(final, cursor); e != nil {
 			log.Printf("final replication failed; recover from GameLift session logs: %v", e)
 		}
-	}
-	ending := sdk.ProcessEnding()
-	if ending != nil {
-		return ending
 	}
 	select {
 	case e := <-result:

@@ -51,7 +51,8 @@ export class GameAudioBank {
   const fetchAudio=this.fetchAudio;
   const request=(async()=>{
    try{
-    const response=await fetchAudio(clip.file);if(!response.ok)throw new Error('Audio unavailable');
+    // Stable filenames can receive new recordings between releases.
+    const response=await fetchAudio(clip.file,{cache:'no-cache'});if(!response.ok)throw new Error('Audio unavailable');
     return await response.arrayBuffer();
    }catch{this.bytes.delete(clip.id);return null;}
   })();

@@ -1,3 +1,4 @@
+v1.0.56 - Moves Chris’s welcome note and contact links to the top of Credits and simplifies mobile menu layout.
 v1.0.55 - Integrates startup and analytics with published lobby, audio and hosting fixes for release.
 v1.0.54 - Opens menus before arena downloads, defers sound loading to play, and records real single-player session boundaries.
 v1.0.53 - Adds GA4 tracking and private IP and single-player lifecycle telemetry with privacy opt-outs.

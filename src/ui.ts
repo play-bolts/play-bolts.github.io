@@ -71,12 +71,6 @@ export class UI {
      <h1>BOLTS</h1>
      <div class="main-choices"><button id="start" class="classic-choice">Single player</button><button id="multiplayer" class="classic-choice">Multiplayer</button><button id="leaderboard-open" class="classic-choice">Leaderboard</button><button id="feedback-open" class="classic-choice">Feedback</button><button class="classic-choice settings-button">Options</button><button class="classic-choice controls-button">Controls</button><button id="credits-open" class="classic-choice">Credits</button></div>
      <p id="mobile-notice" class="hidden"><strong>Best experienced on a PC.</strong><span>On mobile, rotate to landscape and use the touch controls.</span></p>
-     <aside class="welcome-board" aria-labelledby="welcome-title">
-      <h2 id="welcome-title">Welcome to Bolts</h2>
-      <p>I made this game in homage to the original Call of Duty.</p>
-      <p>Email me at <a href="mailto:ckrapu@gmail.com">ckrapu@gmail.com</a> with any feature requests. You can also submit using the <button id="welcome-feedback" type="button" aria-haspopup="dialog">feedback form</button>.</p>
-      <p class="welcome-signature">-Chris</p>
-     </aside>
     </section><div id="players-online" class="hidden" role="status" aria-live="polite"></div><div id="startup-status" class="hidden" role="status" aria-live="polite"></div>
   <section id="lobby-window" class="classic-window lobby-window hidden" aria-labelledby="lobby-title">
    <header class="lobby-heading"><h2 id="lobby-title">Join game</h2></header>
@@ -130,6 +124,12 @@ export class UI {
    </section>
    <section id="tab-credits" class="hidden asset-credits" aria-labelledby="credits-title">
     <h2 id="credits-title">Credits</h2>
+    <aside class="credits-intro" aria-labelledby="welcome-title">
+     <h3 id="welcome-title">Welcome to Bolts</h3>
+     <p>I made this game in homage to the original Call of Duty.</p>
+     <p>Email me at <a href="mailto:ckrapu@gmail.com">ckrapu@gmail.com</a> with any feature requests. You can also submit using the <button id="welcome-feedback" type="button" aria-haspopup="dialog">feedback form</button>.</p>
+     <p class="welcome-signature">-Chris</p>
+    </aside>
     <ul>
      <li>Moony_State — <a href="https://sketchfab.com/3d-models/lee-enfield-mkiii-f6a2160daf134071a84e3cae5f831875" target="_blank" rel="noopener">Lee Enfield MKIII</a></li>
      <li>MaX3Dd — <a href="https://sketchfab.com/3d-models/mosin-nagant-m91-92ede39f23bd40c7982c727dfd7c4be0" target="_blank" rel="noopener">Mosin Nagant M91</a></li>
